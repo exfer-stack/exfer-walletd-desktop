@@ -1,10 +1,16 @@
-// Mock backend for the Vite dev server. Runs when we're loaded in a
-// plain browser (no Tauri runtime). Lets us iterate on UI without
-// needing the Tauri Linux prereqs (webkit2gtk etc.) and without
-// touching the real chain.
+// Browser-side fallback when we're not running inside a Tauri webview.
 //
-// Persisted in localStorage under DEV_STATE_KEY so refreshes don't
-// wipe the wallet.
+// Two modes, selected by Vite env vars set in `.env.local`:
+//
+// 1. Real walletd dev (preferred for end-to-end testing). Set
+//    VITE_USE_REAL_WALLETD=true and the three VITE_WALLETD_TOKEN_*
+//    vars; we route `rpc()` through `fetch('/__walletd', …)` which
+//    Vite's dev-server proxy forwards to the actual daemon. CORS is a
+//    non-issue because the browser sees same-origin.
+//
+// 2. In-memory mock (default). Synthesises responses locally so the UI
+//    layout can be exercised without any backend at all. Persisted in
+//    localStorage under DEV_STATE_KEY so refreshes don't wipe state.
 
 import type {
   BootstrapStatus,
@@ -70,6 +76,53 @@ function fakeHex(seed: string, length: number): string {
   return out.slice(0, length);
 }
 
+const REAL_BASE = "/__walletd";
+
+function useRealWalletd(): boolean {
+  return import.meta.env.VITE_USE_REAL_WALLETD === "true";
+}
+
+function realToken(scope: "read" | "manage" | "spend"): string {
+  const key = `VITE_WALLETD_TOKEN_${scope.toUpperCase()}` as
+    | "VITE_WALLETD_TOKEN_READ"
+    | "VITE_WALLETD_TOKEN_MANAGE"
+    | "VITE_WALLETD_TOKEN_SPEND";
+  const v = import.meta.env[key];
+  if (!v) {
+    throw new Error(
+      `Real-walletd mode: env var ${key} is missing from .env.local`,
+    );
+  }
+  return v as string;
+}
+
+function scopeFor(method: string): "read" | "manage" | "spend" {
+  if (method === "transfer" || method === "send_raw_transaction" || method === "sign_message") return "spend";
+  if (method === "generate_address" || method === "abandon_transfer") return "manage";
+  return "read";
+}
+
+async function realRpc(method: string, params: unknown): Promise<unknown> {
+  const resp = await fetch(REAL_BASE, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${realToken(scopeFor(method))}`,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params: params ?? {},
+    }),
+  });
+  const body = await resp.json();
+  if (body.error) {
+    throw new Error(`${body.error.message ?? "rpc error"} (code ${body.error.code})`);
+  }
+  return body.result;
+}
+
 export const devmock = {
   isActive(): boolean {
     // Tauri injects this on window. If absent, we're in a plain browser.
@@ -78,10 +131,33 @@ export const devmock = {
   },
 
   async bootstrap_status(): Promise<BootstrapStatus> {
+    if (useRealWalletd()) {
+      // Real walletd is already running outside the desktop process.
+      // The "bootstrap" concept (password prompt → spawn walletd) is
+      // bypassed in this mode; we report Ready immediately so the UI
+      // skips the modal.
+      try {
+        await realRpc("ping", {});
+        return {
+          status: "ready",
+          local_addr: "127.0.0.1:7448 (via vite proxy)",
+          fingerprint: "(plain HTTP — proxy)",
+        };
+      } catch (e) {
+        return {
+          status: "failed",
+          message: `cannot reach real walletd via ${REAL_BASE}: ${String(e)}`,
+        };
+      }
+    }
     return loadState().bootstrap as BootstrapStatus;
   },
 
   async submit_password(password: string): Promise<BootstrapStatus> {
+    if (useRealWalletd()) {
+      // No-op in real mode; bootstrap_status already returned Ready.
+      return this.bootstrap_status();
+    }
     if (!password) throw new Error("password must not be empty");
     const s = loadState();
     s.bootstrap = {
@@ -94,10 +170,23 @@ export const devmock = {
   },
 
   async get_node_rpc(): Promise<string> {
+    if (useRealWalletd()) {
+      const st = (await realRpc("get_status", {})) as {
+        upstream?: { url?: string };
+      };
+      return st.upstream?.url ?? "(unknown)";
+    }
     return loadState().nodeRpc;
   },
 
   async set_node_rpc(url: string): Promise<BootstrapStatus> {
+    if (useRealWalletd()) {
+      // walletd has no runtime-mutable node_rpc — would need a restart
+      // with new env. Surface a friendly failure.
+      throw new Error(
+        "Changing the upstream node requires restarting the daemon in real-walletd dev mode.",
+      );
+    }
     const s = loadState();
     s.nodeRpc = url;
     saveState(s);
@@ -105,6 +194,9 @@ export const devmock = {
   },
 
   async rpc(method: string, params: unknown): Promise<unknown> {
+    if (useRealWalletd()) {
+      return realRpc(method, params);
+    }
     const s = loadState();
     if (s.bootstrap.status !== "ready") throw new Error("walletd not ready");
 

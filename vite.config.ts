@@ -28,5 +28,20 @@ export default defineConfig(async () => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+    // Proxy /__walletd → a real walletd daemon for dev-mode testing
+    // outside Tauri. Activated by setting VITE_WALLETD_PROXY_TARGET in
+    // .env.local; see lib/devmock.ts for the client-side switch. The
+    // proxy strips the /__walletd prefix so walletd sees `POST /`.
+    // @ts-expect-error process is a nodejs global
+    proxy: process.env.VITE_WALLETD_PROXY_TARGET
+      ? {
+          "/__walletd": {
+            // @ts-expect-error process is a nodejs global
+            target: process.env.VITE_WALLETD_PROXY_TARGET,
+            changeOrigin: true,
+            rewrite: (p: string) => p.replace(/^\/__walletd/, ""),
+          },
+        }
+      : undefined,
   },
 }));
