@@ -1,0 +1,43 @@
+[package]
+name        = "exfer-walletd-desktop"
+version     = "0.1.0"
+description = "Desktop GUI for exfer-walletd. One double-click → walletd in-process + a window for balance / generate-address / transfer."
+edition     = "2021"
+license     = "MIT"
+
+[lib]
+# The `_lib` suffix avoids a Windows-only conflict between the lib and
+# bin names (see https://github.com/rust-lang/cargo/issues/8519).
+name        = "exfer_walletd_desktop_lib"
+crate-type  = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri              = { version = "2", features = [] }
+tokio              = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+tokio-util         = { version = "0.7", features = ["rt"] }
+
+# The embedded walletd. Pinned to the release tag we just cut.
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", tag = "v1.2.0" }
+
+# HTTP client used by the Tauri Rust side to talk to the embedded
+# walletd over loopback HTTPS. `rustls-tls-manual-roots` disables
+# webpki-roots entirely so the fingerprint verifier is the only path
+# the TLS handshake can take.
+reqwest            = { version = "0.12", default-features = false, features = ["json", "rustls-tls-manual-roots"] }
+rustls             = "0.23"
+sha2               = "0.10"
+hex                = "0.4"
+
+# Persist the keystore passphrase in the OS keychain (Keychain on
+# macOS, Credential Manager on Windows, libsecret on Linux).
+keyring            = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+
+serde              = { version = "1", features = ["derive"] }
+serde_json         = "1"
+anyhow             = "1"
+thiserror          = "1"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
