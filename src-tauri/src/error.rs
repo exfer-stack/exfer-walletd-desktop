@@ -1,17 +1,13 @@
-//! `Result` and error types shared by the Tauri shell. All Tauri
-//! commands return strings — Tauri converts `Result<T, String>` cleanly
-//! to a frontend rejection — so this exists mostly so internal callers
-//! get richer types.
+//! `Result` and error types shared by the Tauri shell. Tauri commands
+//! surface `Result<T, String>` to the frontend — this enum exists so
+//! internal callers keep richer typing and the conversion to a
+//! user-facing string happens in one place
+//! ([`AppError::to_user_string`]).
 
-use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("walletd not ready yet")]
-    NotReady,
-    #[error("walletd already running")]
-    AlreadyRunning,
     #[error("invalid fingerprint: {0}")]
     InvalidFingerprint(String),
     #[error("upstream JSON-RPC error (code {code}): {message}")]
@@ -29,18 +25,5 @@ impl AppError {
     /// surface `Err(String)` to the JS side, so we collapse here.
     pub fn to_user_string(&self) -> String {
         self.to_string()
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct UiError {
-    pub message: String,
-}
-
-impl From<AppError> for UiError {
-    fn from(e: AppError) -> Self {
-        UiError {
-            message: e.to_user_string(),
-        }
     }
 }

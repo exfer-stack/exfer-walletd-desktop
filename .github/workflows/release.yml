@@ -9,6 +9,12 @@ on:
     tags:
       - "v*"
 
+# tauri-action creates a GitHub Release at the end of each platform
+# build and uploads its artifact to it; that needs contents:write on
+# the workflow's GITHUB_TOKEN.
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build & bundle (${{ matrix.platform.name }})

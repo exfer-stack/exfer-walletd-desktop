@@ -195,7 +195,7 @@ pub async fn start(ctx: &AppCtx, passphrase: &str) -> BootstrapStatus {
             // it without a client.
             let _ = handle.shutdown().await;
             let s = BootstrapStatus::Failed {
-                message: format!("building pinned client: {}", AppError::from(e)),
+                message: format!("building pinned client: {e}"),
             };
             inner.status = s.clone();
             return s;
