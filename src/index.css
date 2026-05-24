@@ -2,34 +2,136 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────────────
+ * Design tokens. Centralised here so every page reads the same scale.
+ * The aesthetic is "trustworthy finance tool" — generous whitespace,
+ * monospaced numerals, restrained color palette with one accent
+ * (indigo) for actions and one warning (amber) for destructive paths.
+ * ──────────────────────────────────────────────────────────────────── */
+
 @layer base {
-  html,
-  body,
-  #root {
+  :root {
+    --color-bg:        theme("colors.neutral.50");
+    --color-surface:   theme("colors.white");
+    --color-border:    theme("colors.neutral.200");
+    --color-text:      theme("colors.neutral.900");
+    --color-text-muted:theme("colors.neutral.500");
+    --color-accent:    theme("colors.indigo.600");
+    --color-accent-hover: theme("colors.indigo.700");
+  }
+
+  html, body, #root {
     @apply h-full;
+  }
+  html {
+    /* Bump root font-size: 16 -> 17px. Compounds through every rem-based
+       Tailwind utility, so amounts read clearer at desktop distance. */
+    font-size: 17px;
   }
   body {
     @apply bg-neutral-50 text-neutral-900 antialiased;
+    font-feature-settings: "tnum" 1, "lnum" 1;  /* tabular numerals */
+  }
+
+  /* Larger, clearer focus ring than Tailwind's default. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-indigo-500 ring-offset-2 ring-offset-neutral-50;
   }
 }
 
 @layer components {
+  /* ── buttons ────────────────────────────────────────────────── */
   .btn {
-    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition;
-    @apply bg-neutral-900 text-white hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5;
+    @apply text-base font-medium tracking-tight transition;
+    @apply bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800;
+    @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600;
+    @apply shadow-sm;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5;
+    @apply text-base font-medium tracking-tight transition;
+    @apply bg-white text-neutral-800 border border-neutral-300 hover:bg-neutral-50 active:bg-neutral-100;
+    @apply disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium;
-    @apply text-neutral-700 hover:bg-neutral-100;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5;
+    @apply text-sm font-medium text-neutral-700 transition;
+    @apply hover:bg-neutral-100 active:bg-neutral-200;
   }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5;
+    @apply text-base font-medium tracking-tight transition;
+    @apply bg-red-600 text-white hover:bg-red-700 active:bg-red-800;
+  }
+
+  /* ── inputs ─────────────────────────────────────────────────── */
   .input {
-    @apply block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm;
-    @apply placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-500;
+    @apply block w-full rounded-lg border border-neutral-300 bg-white px-3.5 py-2.5;
+    @apply text-base text-neutral-900 placeholder:text-neutral-400;
+    @apply transition focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500;
+    @apply disabled:bg-neutral-50 disabled:text-neutral-500;
   }
   .label {
-    @apply block text-sm font-medium text-neutral-700 mb-1;
+    @apply block text-sm font-medium text-neutral-700 mb-1.5;
   }
+  .help {
+    @apply mt-1.5 text-xs text-neutral-500;
+  }
+
+  /* ── surfaces ──────────────────────────────────────────────── */
   .card {
-    @apply rounded-lg border border-neutral-200 bg-white shadow-sm;
+    @apply rounded-xl border border-neutral-200 bg-white shadow-sm;
+  }
+  .card-padded {
+    @apply rounded-xl border border-neutral-200 bg-white shadow-sm p-6;
+  }
+
+  /* ── typographic helpers for amounts / addresses ─────────────── */
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+                 "Liberation Mono", "Courier New", monospace;
+  }
+  .amount-lg {
+    @apply mono text-3xl font-semibold tracking-tight tabular-nums;
+  }
+  .amount-md {
+    @apply mono text-xl font-semibold tracking-tight tabular-nums;
+  }
+  .amount {
+    @apply mono text-base tabular-nums;
+  }
+  .addr {
+    @apply mono text-sm tabular-nums break-all;
+  }
+  .addr-xs {
+    @apply mono text-xs text-neutral-500;
+  }
+
+  /* ── status pills ──────────────────────────────────────────── */
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  .pill-info     { @apply bg-indigo-50 text-indigo-700; }
+  .pill-success  { @apply bg-emerald-50 text-emerald-700; }
+  .pill-warn     { @apply bg-amber-50 text-amber-700; }
+  .pill-error    { @apply bg-red-50 text-red-700; }
+
+  /* ── banners / inline messages ─────────────────────────────── */
+  .banner-error {
+    @apply rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800;
+  }
+  .banner-success {
+    @apply rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800;
+  }
+  .banner-warn {
+    @apply rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900;
   }
 }
+
+/* ── animation primitives ────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fade-in 120ms ease-out; }

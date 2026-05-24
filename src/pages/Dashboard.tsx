@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { rpc, formatExfer } from "../lib/rpc";
-import type { WalletBalance } from "../lib/types";
+import type { WalletBalance, GeneratedAddress } from "../lib/types";
+import { AddressRow } from "../components/AddressRow";
 
 export function Dashboard() {
   const [data, setData] = useState<WalletBalance | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
@@ -20,80 +22,119 @@ export function Dashboard() {
     }
   }
 
+  async function generateAddress() {
+    setGenerating(true);
+    setError(null);
+    try {
+      await rpc<GeneratedAddress>("generate_address");
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   useEffect(() => {
     refresh();
   }, []);
 
+  const isEmpty = data && data.entries.length === 0;
+
   return (
-    <div className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Addresses</h2>
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={loading}
-          className="btn-ghost"
-        >
-          {loading ? "Refreshing…" : "Refresh"}
-        </button>
-      </div>
-
-      {error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-          {error}
+    <div className="mx-auto max-w-5xl space-y-6 p-8 fade-in">
+      {/* Hero — total balance */}
+      <section className="card-padded">
+        <div className="text-sm font-medium uppercase tracking-wide text-neutral-500">
+          Total balance
         </div>
-      )}
+        <div className="amount-lg mt-2">
+          {data ? formatExfer(data.total) : "—"}
+        </div>
+        <div className="mt-1 text-sm text-neutral-500">
+          across{" "}
+          <span className="font-medium text-neutral-700">
+            {data?.entries.length ?? 0}
+          </span>{" "}
+          {data?.entries.length === 1 ? "address" : "addresses"}
+        </div>
+      </section>
 
-      {data && (
-        <div className="card overflow-hidden">
-          <div className="border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-sm">
-            <span className="font-medium text-neutral-700">Total:</span>{" "}
-            <span className="font-mono">{formatExfer(data.total)}</span>
+      {error && <div className="banner-error">{error}</div>}
+
+      {/* Address list */}
+      <section className="card overflow-hidden">
+        <header className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
+          <h2 className="text-base font-semibold tracking-tight text-neutral-800">
+            Addresses
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={loading}
+              className="btn-ghost"
+            >
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
+            <button
+              type="button"
+              onClick={generateAddress}
+              disabled={generating}
+              className="btn"
+            >
+              {generating ? "Generating…" : "+ New address"}
+            </button>
           </div>
-          {data.entries.length === 0 ? (
-            <div className="p-6 text-sm text-neutral-500">
-              No addresses yet — head to the Generate tab to mint one.
+        </header>
+
+        {isEmpty ? (
+          <div className="px-5 py-12 text-center">
+            <div className="mx-auto max-w-md space-y-2">
+              <div className="text-lg font-medium text-neutral-700">
+                No addresses yet
+              </div>
+              <p className="text-sm text-neutral-500">
+                Mint your first address and you're ready to receive EXFER.
+              </p>
+              <button
+                type="button"
+                onClick={generateAddress}
+                disabled={generating}
+                className="btn mt-3"
+              >
+                {generating ? "Generating…" : "+ Generate first address"}
+              </button>
             </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">
-                <tr>
-                  <th className="px-4 py-2">Index</th>
-                  <th className="px-4 py-2">Address</th>
-                  <th className="px-4 py-2">UTXOs</th>
-                  <th className="px-4 py-2 text-right">Balance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {data.entries.map((e) => (
-                  <tr key={e.address}>
-                    <td className="px-4 py-2 font-mono text-neutral-500">
-                      {e.imported ? "imported" : e.index}
-                    </td>
-                    <td className="px-4 py-2 font-mono text-xs">
-                      {e.address.slice(0, 10)}…{e.address.slice(-6)}
-                    </td>
-                    <td className="px-4 py-2 font-mono text-neutral-500">
-                      {e.utxo_count}
-                      {e.truncated && (
-                        <span
-                          className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-800"
-                          title="Node returned a truncated UTXO list (>1000)"
-                        >
-                          ⚠
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono">
-                      {formatExfer(e.balance)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+              <tr>
+                <th className="px-5 py-2.5 text-left">Index</th>
+                <th className="px-5 py-2.5 text-left">Label</th>
+                <th className="px-5 py-2.5 text-left">Address</th>
+                <th className="px-5 py-2.5 text-left">UTXOs</th>
+                <th className="px-5 py-2.5 text-right">Balance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {data?.entries.map((e) => (
+                <AddressRow
+                  key={e.address}
+                  address={e.address}
+                  index={e.index}
+                  imported={e.imported}
+                  balance={e.balance}
+                  utxoCount={e.utxo_count}
+                  truncated={e.truncated}
+                  onLabelChange={refresh}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
     </div>
   );
 }

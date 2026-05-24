@@ -1,13 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { BootstrapStatus } from "./types";
+import { devmock } from "./devmock";
 
 /// Forward a JSON-RPC call through the Rust shell to the embedded
 /// walletd. The shell picks the right scoped token + handles TLS
 /// pinning; we just hand it method + params.
+///
+/// Falls back to an in-browser mock when we're not running inside a
+/// Tauri webview — lets us iterate UI in `npm run dev` without the
+/// Tauri Linux prereqs. Real Tauri builds never hit the mock branch.
 export function rpc<T = unknown>(
   method: string,
   params?: unknown,
 ): Promise<T> {
+  if (devmock.isActive()) {
+    return devmock.rpc(method, params ?? {}) as Promise<T>;
+  }
   return invoke<T>("rpc", {
     method,
     params: params ?? {},
@@ -15,18 +23,22 @@ export function rpc<T = unknown>(
 }
 
 export function bootstrapStatus(): Promise<BootstrapStatus> {
+  if (devmock.isActive()) return devmock.bootstrap_status();
   return invoke<BootstrapStatus>("bootstrap_status");
 }
 
 export function submitPassword(password: string): Promise<BootstrapStatus> {
+  if (devmock.isActive()) return devmock.submit_password(password);
   return invoke<BootstrapStatus>("submit_password", { password });
 }
 
 export function getNodeRpc(): Promise<string> {
+  if (devmock.isActive()) return devmock.get_node_rpc();
   return invoke<string>("get_node_rpc");
 }
 
 export function setNodeRpc(url: string): Promise<BootstrapStatus> {
+  if (devmock.isActive()) return devmock.set_node_rpc(url);
   return invoke<BootstrapStatus>("set_node_rpc", { url });
 }
 

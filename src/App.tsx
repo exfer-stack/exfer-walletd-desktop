@@ -4,8 +4,9 @@ import type { BootstrapStatus } from "./lib/types";
 import { PasswordPrompt } from "./components/PasswordPrompt";
 import { Layout, type Tab } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
-import { GenerateAddress } from "./pages/GenerateAddress";
-import { Transfer } from "./pages/Transfer";
+import { Receive } from "./pages/Receive";
+import { Send } from "./pages/Send";
+import { Activity } from "./pages/Activity";
 import { Settings } from "./pages/Settings";
 
 function App() {
@@ -19,7 +20,6 @@ function App() {
 
   useEffect(() => {
     refreshStatus();
-    // Poll once a second only while we're not ready; stop once we are.
     const interval = setInterval(() => {
       setStatus((prev) => {
         if (prev && prev.status === "ready") return prev;
@@ -36,17 +36,18 @@ function App() {
 
   if (status.status === "failed") {
     return (
-      <div className="flex h-full items-center justify-center p-6">
-        <div className="card max-w-md p-6 space-y-3">
-          <h1 className="text-lg font-semibold text-red-700">
-            walletd failed to start
+      <div className="flex h-full items-center justify-center p-8">
+        <div className="card-padded max-w-lg space-y-3 fade-in">
+          <h1 className="text-xl font-semibold text-red-700">
+            Walletd failed to start
           </h1>
-          <pre className="whitespace-pre-wrap rounded bg-red-50 p-3 text-xs text-red-900">
+          <pre className="whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs text-red-900">
             {status.message}
           </pre>
           <p className="text-sm text-neutral-600">
-            Check the app log (stderr) for details. You may need to clear the
-            saved password from the OS keychain and re-enter it.
+            Check the app log (stderr) for details. If the password in your
+            OS keychain is wrong (e.g. you moved data between machines), you
+            may need to clear it and re-enter.
           </p>
         </div>
       </div>
@@ -56,9 +57,16 @@ function App() {
   return (
     <Layout activeTab={tab} onTabChange={setTab}>
       {tab === "dashboard" && <Dashboard />}
-      {tab === "generate" && <GenerateAddress />}
-      {tab === "transfer" && <Transfer />}
-      {tab === "settings" && <Settings onRestart={(s) => setStatus(s)} />}
+      {tab === "receive" && <Receive />}
+      {tab === "send" && <Send />}
+      {tab === "activity" && <Activity />}
+      {tab === "settings" && (
+        <Settings
+          onRestart={(s) => setStatus(s)}
+          fingerprint={status.fingerprint}
+          localAddr={status.local_addr}
+        />
+      )}
     </Layout>
   );
 }
