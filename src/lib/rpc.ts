@@ -42,6 +42,12 @@ export function setNodeRpc(url: string): Promise<BootstrapStatus> {
   return invoke<BootstrapStatus>("set_node_rpc", { url });
 }
 
+/// Desktop UX cap on managed addresses. walletd itself supports ~4B
+/// HD indices, but a personal desktop wallet stays legible (and the
+/// per-address balance fan-out stays light on the public node's
+/// rate limit) when kept small. Raise if a power-user build needs more.
+export const MAX_ADDRESSES = 6;
+
 const EXFER_UNIT = 100_000_000; // 1 EXFER = 1e8 exfers
 
 export function formatExfer(exfers: number): string {

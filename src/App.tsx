@@ -38,13 +38,13 @@ function App() {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <div className="card-padded max-w-lg space-y-3 fade-in">
-          <h1 className="text-xl font-semibold text-red-700">
+          <h1 className="text-xl font-semibold text-red-300">
             Walletd failed to start
           </h1>
-          <pre className="whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs text-red-900">
+          <pre className="whitespace-pre-wrap rounded-lg bg-red-500/10 p-3 text-xs text-red-200">
             {status.message}
           </pre>
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-neutral-400">
             Check the app log (stderr) for details. If the password in your
             OS keychain is wrong (e.g. you moved data between machines), you
             may need to clear it and re-enter.

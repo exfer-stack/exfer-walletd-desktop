@@ -25,3 +25,7 @@ src-tauri/target/
 *.njsproj
 *.sln
 *.sw?
+
+# tauri icon also emits mobile sets we do not ship
+src-tauri/icons/android/
+src-tauri/icons/ios/

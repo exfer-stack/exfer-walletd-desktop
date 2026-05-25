@@ -109,10 +109,10 @@ export function Send() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
           Send EXFER
         </h1>
-        <p className="text-base text-neutral-600">
+        <p className="text-base text-neutral-400">
           One transaction, up to 16 recipients. Fees are paid in the consensus
           unit; <span className="font-mono">rate = 1</span> is the floor.
         </p>
@@ -148,7 +148,7 @@ export function Send() {
           {fromEntry && (
             <p className="help">
               Available:{" "}
-              <span className="font-medium text-neutral-700">
+              <span className="font-medium text-neutral-300">
                 {formatExfer(fromEntry.balance)}
               </span>{" "}
               · {fromEntry.utxo_count}{" "}
@@ -244,9 +244,9 @@ function RecipientRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-neutral-200 bg-neutral-50/50 p-4 space-y-3">
+    <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
           Recipient {index + 1}
         </span>
         {canRemove && (
@@ -299,7 +299,7 @@ function ReceiptCard({ receipt }: { receipt: TransferReceipt }) {
     <section className="card-padded space-y-4 fade-in">
       <div className="flex items-center gap-2">
         <span className="pill pill-success text-sm">✓ Broadcast</span>
-        <span className="text-sm text-neutral-500">
+        <span className="text-sm text-neutral-400">
           built at height {receipt.built_at_height}
         </span>
       </div>
@@ -307,7 +307,7 @@ function ReceiptCard({ receipt }: { receipt: TransferReceipt }) {
       <div>
         <div className="label">Transaction ID</div>
         <div className="flex gap-2">
-          <code className="addr flex-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
+          <code className="addr flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
             {receipt.tx_id}
           </code>
           <CopyButton text={receipt.tx_id} className="btn-secondary" />
@@ -323,9 +323,9 @@ function ReceiptCard({ receipt }: { receipt: TransferReceipt }) {
         />
       </div>
 
-      <p className="text-sm text-neutral-500">
+      <p className="text-sm text-neutral-400">
         Tracking the confirmation? Head to the{" "}
-        <span className="font-medium text-neutral-700">Activity</span> tab —
+        <span className="font-medium text-neutral-300">Activity</span> tab —
         we logged this transfer there.
       </p>
     </section>
@@ -335,10 +335,10 @@ function ReceiptCard({ receipt }: { receipt: TransferReceipt }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+      <div className="text-xs font-medium uppercase tracking-wide text-neutral-400">
         {label}
       </div>
-      <div className="mt-1 font-mono text-sm font-semibold text-neutral-900 tabular-nums">
+      <div className="mt-1 font-mono text-sm font-semibold text-neutral-100 tabular-nums">
         {value}
       </div>
     </div>

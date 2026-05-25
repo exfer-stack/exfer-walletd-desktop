@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { submitPassword } from "../lib/rpc";
+import wordmarkUrl from "../assets/wordmark.png";
 
 interface Props {
   onReady: () => void;
@@ -45,11 +46,19 @@ export function PasswordPrompt({ onReady }: Props) {
         onSubmit={onSubmit}
         className="card-padded w-full max-w-lg space-y-6 fade-in"
       >
-        <header className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-            Welcome to exfer wallet
+        <div className="flex justify-center">
+          <img
+            src={wordmarkUrl}
+            alt="EXFER"
+            className="h-16 w-auto select-none"
+            draggable={false}
+          />
+        </div>
+        <header className="space-y-2 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-50">
+            Welcome to your wallet
           </h1>
-          <p className="text-base text-neutral-600 leading-relaxed">
+          <p className="text-base text-neutral-400 leading-relaxed">
             Set a password to encrypt this wallet's seed at rest. It's stored
             in your operating system's secure keychain, so you'll only enter
             it once on this machine.

@@ -112,10 +112,10 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
           Settings
         </h1>
-        <p className="text-base text-neutral-600">
+        <p className="text-base text-neutral-400">
           Configure the upstream Exfer node and manage local data.
         </p>
       </header>
@@ -123,10 +123,10 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       {/* Upstream node */}
       <section className="card-padded space-y-4">
         <header>
-          <h2 className="text-lg font-semibold text-neutral-900">
+          <h2 className="text-lg font-semibold text-neutral-100">
             Upstream node
           </h2>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-neutral-400">
             The Exfer JSON-RPC endpoint walletd talks to for chain reads and
             broadcast. Comma-separated for round-robin + failover.
           </p>
@@ -168,10 +168,10 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       {/* Backup & export */}
       <section className="card-padded space-y-4">
         <header>
-          <h2 className="text-lg font-semibold text-neutral-900">
+          <h2 className="text-lg font-semibold text-neutral-100">
             Backup & export
           </h2>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-neutral-400">
             What's worth saving outside this device.
           </p>
         </header>
@@ -223,10 +223,10 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       {/* Sensitive data export — gated by password re-entry */}
       <section className="card-padded space-y-4">
         <header>
-          <h2 className="text-lg font-semibold text-neutral-900">
+          <h2 className="text-lg font-semibold text-neutral-100">
             Sensitive recovery export
           </h2>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-neutral-400">
             Reveal the master secrets directly. Both actions ask for
             your password again before showing anything.
           </p>
@@ -270,24 +270,24 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       {/* Daemon status */}
       <section className="card-padded space-y-3">
         <header>
-          <h2 className="text-lg font-semibold text-neutral-900">
+          <h2 className="text-lg font-semibold text-neutral-100">
             Daemon status
           </h2>
         </header>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-          <dt className="text-neutral-500">Bind</dt>
-          <dd className="addr-xs font-medium text-neutral-800">{localAddr}</dd>
-          <dt className="text-neutral-500">TLS fingerprint</dt>
+          <dt className="text-neutral-400">Bind</dt>
+          <dd className="addr-xs font-medium text-neutral-100">{localAddr}</dd>
+          <dt className="text-neutral-400">TLS fingerprint</dt>
           <dd className="addr-xs">{fingerprint}</dd>
           {status && (
             <>
-              <dt className="text-neutral-500">Version</dt>
+              <dt className="text-neutral-400">Version</dt>
               <dd className="addr-xs">{status.version}</dd>
-              <dt className="text-neutral-500">Wallet count</dt>
+              <dt className="text-neutral-400">Wallet count</dt>
               <dd className="addr-xs">{status.wallet_count}</dd>
-              <dt className="text-neutral-500">In-flight transfers</dt>
+              <dt className="text-neutral-400">In-flight transfers</dt>
               <dd className="addr-xs">{status.in_flight_transfers}</dd>
-              <dt className="text-neutral-500">In-flight UTXOs</dt>
+              <dt className="text-neutral-400">In-flight UTXOs</dt>
               <dd className="addr-xs">{status.in_flight_utxos}</dd>
             </>
           )}

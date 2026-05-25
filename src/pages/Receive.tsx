@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { rpc, formatExfer } from "../lib/rpc";
+import { rpc, formatExfer, MAX_ADDRESSES } from "../lib/rpc";
 import type { WalletBalance, GeneratedAddress } from "../lib/types";
 import { CopyButton } from "../components/CopyButton";
 import { getLabel, shortAddress } from "../lib/labels";
@@ -63,10 +63,10 @@ export function Receive() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-8 fade-in">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
+        <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
           Receive EXFER
         </h1>
-        <p className="text-base text-neutral-600">
+        <p className="text-base text-neutral-400">
           Share an address or its QR code. Anyone can send to it — no
           permission needed.
         </p>
@@ -77,27 +77,32 @@ export function Receive() {
       <div className="grid gap-6 md:grid-cols-[1fr_1.2fr]">
         {/* Address picker */}
         <section className="card overflow-hidden">
-          <header className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
               Your addresses
             </h2>
             <button
               type="button"
               onClick={generateAddress}
-              disabled={generating}
+              disabled={generating || (data?.entries.length ?? 0) >= MAX_ADDRESSES}
               className="btn-ghost"
+              title={
+                (data?.entries.length ?? 0) >= MAX_ADDRESSES
+                  ? `Capped at ${MAX_ADDRESSES} addresses`
+                  : undefined
+              }
             >
               {generating ? "…" : "+ New"}
             </button>
           </header>
-          <ul className="max-h-[420px] divide-y divide-neutral-100 overflow-auto">
+          <ul className="max-h-[420px] divide-y divide-neutral-800 overflow-auto">
             {data?.entries.length === 0 ? (
-              <li className="px-5 py-8 text-center text-sm text-neutral-500">
+              <li className="px-5 py-8 text-center text-sm text-neutral-400">
                 No addresses yet —{" "}
                 <button
                   type="button"
                   onClick={generateAddress}
-                  className="font-medium text-indigo-600 underline-offset-2 hover:underline"
+                  className="font-medium text-cyan-400 underline-offset-2 hover:underline"
                 >
                   generate one
                 </button>{" "}
@@ -114,13 +119,13 @@ export function Receive() {
                     onClick={() => setSelected(e.address)}
                     className={
                       active
-                        ? "block w-full px-5 py-3 text-left bg-indigo-50 border-l-2 border-indigo-600"
-                        : "block w-full px-5 py-3 text-left border-l-2 border-transparent hover:bg-neutral-50"
+                        ? "block w-full px-5 py-3 text-left bg-cyan-500/10 border-l-2 border-cyan-400"
+                        : "block w-full px-5 py-3 text-left border-l-2 border-transparent hover:bg-neutral-900"
                     }
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-neutral-900">
+                        <div className="truncate text-sm font-medium text-neutral-100">
                           {label ?? (e.imported ? "Imported" : `Address ${e.index}`)}
                         </div>
                         <code className="addr-xs">
@@ -141,7 +146,7 @@ export function Receive() {
         {/* QR + address detail */}
         <section className="card-padded space-y-5">
           {!selected ? (
-            <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+            <div className="flex h-full items-center justify-center text-sm text-neutral-400">
               Pick an address to display its QR code.
             </div>
           ) : (
@@ -151,19 +156,19 @@ export function Receive() {
                   <img
                     src={qr}
                     alt="Address QR code"
-                    className="rounded-lg border border-neutral-200"
+                    className="rounded-lg border border-neutral-800"
                     width={320}
                     height={320}
                   />
                 ) : (
-                  <div className="flex h-[320px] w-[320px] items-center justify-center rounded-lg bg-neutral-100 text-sm text-neutral-400">
+                  <div className="flex h-[320px] w-[320px] items-center justify-center rounded-lg bg-neutral-800 text-sm text-neutral-500">
                     Rendering…
                   </div>
                 )}
               </div>
 
               <div className="space-y-2 text-center">
-                <div className="text-sm font-medium uppercase tracking-wide text-neutral-500">
+                <div className="text-sm font-medium uppercase tracking-wide text-neutral-400">
                   {getLabel(selected) ??
                     (selectedEntry?.imported
                       ? "Imported"
@@ -177,14 +182,14 @@ export function Receive() {
               <div>
                 <div className="label">Full address</div>
                 <div className="flex gap-2">
-                  <code className="addr flex-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+                  <code className="addr flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2.5">
                     {selected}
                   </code>
                   <CopyButton text={selected} className="btn-secondary" />
                 </div>
               </div>
 
-              <p className="text-sm text-neutral-500">
+              <p className="text-sm text-neutral-400">
                 Reusing a single address across multiple deposits is fine
                 technically, but if you want activity to be hard to link
                 back to one wallet, mint a fresh address per payer.

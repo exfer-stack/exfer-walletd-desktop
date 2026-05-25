@@ -45,10 +45,10 @@ export function RevealMnemonicModal({ onClose }: Props) {
     <Backdrop onClose={onClose}>
       <div className="card-padded w-full max-w-xl space-y-5">
         <header>
-          <h2 className="text-xl font-semibold text-neutral-900">
+          <h2 className="text-xl font-semibold text-neutral-100">
             Recovery phrase
           </h2>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-400">
             Anyone who sees these 24 words can re-create every key this
             wallet derives. Treat them like cash.
           </p>
@@ -57,10 +57,10 @@ export function RevealMnemonicModal({ onClose }: Props) {
         {!words ? (
           <form onSubmit={reveal} className="space-y-4">
             <div className="banner-warn space-y-2 text-sm">
-              <div className="font-semibold text-amber-900">
+              <div className="font-semibold text-amber-200">
                 Before you continue
               </div>
-              <ul className="ml-4 list-disc space-y-1 text-amber-900">
+              <ul className="ml-4 list-disc space-y-1 text-amber-200">
                 <li>Make sure nobody is looking at your screen.</li>
                 <li>
                   Walletd uses a non-standard derivation path. The
@@ -71,7 +71,7 @@ export function RevealMnemonicModal({ onClose }: Props) {
                   Never paste these into a website, chat, or email.
                 </li>
               </ul>
-              <label className="mt-2 flex items-start gap-2 text-amber-900">
+              <label className="mt-2 flex items-start gap-2 text-amber-200">
                 <input
                   type="checkbox"
                   className="mt-0.5"
@@ -157,19 +157,19 @@ function RevealedWords({
 
       <div
         className={
-          "grid grid-cols-3 gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4 " +
+          "grid grid-cols-3 gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-4 " +
           (hidden ? "blur-md select-none pointer-events-none" : "")
         }
       >
         {words.map((w, i) => (
           <div
             key={i}
-            className="flex items-baseline gap-2 rounded-md bg-white px-2.5 py-1.5"
+            className="flex items-baseline gap-2 rounded-md bg-neutral-950 px-2.5 py-1.5"
           >
-            <span className="w-6 text-right text-xs text-neutral-400 tabular-nums">
+            <span className="w-6 text-right text-xs text-neutral-500 tabular-nums">
               {i + 1}.
             </span>
-            <span className="mono text-sm font-medium text-neutral-900">
+            <span className="mono text-sm font-medium text-neutral-100">
               {w}
             </span>
           </div>
@@ -191,7 +191,7 @@ function RevealedWords({
         </button>
       </div>
 
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-neutral-400">
         Auto-hides after 30 seconds. Closing this dialog clears the
         words from memory.
       </p>

@@ -3,40 +3,38 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────────────
- * Design tokens. Centralised here so every page reads the same scale.
- * The aesthetic is "trustworthy finance tool" — generous whitespace,
- * monospaced numerals, restrained color palette with one accent
- * (indigo) for actions and one warning (amber) for destructive paths.
+ * exfer wallet — dark theme.
+ * Pure-black canvas, near-black surfaces, brand cyan as the single
+ * action accent (matches the X-cross logo). Monospaced tabular numerals
+ * for every amount so balances align across rows. One warning (amber),
+ * one success (emerald), one danger (red).
  * ──────────────────────────────────────────────────────────────────── */
 
 @layer base {
-  :root {
-    --color-bg:        theme("colors.neutral.50");
-    --color-surface:   theme("colors.white");
-    --color-border:    theme("colors.neutral.200");
-    --color-text:      theme("colors.neutral.900");
-    --color-text-muted:theme("colors.neutral.500");
-    --color-accent:    theme("colors.indigo.600");
-    --color-accent-hover: theme("colors.indigo.700");
-  }
-
   html, body, #root {
     @apply h-full;
   }
   html {
-    /* Bump root font-size: 16 -> 17px. Compounds through every rem-based
-       Tailwind utility, so amounts read clearer at desktop distance. */
+    /* 17px root: amounts read clearly at desktop distance. */
     font-size: 17px;
   }
   body {
-    @apply bg-neutral-50 text-neutral-900 antialiased;
+    @apply bg-black text-neutral-100 antialiased;
     font-feature-settings: "tnum" 1, "lnum" 1;  /* tabular numerals */
   }
 
-  /* Larger, clearer focus ring than Tailwind's default. */
   :focus-visible {
-    @apply outline-none ring-2 ring-indigo-500 ring-offset-2 ring-offset-neutral-50;
+    @apply outline-none ring-2 ring-cyan-400 ring-offset-2 ring-offset-black;
   }
+
+  /* Native form controls + scrollbars lean dark. */
+  select option {
+    @apply bg-neutral-950 text-neutral-100;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #000; }
+  ::-webkit-scrollbar-thumb { background: #262626; border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: #404040; }
 }
 
 @layer components {
@@ -44,36 +42,36 @@
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5;
     @apply text-base font-medium tracking-tight transition;
-    @apply bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800;
-    @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600;
-    @apply shadow-sm;
+    @apply bg-cyan-500 text-black hover:bg-cyan-400 active:bg-cyan-600;
+    @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cyan-500;
   }
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5;
     @apply text-base font-medium tracking-tight transition;
-    @apply bg-white text-neutral-800 border border-neutral-300 hover:bg-neutral-50 active:bg-neutral-100;
+    @apply bg-neutral-900 text-neutral-100 border border-neutral-700 hover:bg-neutral-800 active:bg-neutral-700;
     @apply disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5;
-    @apply text-sm font-medium text-neutral-700 transition;
-    @apply hover:bg-neutral-100 active:bg-neutral-200;
+    @apply text-sm font-medium text-neutral-300 transition;
+    @apply hover:bg-neutral-800 hover:text-neutral-100 active:bg-neutral-700;
   }
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5;
     @apply text-base font-medium tracking-tight transition;
-    @apply bg-red-600 text-white hover:bg-red-700 active:bg-red-800;
+    @apply bg-red-600 text-white hover:bg-red-500 active:bg-red-700;
+    @apply disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
   /* ── inputs ─────────────────────────────────────────────────── */
   .input {
-    @apply block w-full rounded-lg border border-neutral-300 bg-white px-3.5 py-2.5;
-    @apply text-base text-neutral-900 placeholder:text-neutral-400;
-    @apply transition focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500;
-    @apply disabled:bg-neutral-50 disabled:text-neutral-500;
+    @apply block w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3.5 py-2.5;
+    @apply text-base text-neutral-100 placeholder:text-neutral-600;
+    @apply transition focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400;
+    @apply disabled:bg-neutral-900 disabled:text-neutral-500;
   }
   .label {
-    @apply block text-sm font-medium text-neutral-700 mb-1.5;
+    @apply block text-sm font-medium text-neutral-300 mb-1.5;
   }
   .help {
     @apply mt-1.5 text-xs text-neutral-500;
@@ -81,10 +79,10 @@
 
   /* ── surfaces ──────────────────────────────────────────────── */
   .card {
-    @apply rounded-xl border border-neutral-200 bg-white shadow-sm;
+    @apply rounded-xl border border-neutral-800 bg-neutral-950 shadow-sm;
   }
   .card-padded {
-    @apply rounded-xl border border-neutral-200 bg-white shadow-sm p-6;
+    @apply rounded-xl border border-neutral-800 bg-neutral-950 shadow-sm p-6;
   }
 
   /* ── typographic helpers for amounts / addresses ─────────────── */
@@ -93,16 +91,16 @@
                  "Liberation Mono", "Courier New", monospace;
   }
   .amount-lg {
-    @apply mono text-3xl font-semibold tracking-tight tabular-nums;
+    @apply mono text-3xl font-semibold tracking-tight tabular-nums text-neutral-50;
   }
   .amount-md {
-    @apply mono text-xl font-semibold tracking-tight tabular-nums;
+    @apply mono text-xl font-semibold tracking-tight tabular-nums text-neutral-50;
   }
   .amount {
-    @apply mono text-base tabular-nums;
+    @apply mono text-base tabular-nums text-neutral-100;
   }
   .addr {
-    @apply mono text-sm tabular-nums break-all;
+    @apply mono text-sm tabular-nums break-all text-neutral-300;
   }
   .addr-xs {
     @apply mono text-xs text-neutral-500;
@@ -112,20 +110,20 @@
   .pill {
     @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
   }
-  .pill-info     { @apply bg-indigo-50 text-indigo-700; }
-  .pill-success  { @apply bg-emerald-50 text-emerald-700; }
-  .pill-warn     { @apply bg-amber-50 text-amber-700; }
-  .pill-error    { @apply bg-red-50 text-red-700; }
+  .pill-info     { @apply bg-cyan-500/15 text-cyan-300; }
+  .pill-success  { @apply bg-emerald-500/15 text-emerald-300; }
+  .pill-warn     { @apply bg-amber-500/15 text-amber-300; }
+  .pill-error    { @apply bg-red-500/15 text-red-300; }
 
   /* ── banners / inline messages ─────────────────────────────── */
   .banner-error {
-    @apply rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800;
+    @apply rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200;
   }
   .banner-success {
-    @apply rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800;
+    @apply rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200;
   }
   .banner-warn {
-    @apply rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900;
+    @apply rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100;
   }
 }
 

@@ -62,10 +62,10 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
     <Backdrop onClose={onClose}>
       <div className="card-padded w-full max-w-xl space-y-5">
         <header>
-          <h2 className="text-xl font-semibold text-neutral-900">
+          <h2 className="text-xl font-semibold text-neutral-100">
             Export private key
           </h2>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-400">
             Reveal the raw ed25519 secret for one address. Anyone who
             sees this hex can spend everything that address holds.
           </p>
@@ -101,10 +101,10 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
             </div>
 
             <div className="banner-warn space-y-2 text-sm">
-              <div className="font-semibold text-amber-900">
+              <div className="font-semibold text-amber-200">
                 Before you continue
               </div>
-              <ul className="ml-4 list-disc space-y-1 text-amber-900">
+              <ul className="ml-4 list-disc space-y-1 text-amber-200">
                 <li>Make sure nobody is looking at your screen.</li>
                 <li>Never paste this hex into a website or chat.</li>
                 <li>
@@ -112,7 +112,7 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
                   does not affect the wallet's other addresses.
                 </li>
               </ul>
-              <label className="mt-2 flex items-start gap-2 text-amber-900">
+              <label className="mt-2 flex items-start gap-2 text-amber-200">
                 <input
                   type="checkbox"
                   className="mt-0.5"
@@ -201,7 +201,7 @@ function RevealedKey({
 
       <div>
         <div className="label">Address</div>
-        <code className="addr block rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
+        <code className="addr block rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
           {address}
         </code>
       </div>
@@ -210,7 +210,7 @@ function RevealedKey({
         <div className="label">Private key (32 bytes, ed25519)</div>
         <div
           className={
-            "rounded-lg border border-red-200 bg-red-50 px-3 py-3 font-mono text-sm break-all text-red-900 " +
+            "rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 font-mono text-sm break-all text-red-200 " +
             (hidden ? "blur-md select-none pointer-events-none" : "")
           }
         >
@@ -233,7 +233,7 @@ function RevealedKey({
         </button>
       </div>
 
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-neutral-400">
         Auto-hides after 30 seconds. Closing this dialog clears the
         key from memory.
       </p>

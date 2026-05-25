@@ -33,8 +33,8 @@ export function AddressRow({
   }
 
   return (
-    <tr className="hover:bg-neutral-50">
-      <td className="px-5 py-4 font-mono text-sm text-neutral-500 tabular-nums">
+    <tr className="hover:bg-neutral-900">
+      <td className="px-5 py-4 font-mono text-sm text-neutral-400 tabular-nums">
         {imported ? <span className="pill pill-warn">imported</span> : index}
       </td>
       <td className="px-5 py-4">
@@ -59,7 +59,7 @@ export function AddressRow({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="text-left text-base font-medium text-neutral-900 hover:text-indigo-700"
+            className="text-left text-base font-medium text-neutral-100 hover:text-cyan-300"
             title="Click to rename"
           >
             {label}
@@ -68,7 +68,7 @@ export function AddressRow({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="text-left text-sm text-neutral-400 hover:text-indigo-700"
+            className="text-left text-sm text-neutral-500 hover:text-cyan-300"
             title="Click to label"
           >
             + label
@@ -81,7 +81,7 @@ export function AddressRow({
           <CopyButton text={address} className="btn-ghost text-xs" />
         </div>
       </td>
-      <td className="px-5 py-4 text-sm text-neutral-600 tabular-nums">
+      <td className="px-5 py-4 text-sm text-neutral-400 tabular-nums">
         {utxoCount}
         {truncated && (
           <span

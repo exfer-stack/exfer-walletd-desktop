@@ -56,16 +56,16 @@ export function Activity() {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-8">
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
             Activity
           </h1>
-          <p className="text-base text-neutral-600">
+          <p className="text-base text-neutral-400">
             Every transfer you broadcast from this wallet lands here.
           </p>
         </header>
-        <div className="card-padded text-center text-sm text-neutral-500">
+        <div className="card-padded text-center text-sm text-neutral-400">
           No transfers yet. Head to{" "}
-          <span className="font-medium text-neutral-700">Send</span> to make
+          <span className="font-medium text-neutral-300">Send</span> to make
           your first one.
         </div>
       </div>
@@ -76,10 +76,10 @@ export function Activity() {
     <div className="mx-auto max-w-4xl space-y-6 p-8 fade-in">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
             Activity
           </h1>
-          <p className="text-base text-neutral-600">
+          <p className="text-base text-neutral-400">
             {history.length} {history.length === 1 ? "transfer" : "transfers"}{" "}
             on record · history is local to this device.
           </p>
@@ -101,7 +101,7 @@ export function Activity() {
                 bump((v) => v + 1);
               }
             }}
-            className="btn-ghost text-red-600 hover:bg-red-50"
+            className="btn-ghost text-red-600 hover:bg-red-500/10"
           >
             Clear log
           </button>
@@ -146,9 +146,9 @@ function ActivityCard({
 
   return (
     <article className="card overflow-hidden">
-      <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-3">
+      <div className="flex items-start justify-between gap-4 border-b border-neutral-800 px-5 py-3">
         <div>
-          <div className="text-sm text-neutral-500">
+          <div className="text-sm text-neutral-400">
             {dt.toLocaleDateString()} · {dt.toLocaleTimeString()}
           </div>
           <code className="addr-xs mt-0.5 block">
@@ -162,7 +162,7 @@ function ActivityCard({
 
       <div className="grid gap-4 p-5 md:grid-cols-2">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
             Sent
           </div>
           <ul className="mt-2 space-y-1.5">
@@ -187,7 +187,7 @@ function ActivityCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-neutral-200 bg-neutral-50 px-5 py-2">
+      <div className="flex items-center justify-between border-t border-neutral-800 bg-neutral-900 px-5 py-2">
         <code className="addr-xs">{entry.tx_id}</code>
         <CopyButton text={entry.tx_id} className="btn-ghost text-xs" />
       </div>
@@ -198,7 +198,7 @@ function ActivityCard({
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-2 text-sm">
-      <span className="text-neutral-500">{label}</span>
+      <span className="text-neutral-400">{label}</span>
       <span className="amount">{value}</span>
     </div>
   );
