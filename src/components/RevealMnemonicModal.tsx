@@ -63,11 +63,14 @@ export function RevealMnemonicModal({ onClose }: Props) {
               <ul className="ml-4 list-disc space-y-1 text-amber-200">
                 <li>Make sure nobody is looking at your screen.</li>
                 <li>
-                  These restore the <em>whole</em> wallet (every address)
-                  here or on <span className="font-mono">exfer.dev</span> →
-                  Import Mnemonic. They won't work in MetaMask / Sparrow /
-                  Electrum — those are different chains. To move a single
-                  address instead, use Export wallet.key from its row menu.
+                  These restore <em>this</em> wallet's full set of
+                  addresses, but <strong>only back into another
+                  exfer-walletd</strong> (same HD derivation). They do
+                  <strong> not</strong> recover your addresses on
+                  exfer.dev or other wallets — those derive a different,
+                  unrelated key from the same words. To use one address on
+                  exfer.dev, use <strong>Export wallet.key</strong> from
+                  that address's row menu instead.
                 </li>
                 <li>
                   Never paste these into a website, chat, or email.
