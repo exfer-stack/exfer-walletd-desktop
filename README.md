@@ -50,6 +50,22 @@ Tauri 2 + React 18+ + TypeScript + Vite + Tailwind.
 - Default upstream node: `http://89.127.232.155:9334`. Editable in
   Settings; comma-separated for round-robin + failover.
 
+## Install
+
+Pre-built binaries are published on the
+[Releases page](https://github.com/exfer-stack/exfer-walletd-desktop/releases)
+for:
+
+- Linux x86_64 — `.deb`, `.AppImage`, `.rpm`
+- macOS Apple Silicon — `.dmg`, `.app.tar.gz`
+- Windows x86_64 — `.exe` installer, `.msi`
+
+**Intel macOS users**: no pre-built binary is shipped — GitHub
+deprecated the `macos-13` x86_64 runner, and queue times made it
+block every release. Follow the
+[Build from source](#build) section below; everything works the
+same, you just compile it yourself.
+
 ## Build
 
 ### Prerequisites

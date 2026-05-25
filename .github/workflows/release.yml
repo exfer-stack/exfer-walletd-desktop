@@ -28,12 +28,16 @@ jobs:
           - name: macos-aarch64
             os: macos-latest
             args: "--target aarch64-apple-darwin"
-          - name: macos-x86_64
-            os: macos-13
-            args: "--target x86_64-apple-darwin"
           - name: windows-x86_64
             os: windows-latest
             args: ""
+    # NOTE: macOS Intel (x86_64) is intentionally NOT in this matrix.
+    # GitHub deprecated `macos-13` (the last x86_64 runner) and queue
+    # times became hours-long, blocking the whole release. Apple Silicon
+    # is dominant; Intel Mac users build from source per README.md.
+    # When dtolnay/rust-toolchain + tauri-action stabilise the
+    # `macos-latest --target x86_64-apple-darwin` cross-compile path,
+    # we'll bring Intel back via that route.
     runs-on: ${{ matrix.platform.os }}
 
     steps:
