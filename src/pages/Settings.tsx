@@ -379,11 +379,15 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             Daemon status
           </h2>
         </header>
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <dl className="grid grid-cols-[max-content_1fr] items-center gap-x-6 gap-y-2 text-sm">
           <dt className="text-neutral-400">Bind</dt>
-          <dd className="addr-xs font-medium text-neutral-100">{localAddr}</dd>
-          <dt className="text-neutral-400">TLS fingerprint</dt>
-          <dd className="addr-xs">{fingerprint}</dd>
+          <dd className="min-w-0">
+            <CopyValue value={localAddr} />
+          </dd>
+          <dt className="self-start pt-1 text-neutral-400">TLS fingerprint</dt>
+          <dd className="min-w-0">
+            <CopyValue value={fingerprint} wrap />
+          </dd>
           {status && (
             <>
               <dt className="text-neutral-400">Version</dt>
@@ -449,5 +453,51 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
         </div>
       </section>
     </div>
+  );
+}
+
+/** A monospace value you copy by clicking it. Long values (wrap) break
+ *  onto multiple lines so they stay inside the card instead of spilling
+ *  past the right edge. */
+function CopyValue({ value, wrap }: { value: string; wrap?: boolean }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard denied */
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title="Click to copy"
+      className="group flex w-full items-start gap-1.5 rounded-md px-1.5 py-0.5 text-left -mx-1.5 hover:bg-neutral-800/60"
+    >
+      <code
+        className={
+          "addr-xs flex-1 text-neutral-100 " +
+          (wrap ? "break-all" : "truncate")
+        }
+      >
+        {value}
+      </code>
+      <span
+        className={
+          "shrink-0 text-xs " +
+          (copied
+            ? "text-cyan-400"
+            : "text-neutral-500 opacity-0 transition group-hover:opacity-100")
+        }
+        aria-hidden
+      >
+        {copied ? "✓ copied" : "⧉"}
+      </span>
+    </button>
   );
 }
