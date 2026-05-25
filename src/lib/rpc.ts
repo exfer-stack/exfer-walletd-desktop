@@ -47,6 +47,24 @@ export function resetWallet(): Promise<BootstrapStatus> {
   return invoke<BootstrapStatus>("reset_wallet");
 }
 
+/// Export one address as an official Exfer `wallet.key` (EXFK) file at
+/// `dest`, encrypted with `exportPassword`. `walletPassword` authorizes
+/// pulling the secret from walletd. Importable on exfer.dev.
+export function exportWalletKey(args: {
+  address: string;
+  walletPassword: string;
+  exportPassword: string;
+  dest: string;
+}): Promise<void> {
+  if (devmock.isActive()) return devmock.export_wallet_key(args);
+  return invoke<void>("export_wallet_key", {
+    address: args.address,
+    walletPassword: args.walletPassword,
+    exportPassword: args.exportPassword,
+    dest: args.dest,
+  });
+}
+
 /// Desktop UX cap on managed addresses. walletd itself supports ~4B
 /// HD indices, but a personal desktop wallet stays legible (and the
 /// per-address balance fan-out stays light on the public node's

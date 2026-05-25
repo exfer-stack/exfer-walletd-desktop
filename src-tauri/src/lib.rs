@@ -5,6 +5,7 @@
 //! routing happens on the Rust side.
 
 mod error;
+mod export_key;
 mod rpc_client;
 mod secrets;
 mod walletd_supervisor;
@@ -51,6 +52,62 @@ async fn rpc(
     rpc_client::forward_rpc(&client, &conn, &method, params)
         .await
         .map_err(|e| e.to_user_string())
+}
+
+/// Export a single address's key as an official Exfer `wallet.key`
+/// (EXFK) file at `dest`, encrypted with `export_password`. The raw
+/// secret is fetched from walletd (authorized by `wallet_password`),
+/// turned into the EXFK format, and written to disk — the plaintext key
+/// never crosses into the webview. The resulting file imports directly
+/// into exfer.dev ("Import wallet.key") and the exfer CLI.
+#[tauri::command]
+async fn export_wallet_key(
+    ctx: State<'_, AppCtx>,
+    address: String,
+    wallet_password: String,
+    export_password: String,
+    dest: String,
+) -> Result<(), String> {
+    if export_password.len() < 6 {
+        return Err("export password must be at least 6 characters".into());
+    }
+    // 1. Get the raw secret from walletd (spend-scope, passphrase-gated).
+    let (client, conn) = {
+        let inner = ctx.inner.lock().await;
+        match (inner.client.clone(), inner.conn.clone()) {
+            (Some(c), Some(k)) => (c, k),
+            _ => return Err("walletd not ready".into()),
+        }
+    };
+    let result = rpc_client::forward_rpc(
+        &client,
+        &conn,
+        "reveal_private_key",
+        serde_json::json!({ "address": address, "passphrase": wallet_password }),
+    )
+    .await
+    .map_err(|e| e.to_user_string())?;
+
+    let secret_hex = result
+        .get("secret_hex")
+        .and_then(|v| v.as_str())
+        .ok_or("walletd response missing secret_hex")?;
+    let mut secret = [0u8; 32];
+    hex::decode_to_slice(secret_hex, &mut secret)
+        .map_err(|_| "secret_hex not 32 bytes".to_string())?;
+
+    // 2. Build the EXFK file + write it (0600). Zeroize the secret after.
+    let exfk = export_key::build_exfk(&secret, export_password.as_bytes());
+    secret.fill(0);
+    let exfk = exfk?;
+
+    std::fs::write(&dest, &exfk).map_err(|e| format!("writing {dest}: {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -120,6 +177,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Resolve the per-platform app-data dir and stash it in the
             // managed AppCtx; everything else (datadir creation, token
@@ -160,6 +218,7 @@ pub fn run() {
             get_node_rpc,
             set_node_rpc,
             reset_wallet,
+            export_wallet_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

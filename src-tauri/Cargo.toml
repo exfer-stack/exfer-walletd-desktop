@@ -1,6 +1,6 @@
 [package]
 name        = "exfer-walletd-desktop"
-version     = "0.4.1"
+version     = "0.4.2"
 description = "Desktop GUI for exfer-walletd. One double-click → walletd in-process + a window for balance / generate-address / transfer."
 edition     = "2021"
 license     = "MIT"
@@ -19,6 +19,14 @@ tauri              = { version = "2", features = [] }
 tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
+
+# Produce the official Exfer CLI "wallet.key" (EXFK) format for
+# per-address export: Argon2id KDF + AES-256-GCM, byte-identical to the
+# exfer crate's Wallet::save_encrypted so exfer.dev / the CLI import it.
+argon2             = "0.5"
+aes-gcm            = "0.10"
+rand               = "0.8"
 tokio              = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 tokio-util         = { version = "0.7", features = ["rt"] }
 

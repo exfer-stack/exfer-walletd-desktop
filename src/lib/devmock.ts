@@ -199,6 +199,18 @@ export const devmock = {
     return { status: "needs_password" };
   },
 
+  async export_wallet_key(args: {
+    address: string;
+    exportPassword: string;
+  }): Promise<void> {
+    // Dev mode can't write files / build EXFK; just validate inputs so
+    // the modal flow is exercisable.
+    if (args.exportPassword.length < 6) {
+      throw new Error("export password must be at least 6 characters");
+    }
+    // no-op: a real Tauri build writes the .key file.
+  },
+
   async rpc(method: string, params: unknown): Promise<unknown> {
     if (useRealWalletd()) {
       return realRpc(method, params);
