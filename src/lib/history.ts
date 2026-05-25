@@ -55,6 +55,40 @@ export function appendHistory(receipt: TransferReceipt) {
 
 export function clearHistory() {
   localStorage.removeItem(HISTORY_KEY);
+  localStorage.removeItem(TXSTATUS_KEY);
+}
+
+// Cache of confirmed transactions. Once a tx is mined into a block its
+// height is final (barring a deep reorg, which we don't surface), so we
+// persist it. The Activity page seeds from this on mount instead of
+// re-querying the node for every old transfer — which is what made
+// already-confirmed rows flash back to "checking" on each visit.
+const TXSTATUS_KEY = "exfer-walletd-desktop-txstatus-v1";
+
+export interface ConfirmedTx {
+  block_height: number;
+  block_id?: string;
+}
+
+export function loadConfirmed(): Record<string, ConfirmedTx> {
+  try {
+    const raw = localStorage.getItem(TXSTATUS_KEY);
+    if (!raw) return {};
+    const v = JSON.parse(raw);
+    return v && typeof v === "object" ? (v as Record<string, ConfirmedTx>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function rememberConfirmed(
+  tx_id: string,
+  block_height: number,
+  block_id?: string,
+) {
+  const m = loadConfirmed();
+  m[tx_id] = { block_height, block_id };
+  localStorage.setItem(TXSTATUS_KEY, JSON.stringify(m));
 }
 
 // Recent recipient addresses (for the Send page's quick-pick).

@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { rpc, formatExfer } from "../lib/rpc";
-import { listHistory, clearHistory, type HistoryEntry } from "../lib/history";
+import {
+  listHistory,
+  clearHistory,
+  loadConfirmed,
+  rememberConfirmed,
+  type HistoryEntry,
+} from "../lib/history";
 import { getLabel, shortAddress } from "../lib/labels";
 import { CopyButton } from "../components/CopyButton";
 
@@ -46,8 +52,17 @@ interface TxStatus {
 export function Activity() {
   const [version, bump] = useState(0); // bump to force reload
   const history = useMemo(listHistory, [version]);
+  // Seed from the confirmed-tx cache so already-mined transfers render as
+  // "confirmed" immediately instead of flashing "checking" on every visit.
   const [statuses, setStatuses] = useState<Record<string, TxStatus | "error">>(
-    {},
+    () => {
+      const cached = loadConfirmed();
+      const seed: Record<string, TxStatus> = {};
+      for (const [tx_id, c] of Object.entries(cached)) {
+        seed[tx_id] = { in_mempool: false, block_height: c.block_height, block_id: c.block_id };
+      }
+      return seed;
+    },
   );
   const [polling, setPolling] = useState(false);
 
@@ -66,15 +81,26 @@ export function Activity() {
           block_id: r.block_id,
         },
       }));
+      // A height is final — cache it so future visits skip the lookup.
+      if (r.block_height != null) {
+        rememberConfirmed(tx_id, r.block_height, r.block_id);
+      }
     } catch {
       setStatuses((s) => ({ ...s, [tx_id]: "error" }));
     }
   }
 
-  async function refreshAll() {
+  async function refreshAll(force = false) {
     setPolling(true);
     try {
-      await Promise.all(history.map((h) => refreshOne(h.tx_id)));
+      const targets = force
+        ? history
+        : history.filter((h) => {
+            const st = statuses[h.tx_id];
+            // Skip rows already known confirmed (seeded from cache).
+            return !(st && st !== "error" && st.block_height != null);
+          });
+      await Promise.all(targets.map((h) => refreshOne(h.tx_id)));
     } finally {
       setPolling(false);
     }
@@ -136,7 +162,7 @@ export function Activity() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={refreshAll}
+            onClick={() => refreshAll(true)}
             disabled={polling}
             className="btn-ghost"
           >
