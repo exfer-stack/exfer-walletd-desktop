@@ -1,6 +1,16 @@
-# exfer-wallet (desktop)
+<p align="center">
+  <img src="docs/logo.png" alt="exfer wallet" width="96" height="96" />
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+<h1 align="center">exfer-wallet (desktop)</h1>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+</p>
+
+<p align="center">
+  <img src="docs/preview.png" alt="exfer wallet — dashboard and send" width="900" />
+</p>
 
 A double-click desktop GUI for the Exfer blockchain. One executable
 ships:
@@ -16,8 +26,7 @@ JS → Tauri IPC → Rust → loopback HTTPS to walletd, with the cert
 pinned by SHA-256 fingerprint inside the Rust shell. The webview
 never has to be taught to trust the self-signed cert.
 
-Built with
-Tauri 2 + React 18+ + TypeScript + Vite + Tailwind.
+Built with Tauri 2 + React 18+ + TypeScript + Vite + Tailwind.
 
 ## Architecture
 
@@ -107,9 +116,9 @@ exfer-walletd-desktop/
 ├── src/                       # React frontend (TS + Tailwind)
 │   ├── App.tsx                # router + bootstrap_status polling
 │   ├── main.tsx, index.css
-│   ├── lib/{rpc.ts, types.ts}
-│   ├── components/{Layout, PasswordPrompt}.tsx
-│   └── pages/{Dashboard, GenerateAddress, Transfer, Settings}.tsx
+│   ├── lib/{rpc, types, toast, wallet, notify, labels, history}.ts(x)
+│   ├── components/{Layout, PasswordPrompt, AddressRow, CopyButton, Reveal*Modal}.tsx
+│   └── pages/{Dashboard, Receive, Send, Activity, Settings}.tsx
 └── src-tauri/                 # Rust shell
     ├── Cargo.toml
     ├── tauri.conf.json
