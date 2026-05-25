@@ -105,12 +105,16 @@ pub fn pinned_client(fingerprint: &str) -> Result<reqwest::Client, AppError> {
 }
 
 /// Convention for which scoped token to attach when forwarding a method.
-/// Mirrors walletd's `auth::Scope::for_method` — duplicated here (7
-/// strings) so the desktop doesn't depend on walletd's internal module
-/// being `pub`.
+/// Mirrors walletd's `auth::Scope::for_method` — duplicated here so the
+/// desktop doesn't depend on walletd's internal module being `pub`.
+/// MUST stay in sync with walletd: reveal_mnemonic / reveal_private_key
+/// were added at Spend scope in walletd v1.3.0; if they're missing here
+/// they fall through to Read and walletd rejects the read token with
+/// -32001 (authentication required) before it ever checks the password.
 fn scope_for_method(method: &str) -> Scope {
     match method {
-        "transfer" | "send_raw_transaction" | "sign_message" => Scope::Spend,
+        "transfer" | "send_raw_transaction" | "sign_message"
+        | "reveal_mnemonic" | "reveal_private_key" => Scope::Spend,
         "generate_address" | "abandon_transfer" => Scope::Manage,
         _ => Scope::Read,
     }
