@@ -1,6 +1,6 @@
 [package]
 name        = "exfer-walletd-desktop"
-version     = "0.1.0"
+version     = "0.1.1"
 description = "Desktop GUI for exfer-walletd. One double-click → walletd in-process + a window for balance / generate-address / transfer."
 edition     = "2021"
 license     = "MIT"
@@ -20,7 +20,7 @@ tokio              = { version = "1", features = ["rt-multi-thread", "macros", "
 tokio-util         = { version = "0.7", features = ["rt"] }
 
 # The embedded walletd. Pinned to the release tag we just cut.
-exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", tag = "v1.2.0" }
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", tag = "v1.3.0" }
 
 # HTTP client used by the Tauri Rust side to talk to the embedded
 # walletd over loopback HTTPS. `rustls-tls-manual-roots` disables

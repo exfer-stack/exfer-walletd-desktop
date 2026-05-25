@@ -304,6 +304,35 @@ export const devmock = {
         return { address: p.address, balance: a?.balance ?? 0 };
       }
 
+      case "reveal_mnemonic": {
+        const p = params as { passphrase: string };
+        if (!p.passphrase || p.passphrase.length < 4) {
+          throw new Error("Keystore locked: wrong passphrase");
+        }
+        return {
+          mnemonic: [
+            "abandon", "ability", "able", "about", "above", "absent",
+            "absorb", "abstract", "absurd", "abuse", "access", "accident",
+            "account", "accuse", "achieve", "acid", "acoustic", "acquire",
+            "across", "act", "action", "actor", "actress", "actual",
+          ],
+        };
+      }
+
+      case "reveal_private_key": {
+        const p = params as { address: string; passphrase: string };
+        if (!p.passphrase || p.passphrase.length < 4) {
+          throw new Error("Keystore locked: wrong passphrase");
+        }
+        if (!s.addresses.find((a) => a.address === p.address)) {
+          throw new Error(`Wallet not found: ${p.address}`);
+        }
+        return {
+          address: p.address,
+          secret_hex: fakeHex(`sk-${p.address}`, 64),
+        };
+      }
+
       default:
         throw new Error(`dev-mock: method ${method} not implemented`);
     }

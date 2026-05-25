@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { getNodeRpc, rpc, setNodeRpc, formatExfer } from "../lib/rpc";
 import type { BootstrapStatus, WalletBalance } from "../lib/types";
 import { listLabels } from "../lib/labels";
+import { RevealMnemonicModal } from "../components/RevealMnemonicModal";
+import { RevealPrivateKeyModal } from "../components/RevealPrivateKeyModal";
 
 interface Props {
   onRestart: (status: BootstrapStatus) => void;
@@ -27,6 +29,9 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
 
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState<StatusInfo | null>(null);
+
+  const [showMnemonic, setShowMnemonic] = useState(false);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
 
   useEffect(() => {
     getNodeRpc().then((v) => {
@@ -214,6 +219,53 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
           </button>
         </div>
       </section>
+
+      {/* Sensitive data export — gated by password re-entry */}
+      <section className="card-padded space-y-4">
+        <header>
+          <h2 className="text-lg font-semibold text-neutral-900">
+            Sensitive recovery export
+          </h2>
+          <p className="text-sm text-neutral-500">
+            Reveal the master secrets directly. Both actions ask for
+            your password again before showing anything.
+          </p>
+        </header>
+
+        <div className="banner-error space-y-1 text-sm">
+          <div className="font-semibold">Read first</div>
+          <p>
+            These flows show plaintext key material on screen. Anyone
+            looking at your screen, screenshot apps, or screen-share
+            sessions can capture it. Only proceed if you actually need
+            paper / off-app backup.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-danger"
+            onClick={() => setShowMnemonic(true)}
+          >
+            Reveal recovery phrase (24 words)
+          </button>
+          <button
+            type="button"
+            className="btn-danger"
+            onClick={() => setShowPrivateKey(true)}
+          >
+            Export private key for an address
+          </button>
+        </div>
+      </section>
+
+      {showMnemonic && (
+        <RevealMnemonicModal onClose={() => setShowMnemonic(false)} />
+      )}
+      {showPrivateKey && (
+        <RevealPrivateKeyModal onClose={() => setShowPrivateKey(false)} />
+      )}
 
       {/* Daemon status */}
       <section className="card-padded space-y-3">
