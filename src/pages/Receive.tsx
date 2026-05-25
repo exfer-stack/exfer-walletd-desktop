@@ -1,32 +1,26 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { rpc, formatExfer, MAX_ADDRESSES } from "../lib/rpc";
-import type { WalletBalance, GeneratedAddress } from "../lib/types";
+import type { GeneratedAddress } from "../lib/types";
 import { CopyButton } from "../components/CopyButton";
 import { getLabel, shortAddress } from "../lib/labels";
+import { useWallet } from "../lib/wallet";
+import { useToast } from "../lib/toast";
 
 export function Receive() {
-  const [data, setData] = useState<WalletBalance | null>(null);
+  const { balance: data, refresh } = useWallet();
+  const toast = useToast();
   const [selected, setSelected] = useState<string | null>(null);
   const [qr, setQr] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
-  async function refresh() {
-    try {
-      const result = await rpc<WalletBalance>("get_wallet_balance");
-      setData(result);
-      if (!selected && result.entries.length > 0) {
-        setSelected(result.entries[0].address);
-      }
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
+  // Default the selection to the first address once balances arrive.
   useEffect(() => {
-    refresh();
-  }, []);
+    if (!selected && data && data.entries.length > 0) {
+      setSelected(data.entries[0].address);
+    }
+  }, [data, selected]);
 
   useEffect(() => {
     if (!selected) {
@@ -51,8 +45,10 @@ export function Receive() {
       const out = await rpc<GeneratedAddress>("generate_address");
       await refresh();
       setSelected(out.address);
+      toast.success("Address created", `Index ${out.index} is ready.`);
     } catch (e) {
       setError(String(e));
+      toast.error("Couldn't create address", String(e));
     } finally {
       setGenerating(false);
     }

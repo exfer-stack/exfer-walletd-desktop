@@ -13,7 +13,7 @@ use serde_json::Value;
 use tauri::{Manager, State};
 
 use walletd_supervisor::{
-    read_desktop_config, restart, start, write_desktop_config, AppCtx, BootstrapStatus,
+    read_desktop_config, restart, start, stop, write_desktop_config, AppCtx, BootstrapStatus,
     DesktopConfig, KEYRING_SERVICE,
 };
 
@@ -74,6 +74,38 @@ async fn set_node_rpc(
     restart(&ctx).await.map_err(|e| e.to_user_string())
 }
 
+/// Wipe everything on this device: stop the embedded walletd, delete the
+/// entire app-data directory (sealed seed, tokens, TLS cert, desktop
+/// config), and clear the keychain passphrase. Returns the app to the
+/// first-run `NeedsPassword` state.
+///
+/// IRREVERSIBLE — the frontend gates this behind a typed confirmation.
+#[tauri::command]
+async fn reset_wallet(ctx: State<'_, AppCtx>) -> Result<BootstrapStatus, String> {
+    // 1. Stop the running daemon (releases file handles on the datadir).
+    stop(&ctx).await;
+
+    // 2. Delete the datadir contents.
+    let datadir = ctx.inner.lock().await.datadir.clone();
+    if datadir.exists() {
+        std::fs::remove_dir_all(&datadir).map_err(|e| format!("deleting datadir: {e}"))?;
+    }
+    std::fs::create_dir_all(&datadir).map_err(|e| format!("recreating datadir: {e}"))?;
+
+    // 3. Clear the keychain passphrase (best-effort; missing entry is fine).
+    let _ = secrets::delete_passphrase(KEYRING_SERVICE);
+
+    // 4. Reset in-memory state back to first-run.
+    {
+        let mut inner = ctx.inner.lock().await;
+        inner.status = BootstrapStatus::NeedsPassword;
+        inner.handle = None;
+        inner.conn = None;
+        inner.client = None;
+    }
+    Ok(BootstrapStatus::NeedsPassword)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -85,6 +117,7 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Resolve the per-platform app-data dir and stash it in the
             // managed AppCtx; everything else (datadir creation, token
@@ -124,6 +157,7 @@ pub fn run() {
             rpc,
             get_node_rpc,
             set_node_rpc,
+            reset_wallet,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

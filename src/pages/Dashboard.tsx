@@ -1,45 +1,29 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { rpc, formatExfer, MAX_ADDRESSES } from "../lib/rpc";
-import type { WalletBalance, GeneratedAddress } from "../lib/types";
+import type { GeneratedAddress } from "../lib/types";
 import { AddressRow } from "../components/AddressRow";
+import { useWallet } from "../lib/wallet";
+import { useToast } from "../lib/toast";
 
 export function Dashboard() {
-  const [data, setData] = useState<WalletBalance | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { balance: data, loading, error, refresh } = useWallet();
+  const toast = useToast();
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function refresh() {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await rpc<WalletBalance>("get_wallet_balance");
-      setData(result);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function generateAddress() {
     setGenerating(true);
-    setError(null);
     try {
-      await rpc<GeneratedAddress>("generate_address");
+      const a = await rpc<GeneratedAddress>("generate_address");
       await refresh();
+      toast.success("Address created", `Index ${a.index} is ready to receive.`);
     } catch (e) {
-      setError(String(e));
+      toast.error("Couldn't create address", String(e));
     } finally {
       setGenerating(false);
     }
   }
 
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  const isEmpty = data && data.entries.length === 0;
+  const isEmpty = !loading && data !== null && data.entries.length === 0;
   const atCap = (data?.entries.length ?? 0) >= MAX_ADDRESSES;
 
   return (
@@ -61,7 +45,14 @@ export function Dashboard() {
         </div>
       </section>
 
-      {error && <div className="banner-error">{error}</div>}
+      {error && !data && (
+        <div className="banner-error flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button type="button" onClick={refresh} className="btn-secondary">
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Address list */}
       <section className="card overflow-hidden">
@@ -102,7 +93,9 @@ export function Dashboard() {
           </div>
         )}
 
-        {isEmpty ? (
+        {loading && !data ? (
+          <SkeletonRows />
+        ) : isEmpty ? (
           <div className="px-5 py-12 text-center">
             <div className="mx-auto max-w-md space-y-2">
               <div className="text-lg font-medium text-neutral-300">
@@ -149,6 +142,21 @@ export function Dashboard() {
           </table>
         )}
       </section>
+    </div>
+  );
+}
+
+function SkeletonRows() {
+  return (
+    <div className="divide-y divide-neutral-800">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-center gap-4 px-5 py-4">
+          <div className="h-4 w-6 animate-pulse rounded bg-neutral-800" />
+          <div className="h-4 w-24 animate-pulse rounded bg-neutral-800" />
+          <div className="h-4 flex-1 animate-pulse rounded bg-neutral-800" />
+          <div className="h-4 w-28 animate-pulse rounded bg-neutral-800" />
+        </div>
+      ))}
     </div>
   );
 }

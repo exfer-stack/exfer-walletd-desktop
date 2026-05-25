@@ -33,3 +33,13 @@ pub fn set_passphrase(service: &str, value: &str) -> anyhow::Result<()> {
         .set_password(value)
         .context("writing keyring entry")
 }
+
+/// Remove the stored passphrase. A missing entry is treated as success
+/// (the goal — no passphrase on disk — is already met).
+pub fn delete_passphrase(service: &str) -> anyhow::Result<()> {
+    match entry(service)?.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(anyhow::Error::new(e).context("deleting keyring entry")),
+    }
+}

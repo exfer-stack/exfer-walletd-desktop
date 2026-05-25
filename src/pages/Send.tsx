@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { rpc, parseExferAmount, formatExfer } from "../lib/rpc";
-import type { TransferReceipt, WalletBalance } from "../lib/types";
+import type { TransferReceipt } from "../lib/types";
 import { getLabel, shortAddress } from "../lib/labels";
 import {
   appendHistory,
@@ -8,6 +8,8 @@ import {
   rememberRecipient,
 } from "../lib/history";
 import { CopyButton } from "../components/CopyButton";
+import { useWallet } from "../lib/wallet";
+import { useToast } from "../lib/toast";
 
 interface OutputRow {
   to: string;
@@ -17,7 +19,8 @@ interface OutputRow {
 const HEX64 = /^[0-9a-fA-F]{64}$/;
 
 export function Send() {
-  const [balance, setBalance] = useState<WalletBalance | null>(null);
+  const { balance, refresh } = useWallet();
+  const toast = useToast();
   const [from, setFrom] = useState("");
   const [outputs, setOutputs] = useState<OutputRow[]>([
     { to: "", amount: "" },
@@ -29,14 +32,10 @@ export function Send() {
   const recents = useMemo(listRecentRecipients, [receipt]);
 
   useEffect(() => {
-    rpc<WalletBalance>("get_wallet_balance").then(
-      (r) => {
-        setBalance(r);
-        if (r.entries.length > 0 && !from) setFrom(r.entries[0].address);
-      },
-      (e) => setError(String(e)),
-    );
-  }, []);
+    if (balance && balance.entries.length > 0 && !from) {
+      setFrom(balance.entries[0].address);
+    }
+  }, [balance, from]);
 
   function updateOutput(i: number, patch: Partial<OutputRow>) {
     setOutputs((prev) => prev.map((o, k) => (k === i ? { ...o, ...patch } : o)));
@@ -89,8 +88,16 @@ export function Send() {
       setReceipt(result);
       appendHistory(result);
       for (const o of parsedOutputs) rememberRecipient(o.to);
+      const sent = parsedOutputs.reduce((a, o) => a + o.amount, 0);
+      toast.success("Transfer broadcast", `Sent ${formatExfer(sent)}.`);
+      // Pull fresh balances so the Dashboard/From dropdown reflect the
+      // spend immediately instead of waiting for the next poll.
+      refresh();
+      // Reset the recipient rows for the next send; keep `from`.
+      setOutputs([{ to: "", amount: "" }]);
     } catch (e) {
       setError(String(e));
+      toast.error("Transfer failed", String(e));
     } finally {
       setPending(false);
     }

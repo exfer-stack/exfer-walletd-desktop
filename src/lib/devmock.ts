@@ -193,6 +193,12 @@ export const devmock = {
     return s.bootstrap as BootstrapStatus;
   },
 
+  async reset_wallet(): Promise<BootstrapStatus> {
+    // Dev mode: wipe local mock state back to first-run.
+    localStorage.removeItem(DEV_STATE_KEY);
+    return { status: "needs_password" };
+  },
+
   async rpc(method: string, params: unknown): Promise<unknown> {
     if (useRealWalletd()) {
       return realRpc(method, params);

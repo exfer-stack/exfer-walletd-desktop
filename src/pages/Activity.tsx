@@ -52,6 +52,22 @@ export function Activity() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-poll while any tx hasn't confirmed yet. get_transaction is a
+  // point lookup (not the UTXO-scan rate-limit bucket), so a 15s cadence
+  // is safe. Stops once everything is confirmed/settled.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const unsettled = history.filter((h) => {
+        const st = statuses[h.tx_id];
+        return !(st && st !== "error" && st.block_height != null);
+      });
+      if (unsettled.length === 0) return; // nothing to chase
+      unsettled.forEach((h) => refreshOne(h.tx_id));
+    }, 15_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, statuses]);
+
   if (history.length === 0) {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-8">

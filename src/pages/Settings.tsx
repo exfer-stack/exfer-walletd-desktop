@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { getNodeRpc, rpc, setNodeRpc, formatExfer } from "../lib/rpc";
+import { getNodeRpc, rpc, setNodeRpc, formatExfer, resetWallet } from "../lib/rpc";
 import type { BootstrapStatus, WalletBalance } from "../lib/types";
 import { listLabels } from "../lib/labels";
 import { RevealMnemonicModal } from "../components/RevealMnemonicModal";
 import { RevealPrivateKeyModal } from "../components/RevealPrivateKeyModal";
+import { useToast } from "../lib/toast";
 
 interface Props {
   onRestart: (status: BootstrapStatus) => void;
@@ -21,6 +22,7 @@ interface StatusInfo {
 }
 
 export function Settings({ onRestart, fingerprint, localAddr }: Props) {
+  const toast = useToast();
   const [current, setCurrent] = useState<string>("");
   const [value, setValue] = useState("");
   const [savingNode, setSavingNode] = useState(false);
@@ -32,6 +34,9 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
 
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
+
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     getNodeRpc().then((v) => {
@@ -50,11 +55,26 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       const s = await setNodeRpc(value);
       setCurrent(value);
       setNodeInfo("Saved — walletd reconnected to the new node.");
+      toast.success("Node updated", "Reconnected to the new endpoint.");
       onRestart(s);
     } catch (err) {
       setNodeError(String(err));
+      toast.error("Couldn't switch node", String(err));
     } finally {
       setSavingNode(false);
+    }
+  }
+
+  async function doReset() {
+    setResetting(true);
+    try {
+      await resetWallet();
+      // resetWallet returns the app to NeedsPassword; bubble that up so
+      // App re-renders the password prompt.
+      onRestart({ status: "needs_password" } as BootstrapStatus);
+    } catch (err) {
+      toast.error("Reset failed", String(err));
+      setResetting(false);
     }
   }
 
@@ -292,6 +312,56 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             </>
           )}
         </dl>
+      </section>
+
+      {/* Danger zone — wipe everything on this device */}
+      <section className="rounded-xl border border-red-500/40 bg-red-500/5 p-6 space-y-4">
+        <header>
+          <h2 className="text-lg font-semibold text-red-300">Danger zone</h2>
+          <p className="text-sm text-neutral-400">
+            Permanently erase this wallet from this computer.
+          </p>
+        </header>
+
+        <div className="banner-error space-y-1 text-sm">
+          <div className="font-semibold">Reset wipes everything locally</div>
+          <p>
+            Deletes the encrypted seed, tokens, and TLS cert from this
+            machine's app-data directory and clears the saved password from
+            your OS keychain. Coins on-chain are untouched, but{" "}
+            <strong>
+              without your recovery phrase you will not be able to get back
+              in
+            </strong>
+            . Export it first if you might need this wallet again.
+          </p>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="reset-confirm">
+            Type <span className="font-mono text-red-300">WIPE</span> to
+            confirm
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="reset-confirm"
+              className="input max-w-[200px]"
+              value={resetConfirm}
+              onChange={(e) => setResetConfirm(e.target.value)}
+              disabled={resetting}
+              placeholder="WIPE"
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="btn-danger"
+              disabled={resetConfirm !== "WIPE" || resetting}
+              onClick={doReset}
+            >
+              {resetting ? "Wiping…" : "Reset wallet"}
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   );

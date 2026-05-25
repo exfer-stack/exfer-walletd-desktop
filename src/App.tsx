@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { bootstrapStatus } from "./lib/rpc";
 import type { BootstrapStatus } from "./lib/types";
+import { ToastProvider } from "./lib/toast";
+import { WalletProvider } from "./lib/wallet";
 import { PasswordPrompt } from "./components/PasswordPrompt";
 import { Layout, type Tab } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
@@ -10,6 +12,14 @@ import { Activity } from "./pages/Activity";
 import { Settings } from "./pages/Settings";
 
 function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
+  );
+}
+
+function AppInner() {
   const [status, setStatus] = useState<BootstrapStatus | null>(null);
   const [tab, setTab] = useState<Tab>("dashboard");
 
@@ -54,20 +64,24 @@ function App() {
     );
   }
 
+  // Ready — mount the wallet data layer (shared balance + polling +
+  // incoming-deposit detection) around the tabbed UI.
   return (
-    <Layout activeTab={tab} onTabChange={setTab}>
-      {tab === "dashboard" && <Dashboard />}
-      {tab === "receive" && <Receive />}
-      {tab === "send" && <Send />}
-      {tab === "activity" && <Activity />}
-      {tab === "settings" && (
-        <Settings
-          onRestart={(s) => setStatus(s)}
-          fingerprint={status.fingerprint}
-          localAddr={status.local_addr}
-        />
-      )}
-    </Layout>
+    <WalletProvider>
+      <Layout activeTab={tab} onTabChange={setTab}>
+        {tab === "dashboard" && <Dashboard />}
+        {tab === "receive" && <Receive />}
+        {tab === "send" && <Send />}
+        {tab === "activity" && <Activity />}
+        {tab === "settings" && (
+          <Settings
+            onRestart={(s) => setStatus(s)}
+            fingerprint={status.fingerprint}
+            localAddr={status.local_addr}
+          />
+        )}
+      </Layout>
+    </WalletProvider>
   );
 }
 
