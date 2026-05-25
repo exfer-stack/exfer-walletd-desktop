@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { rpc, formatExfer, MAX_ADDRESSES } from "../lib/rpc";
 import type { GeneratedAddress } from "../lib/types";
 import { AddressRow } from "../components/AddressRow";
@@ -7,10 +7,21 @@ import { useToast } from "../lib/toast";
 import { isHidden, unhide } from "../lib/hidden";
 
 export function Dashboard() {
-  const { balance: data, loading, error, refresh } = useWallet();
+  const { balance: data, loading, error, refresh, utxos, refreshUtxos } =
+    useWallet();
   const toast = useToast();
   const [generating, setGenerating] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
+
+  // UTXO counts aren't polled (to keep the background poll cheap); pull
+  // them once when the address table is on screen.
+  useEffect(() => {
+    refreshUtxos();
+  }, [refreshUtxos]);
+
+  async function refreshAll() {
+    await Promise.all([refresh(), refreshUtxos()]);
+  }
 
   const allEntries = data?.entries ?? [];
   const hiddenEntries = allEntries.filter((e) => isHidden(e.address));
@@ -23,7 +34,7 @@ export function Dashboard() {
     setGenerating(true);
     try {
       const a = await rpc<GeneratedAddress>("generate_address");
-      await refresh();
+      await refreshAll();
       toast.success("Address created", `Index ${a.index} is ready to receive.`);
     } catch (e) {
       toast.error("Couldn't create address", String(e));
@@ -72,7 +83,7 @@ export function Dashboard() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={refresh}
+              onClick={refreshAll}
               disabled={loading}
               className="btn-ghost"
             >
@@ -142,8 +153,8 @@ export function Dashboard() {
                   index={e.index}
                   imported={e.imported}
                   balance={e.balance}
-                  utxoCount={e.utxo_count}
-                  truncated={e.truncated}
+                  utxoCount={utxos[e.address]?.utxo_count}
+                  truncated={utxos[e.address]?.truncated}
                   hidden={isHidden(e.address)}
                   onLabelChange={refresh}
                   onUnhide={() => {

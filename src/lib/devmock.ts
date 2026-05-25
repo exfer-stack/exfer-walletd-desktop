@@ -259,14 +259,19 @@ export const devmock = {
         };
 
       case "get_wallet_balance": {
+        // Mirror the daemon: utxo_count/truncated are only returned when
+        // utxos !== false.
+        const withUtxos =
+          (params as { utxos?: boolean })?.utxos !== false;
         const entries: WalletEntry[] = s.addresses.map((a) => ({
           address: a.address,
           index: a.index,
           label: null,
           imported: false,
           balance: a.balance,
-          utxo_count: a.utxoCount,
-          truncated: false,
+          ...(withUtxos
+            ? { utxo_count: a.utxoCount, truncated: false }
+            : {}),
         }));
         const total = entries.reduce((acc, e) => acc + e.balance, 0);
         const out: WalletBalance = { entries, total };

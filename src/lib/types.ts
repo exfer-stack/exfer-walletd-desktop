@@ -13,8 +13,10 @@ export interface WalletEntry {
   label: string | null;
   imported: boolean;
   balance: number;
-  utxo_count: number;
-  truncated: boolean;
+  // Omitted when balance is polled with { utxos: false }; populated on
+  // demand via the wallet provider's refreshUtxos().
+  utxo_count?: number;
+  truncated?: boolean;
 }
 
 export interface WalletBalance {

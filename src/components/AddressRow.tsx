@@ -10,7 +10,7 @@ interface Props {
   index: number | null;
   imported: boolean;
   balance: number;
-  utxoCount: number;
+  utxoCount?: number;
   truncated?: boolean;
   hidden?: boolean;
   onLabelChange?: () => void;
@@ -99,7 +99,7 @@ export function AddressRow({
           </div>
         </td>
         <td className="px-5 py-4 text-sm text-neutral-400 tabular-nums">
-          {utxoCount}
+          {utxoCount ?? <span className="text-neutral-600">…</span>}
           {truncated && (
             <span
               className="ml-2 pill pill-warn"

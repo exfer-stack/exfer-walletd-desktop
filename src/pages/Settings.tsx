@@ -116,7 +116,9 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
   async function exportCsv() {
     setExporting(true);
     try {
-      const balance = await rpc<WalletBalance>("get_wallet_balance");
+      const balance = await rpc<WalletBalance>("get_wallet_balance", {
+        utxos: true,
+      });
       const labels = listLabels();
       const rows = [
         ["index", "address", "label", "balance_exfers", "balance_exfer", "utxo_count"],
@@ -126,7 +128,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
           labels[e.address] ?? "",
           String(e.balance),
           formatExfer(e.balance).replace(" EXFER", ""),
-          String(e.utxo_count),
+          String(e.utxo_count ?? ""),
         ]),
       ];
       const csv = rows

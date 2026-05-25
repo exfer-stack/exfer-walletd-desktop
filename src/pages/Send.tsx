@@ -20,7 +20,7 @@ interface OutputRow {
 const HEX64 = /^[0-9a-fA-F]{64}$/;
 
 export function Send() {
-  const { balance, refresh } = useWallet();
+  const { balance, refresh, utxos, refreshUtxos } = useWallet();
   const toast = useToast();
   const [from, setFrom] = useState("");
   const [outputs, setOutputs] = useState<OutputRow[]>([
@@ -43,6 +43,12 @@ export function Send() {
       setFrom(sendable[0].address);
     }
   }, [sendable, from]);
+
+  // UTXO counts aren't polled; fetch them once so the "from" helper can
+  // show how many UTXOs back the selected address.
+  useEffect(() => {
+    refreshUtxos();
+  }, [refreshUtxos]);
 
   function updateOutput(i: number, patch: Partial<OutputRow>) {
     setOutputs((prev) => prev.map((o, k) => (k === i ? { ...o, ...patch } : o)));
@@ -96,6 +102,7 @@ export function Send() {
       // Pull fresh balances so the Dashboard/From dropdown reflect the
       // spend immediately instead of waiting for the next poll.
       refresh();
+      refreshUtxos();
       // Reset the recipient rows for the next send; keep `from`.
       setOutputs([{ to: "", amount: "" }]);
     } catch (e) {
@@ -115,6 +122,7 @@ export function Send() {
   }, 0);
 
   const fromEntry = balance?.entries.find((e) => e.address === from);
+  const fromUtxoCount = utxos[from]?.utxo_count;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
@@ -160,9 +168,13 @@ export function Send() {
               Available:{" "}
               <span className="font-medium text-neutral-300">
                 {formatExfer(fromEntry.balance)}
-              </span>{" "}
-              · {fromEntry.utxo_count}{" "}
-              {fromEntry.utxo_count === 1 ? "UTXO" : "UTXOs"}
+              </span>
+              {fromUtxoCount != null && (
+                <>
+                  {" "}
+                  · {fromUtxoCount} {fromUtxoCount === 1 ? "UTXO" : "UTXOs"}
+                </>
+              )}
             </p>
           )}
         </div>
