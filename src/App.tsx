@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { bootstrapStatus } from "./lib/rpc";
 import type { BootstrapStatus } from "./lib/types";
-import { ToastProvider } from "./lib/toast";
+import { ToastProvider, useToast } from "./lib/toast";
 import { WalletProvider } from "./lib/wallet";
+import { checkForUpdate } from "./lib/updater";
 import { PasswordPrompt } from "./components/PasswordPrompt";
 import { Layout, type Tab } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
@@ -20,6 +21,7 @@ function App() {
 }
 
 function AppInner() {
+  const toast = useToast();
   const [status, setStatus] = useState<BootstrapStatus | null>(null);
   const [tab, setTab] = useState<Tab>("dashboard");
 
@@ -38,6 +40,20 @@ function AppInner() {
       });
     }, 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  // One-shot update check on launch. If a newer version is published,
+  // nudge the user toward Settings → Check for updates.
+  useEffect(() => {
+    checkForUpdate().then((u) => {
+      if (u.available) {
+        toast.info(
+          `Update available — v${u.version}`,
+          "Open Settings → Check for updates to install.",
+        );
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!status || status.status === "needs_password") {

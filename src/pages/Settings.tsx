@@ -5,6 +5,7 @@ import { listLabels } from "../lib/labels";
 import { RevealMnemonicModal } from "../components/RevealMnemonicModal";
 import { RevealPrivateKeyModal } from "../components/RevealPrivateKeyModal";
 import { useToast } from "../lib/toast";
+import { checkForUpdate, downloadAndApply } from "../lib/updater";
 
 interface Props {
   onRestart: (status: BootstrapStatus) => void;
@@ -38,6 +39,12 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetting, setResetting] = useState(false);
 
+  const [updCheck, setUpdCheck] = useState<
+    "idle" | "checking" | "none" | "available" | "installing"
+  >("idle");
+  const [updVersion, setUpdVersion] = useState<string | null>(null);
+  const [updProgress, setUpdProgress] = useState<number>(0);
+
   useEffect(() => {
     getNodeRpc().then((v) => {
       setCurrent(v);
@@ -62,6 +69,36 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       toast.error("Couldn't switch node", String(err));
     } finally {
       setSavingNode(false);
+    }
+  }
+
+  async function doCheckUpdate() {
+    setUpdCheck("checking");
+    try {
+      const u = await checkForUpdate();
+      if (u.available) {
+        setUpdVersion(u.version ?? null);
+        setUpdCheck("available");
+      } else {
+        setUpdCheck("none");
+      }
+    } catch (e) {
+      toast.error("Update check failed", String(e));
+      setUpdCheck("idle");
+    }
+  }
+
+  async function doInstallUpdate() {
+    setUpdCheck("installing");
+    setUpdProgress(0);
+    try {
+      await downloadAndApply((done, total) => {
+        if (total) setUpdProgress(Math.round((done / total) * 100));
+      });
+      // On success the app relaunches; this line typically isn't reached.
+    } catch (e) {
+      toast.error("Update failed", String(e));
+      setUpdCheck("available");
     }
   }
 
@@ -183,6 +220,59 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             </button>
           </div>
         </form>
+      </section>
+
+      {/* Updates */}
+      <section className="card-padded space-y-4">
+        <header>
+          <h2 className="text-lg font-semibold text-neutral-100">Updates</h2>
+          <p className="text-sm text-neutral-400">
+            New versions are downloaded, signature-verified, and installed
+            in place — no manual reinstall.
+          </p>
+        </header>
+
+        {updCheck === "available" ? (
+          <div className="banner-success flex items-center justify-between gap-3">
+            <span>
+              Version <span className="font-mono">v{updVersion}</span> is
+              available.
+            </span>
+            <button
+              type="button"
+              className="btn"
+              onClick={doInstallUpdate}
+            >
+              Install & restart
+            </button>
+          </div>
+        ) : updCheck === "installing" ? (
+          <div className="banner-info space-y-2">
+            <div>Downloading update… {updProgress}%</div>
+            <div className="h-1.5 w-full overflow-hidden rounded bg-neutral-800">
+              <div
+                className="h-full bg-cyan-400 transition-all"
+                style={{ width: `${updProgress}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={doCheckUpdate}
+              disabled={updCheck === "checking"}
+            >
+              {updCheck === "checking" ? "Checking…" : "Check for updates"}
+            </button>
+            {updCheck === "none" && (
+              <span className="text-sm text-neutral-400">
+                You're on the latest version.
+              </span>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Backup & export */}

@@ -76,12 +76,24 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signing the updater artifacts (.sig) — without these the
+          # build emits unsigned bundles and no latest.json, so in-app
+          # update would have nothing to verify against.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "exfer-wallet ${{ github.ref_name }}"
           releaseBody: |
             Auto-built from ${{ github.ref_name }}.
             Includes the in-process exfer-walletd, no separate install needed.
+
+            In-app auto-update is enabled from v0.4.0 onward: install this
+            once, and future versions update themselves from within the app.
           releaseDraft: true
           prerelease: false
+          # Emit + attach latest.json so the updater plugin can find it.
+          # Windows prefers the NSIS installer as the update artifact.
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
           args: ${{ matrix.platform.args }}

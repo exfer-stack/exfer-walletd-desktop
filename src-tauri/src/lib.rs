@@ -118,6 +118,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // Resolve the per-platform app-data dir and stash it in the
             // managed AppCtx; everything else (datadir creation, token
