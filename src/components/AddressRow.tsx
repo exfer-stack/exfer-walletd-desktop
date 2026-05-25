@@ -2,6 +2,7 @@ import { useEffect, useState, type MouseEvent } from "react";
 import { CopyButton } from "./CopyButton";
 import { ExportKeyModal } from "./ExportKeyModal";
 import { getLabel, setLabel, shortAddress } from "../lib/labels";
+import { hide } from "../lib/hidden";
 import { formatExfer } from "../lib/rpc";
 
 interface Props {
@@ -11,7 +12,9 @@ interface Props {
   balance: number;
   utxoCount: number;
   truncated?: boolean;
+  hidden?: boolean;
   onLabelChange?: () => void;
+  onUnhide?: () => void;
 }
 
 export function AddressRow({
@@ -21,7 +24,9 @@ export function AddressRow({
   balance,
   utxoCount,
   truncated,
+  hidden,
   onLabelChange,
+  onUnhide,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => getLabel(address) ?? "");
@@ -42,7 +47,10 @@ export function AddressRow({
 
   return (
     <>
-      <tr className="hover:bg-neutral-900" onContextMenu={openMenu}>
+      <tr
+        className={"hover:bg-neutral-900 " + (hidden ? "opacity-50" : "")}
+        onContextMenu={openMenu}
+      >
         <td className="px-5 py-4 font-mono text-sm text-neutral-400 tabular-nums">
           {imported ? <span className="pill pill-warn">imported</span> : index}
         </td>
@@ -146,6 +154,31 @@ export function AddressRow({
                 setMenu(null);
               },
             },
+            hidden
+              ? {
+                  label: "Unhide address",
+                  onClick: () => {
+                    setMenu(null);
+                    onUnhide?.();
+                  },
+                }
+              : {
+                  label: "Hide address",
+                  danger: true,
+                  onClick: () => {
+                    setMenu(null);
+                    if (
+                      balance > 0 &&
+                      !window.confirm(
+                        "This address still holds funds. Hiding only removes it from the list — the key is kept and you can unhide it later. Hide anyway?",
+                      )
+                    ) {
+                      return;
+                    }
+                    hide(address);
+                    onLabelChange?.();
+                  },
+                },
           ]}
         />
       )}
@@ -169,7 +202,7 @@ function RowMenu({
 }: {
   x: number;
   y: number;
-  items: { label: string; onClick: () => void }[];
+  items: { label: string; onClick: () => void; danger?: boolean }[];
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -200,7 +233,10 @@ function RowMenu({
           key={it.label}
           type="button"
           onClick={it.onClick}
-          className="block w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800"
+          className={
+            "block w-full px-4 py-2 text-left text-sm hover:bg-neutral-800 " +
+            (it.danger ? "text-red-300" : "text-neutral-200")
+          }
         >
           {it.label}
         </button>

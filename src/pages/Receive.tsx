@@ -4,6 +4,7 @@ import { rpc, formatExfer, MAX_ADDRESSES } from "../lib/rpc";
 import type { GeneratedAddress } from "../lib/types";
 import { CopyButton } from "../components/CopyButton";
 import { getLabel, shortAddress } from "../lib/labels";
+import { isHidden } from "../lib/hidden";
 import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
 
@@ -15,10 +16,12 @@ export function Receive() {
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
+  const entries = (data?.entries ?? []).filter((e) => !isHidden(e.address));
+
   // Default the selection to the first address once balances arrive.
   useEffect(() => {
-    if (!selected && data && data.entries.length > 0) {
-      setSelected(data.entries[0].address);
+    if (!selected && entries.length > 0) {
+      setSelected(entries[0].address);
     }
   }, [data, selected]);
 
@@ -92,7 +95,7 @@ export function Receive() {
             </button>
           </header>
           <ul className="max-h-[420px] divide-y divide-neutral-800 overflow-auto">
-            {data?.entries.length === 0 ? (
+            {entries.length === 0 ? (
               <li className="px-5 py-8 text-center text-sm text-neutral-400">
                 No addresses yet —{" "}
                 <button
@@ -105,7 +108,7 @@ export function Receive() {
                 to start receiving.
               </li>
             ) : null}
-            {data?.entries.map((e) => {
+            {entries.map((e) => {
               const active = e.address === selected;
               const label = getLabel(e.address);
               return (

@@ -1,8 +1,41 @@
 import { useEffect, useMemo, useState } from "react";
 import { rpc, formatExfer } from "../lib/rpc";
 import { listHistory, clearHistory, type HistoryEntry } from "../lib/history";
-import { shortAddress } from "../lib/labels";
+import { getLabel, shortAddress } from "../lib/labels";
 import { CopyButton } from "../components/CopyButton";
+
+const EXPLORER = "https://explorer.exfer.dev";
+const txUrl = (h: string) => `${EXPLORER}/tx/${h}`;
+const addrUrl = (a: string) => `${EXPLORER}/address/${a}`;
+
+/** A hash shown as: optional label, short form, copy button, and an
+ *  "open in explorer" link — so the bare hex is never a dead end. */
+function HashLine({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value: string;
+  href: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-12 shrink-0 text-xs text-neutral-500">{label}</span>
+      <code className="addr-xs flex-1 truncate">{shortAddress(value, 10, 8)}</code>
+      <CopyButton text={value} className="btn-ghost text-xs" />
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-md px-1.5 py-0.5 text-xs text-cyan-400 hover:bg-neutral-800"
+        title="View on Exfer Explorer"
+      >
+        ↗
+      </a>
+    </div>
+  );
+}
 
 interface TxStatus {
   in_mempool: boolean;
@@ -163,13 +196,8 @@ function ActivityCard({
   return (
     <article className="card overflow-hidden">
       <div className="flex items-start justify-between gap-4 border-b border-neutral-800 px-5 py-3">
-        <div>
-          <div className="text-sm text-neutral-400">
-            {dt.toLocaleDateString()} · {dt.toLocaleTimeString()}
-          </div>
-          <code className="addr-xs mt-0.5 block">
-            {shortAddress(entry.tx_id, 12, 8)}
-          </code>
+        <div className="text-sm text-neutral-400">
+          {dt.toLocaleDateString()} · {dt.toLocaleTimeString()}
         </div>
         <span className={`pill ${statusPill.className}`}>
           {statusPill.text}
@@ -179,15 +207,25 @@ function ActivityCard({
       <div className="grid gap-4 p-5 md:grid-cols-2">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Sent
+            Sent to
           </div>
-          <ul className="mt-2 space-y-1.5">
-            {recipients.map((o, i) => (
-              <li key={i} className="flex items-center justify-between gap-2">
-                <code className="addr-xs">{shortAddress(o.to)}</code>
-                <span className="amount text-sm">{formatExfer(o.amount)}</span>
-              </li>
-            ))}
+          <ul className="mt-2 space-y-3">
+            {recipients.map((o, i) => {
+              const label = getLabel(o.to);
+              return (
+                <li key={i} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-neutral-200">
+                      {label ?? "External address"}
+                    </span>
+                    <span className="amount text-sm">
+                      {formatExfer(o.amount)}
+                    </span>
+                  </div>
+                  <HashLine label="addr" value={o.to} href={addrUrl(o.to)} />
+                </li>
+              );
+            })}
           </ul>
         </div>
         <div className="space-y-1.5">
@@ -203,9 +241,8 @@ function ActivityCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-neutral-800 bg-neutral-900 px-5 py-2">
-        <code className="addr-xs">{entry.tx_id}</code>
-        <CopyButton text={entry.tx_id} className="btn-ghost text-xs" />
+      <div className="border-t border-neutral-800 bg-neutral-900 px-5 py-3">
+        <HashLine label="Tx ID" value={entry.tx_id} href={txUrl(entry.tx_id)} />
       </div>
     </article>
   );

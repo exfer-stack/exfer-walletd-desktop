@@ -10,6 +10,7 @@ import {
 import { CopyButton } from "../components/CopyButton";
 import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
+import { isHidden } from "../lib/hidden";
 
 interface OutputRow {
   to: string;
@@ -25,17 +26,23 @@ export function Send() {
   const [outputs, setOutputs] = useState<OutputRow[]>([
     { to: "", amount: "" },
   ]);
-  const [feeRate, setFeeRate] = useState("1");
+  // Fee priority: a multiplier over the network minimum. Most transfers
+  // pay the minimum (Normal). Higher tiers bump fee-per-size so the tx
+  // is packed sooner when blocks are congested.
+  const [feeRate, setFeeRate] = useState(1);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<TransferReceipt | null>(null);
   const recents = useMemo(listRecentRecipients, [receipt]);
 
+  // Don't offer hidden addresses as a sending source.
+  const sendable = (balance?.entries ?? []).filter((e) => !isHidden(e.address));
+
   useEffect(() => {
-    if (balance && balance.entries.length > 0 && !from) {
-      setFrom(balance.entries[0].address);
+    if (sendable.length > 0 && !from) {
+      setFrom(sendable[0].address);
     }
-  }, [balance, from]);
+  }, [sendable, from]);
 
   function updateOutput(i: number, patch: Partial<OutputRow>) {
     setOutputs((prev) => prev.map((o, k) => (k === i ? { ...o, ...patch } : o)));
@@ -56,11 +63,7 @@ export function Send() {
       setError("Pick a sending address.");
       return;
     }
-    const feeRateInt = Number(feeRate);
-    if (!Number.isFinite(feeRateInt) || feeRateInt < 1) {
-      setError("Fee rate must be a positive integer (1 = consensus floor).");
-      return;
-    }
+    const feeRateInt = feeRate;
 
     const parsedOutputs: { to: string; amount: number }[] = [];
     for (let i = 0; i < outputs.length; i++) {
@@ -120,8 +123,8 @@ export function Send() {
           Send EXFER
         </h1>
         <p className="text-base text-neutral-400">
-          One transaction, up to 16 recipients. Fees are paid in the consensus
-          unit; <span className="font-mono">rate = 1</span> is the floor.
+          One transaction, up to 16 recipients. Pick a fee priority below —
+          Normal is fine for most transfers.
         </p>
       </header>
 
@@ -133,12 +136,12 @@ export function Send() {
             className="input"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            disabled={pending || !balance || balance.entries.length === 0}
+            disabled={pending || sendable.length === 0}
           >
-            {balance && balance.entries.length === 0 && (
+            {sendable.length === 0 && (
               <option value="">No addresses — generate one first</option>
             )}
-            {balance?.entries.map((e) => {
+            {sendable.map((e) => {
               const label = getLabel(e.address);
               const tag = label
                 ? `${label} — ${shortAddress(e.address)}`
@@ -193,32 +196,60 @@ export function Send() {
           ))}
         </div>
 
-        {/* Fee + total */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Fee rate (priority)</label>
-            <input
-              className="input"
-              value={feeRate}
-              onChange={(e) => setFeeRate(e.target.value)}
-              disabled={pending}
-              inputMode="numeric"
-            />
-            <p className="help">
-              <span className="font-medium text-neutral-300">1</span> = the
-              cheapest fee the network accepts — fine when the chain isn't
-              busy. Miners pack transactions by fee-per-size, so raise this
-              to jump the queue when blocks are full. The actual fee scales
-              with the transaction's size.
-            </p>
+        {/* Network fee priority */}
+        <div>
+          <label className="label">Network fee</label>
+          <div className="grid grid-cols-3 gap-2">
+            {(
+              [
+                { rate: 1, name: "Normal", approx: "≈ 0.0000007 EXFER", note: "recommended" },
+                { rate: 3, name: "Faster", approx: "≈ 0.000002 EXFER", note: "" },
+                { rate: 6, name: "Fastest", approx: "≈ 0.000004 EXFER", note: "" },
+              ] as const
+            ).map((tier) => {
+              const active = feeRate === tier.rate;
+              return (
+                <button
+                  key={tier.rate}
+                  type="button"
+                  onClick={() => setFeeRate(tier.rate)}
+                  disabled={pending}
+                  className={
+                    "rounded-lg border px-3 py-2.5 text-left transition " +
+                    (active
+                      ? "border-cyan-400 bg-cyan-500/10"
+                      : "border-neutral-700 bg-neutral-950 hover:border-neutral-600")
+                  }
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-neutral-100">
+                      {tier.name}
+                    </span>
+                    {tier.note && (
+                      <span className="pill pill-info text-[10px]">
+                        {tier.note}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mono mt-0.5 text-xs text-neutral-400">
+                    {tier.approx}
+                  </div>
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <label className="label">Total to send</label>
-            <div className="amount-md mt-1.5">
-              {formatExfer(totalExfers)}
-            </div>
-            <p className="help">Plus the network fee — settled at broadcast.</p>
-          </div>
+          <p className="help">
+            Fees are tiny — well under a millionth of 1 EXFER. Normal pays the
+            network minimum and confirms fine when the chain isn't busy;
+            pick a higher tier only if transfers are slow to confirm. The
+            exact fee is shown on the receipt.
+          </p>
+        </div>
+
+        {/* Total */}
+        <div className="flex items-baseline justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
+          <span className="text-sm text-neutral-400">Total to send</span>
+          <span className="amount-md">{formatExfer(totalExfers)}</span>
         </div>
 
         {error && <div className="banner-error">{error}</div>}
@@ -226,9 +257,7 @@ export function Send() {
         <button
           type="submit"
           className="btn w-full text-base"
-          disabled={
-            pending || !balance || balance.entries.length === 0
-          }
+          disabled={pending || sendable.length === 0}
         >
           {pending ? "Broadcasting…" : "Review & broadcast"}
         </button>

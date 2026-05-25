@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from "react";
 import { getNodeRpc, rpc, setNodeRpc, formatExfer, resetWallet } from "../lib/rpc";
 import type { BootstrapStatus, WalletBalance } from "../lib/types";
 import { listLabels } from "../lib/labels";
-import { RevealMnemonicModal } from "../components/RevealMnemonicModal";
 import { RevealPrivateKeyModal } from "../components/RevealPrivateKeyModal";
 import { useToast } from "../lib/toast";
 import { checkForUpdate, downloadAndApply } from "../lib/updater";
@@ -33,7 +32,6 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState<StatusInfo | null>(null);
 
-  const [showMnemonic, setShowMnemonic] = useState(false);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
 
   const [resetConfirm, setResetConfirm] = useState("");
@@ -356,23 +354,20 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
           <button
             type="button"
             className="btn-danger"
-            onClick={() => setShowMnemonic(true)}
-          >
-            Reveal recovery phrase (24 words)
-          </button>
-          <button
-            type="button"
-            className="btn-danger"
             onClick={() => setShowPrivateKey(true)}
           >
             Export private key for an address
           </button>
         </div>
+        <p className="help">
+          To move an address to exfer.dev or the Exfer CLI, prefer{" "}
+          <span className="font-medium text-neutral-300">
+            Export wallet.key
+          </span>{" "}
+          from the address's row menu — it's encrypted and imports directly.
+        </p>
       </section>
 
-      {showMnemonic && (
-        <RevealMnemonicModal onClose={() => setShowMnemonic(false)} />
-      )}
       {showPrivateKey && (
         <RevealPrivateKeyModal onClose={() => setShowPrivateKey(false)} />
       )}

@@ -4,11 +4,20 @@ import type { GeneratedAddress } from "../lib/types";
 import { AddressRow } from "../components/AddressRow";
 import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
+import { isHidden, unhide } from "../lib/hidden";
 
 export function Dashboard() {
   const { balance: data, loading, error, refresh } = useWallet();
   const toast = useToast();
   const [generating, setGenerating] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+
+  const allEntries = data?.entries ?? [];
+  const hiddenEntries = allEntries.filter((e) => isHidden(e.address));
+  const visibleEntries = showHidden
+    ? allEntries
+    : allEntries.filter((e) => !isHidden(e.address));
+  const visibleTotal = visibleEntries.reduce((a, e) => a + e.balance, 0);
 
   async function generateAddress() {
     setGenerating(true);
@@ -34,14 +43,14 @@ export function Dashboard() {
           Total balance
         </div>
         <div className="amount-lg mt-2">
-          {data ? formatExfer(data.total) : "—"}
+          {data ? formatExfer(visibleTotal) : "—"}
         </div>
         <div className="mt-1 text-sm text-neutral-400">
           across{" "}
           <span className="font-medium text-neutral-300">
-            {data?.entries.length ?? 0}
+            {visibleEntries.length}
           </span>{" "}
-          {data?.entries.length === 1 ? "address" : "addresses"}
+          {visibleEntries.length === 1 ? "address" : "addresses"}
         </div>
       </section>
 
@@ -126,7 +135,7 @@ export function Dashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800">
-              {data?.entries.map((e) => (
+              {visibleEntries.map((e) => (
                 <AddressRow
                   key={e.address}
                   address={e.address}
@@ -135,11 +144,30 @@ export function Dashboard() {
                   balance={e.balance}
                   utxoCount={e.utxo_count}
                   truncated={e.truncated}
+                  hidden={isHidden(e.address)}
                   onLabelChange={refresh}
+                  onUnhide={() => {
+                    unhide(e.address);
+                    refresh();
+                  }}
                 />
               ))}
             </tbody>
           </table>
+        )}
+
+        {hiddenEntries.length > 0 && (
+          <div className="border-t border-neutral-800 px-5 py-2.5 text-xs text-neutral-400">
+            {hiddenEntries.length} hidden{" "}
+            {hiddenEntries.length === 1 ? "address" : "addresses"} ·{" "}
+            <button
+              type="button"
+              onClick={() => setShowHidden((v) => !v)}
+              className="font-medium text-cyan-400 hover:underline"
+            >
+              {showHidden ? "hide them" : "show"}
+            </button>
+          </div>
         )}
       </section>
     </div>
