@@ -196,7 +196,7 @@ export function Send() {
         {/* Fee + total */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Fee rate</label>
+            <label className="label">Fee rate (priority)</label>
             <input
               className="input"
               value={feeRate}
@@ -204,7 +204,13 @@ export function Send() {
               disabled={pending}
               inputMode="numeric"
             />
-            <p className="help">1 = consensus floor; bump if mempool is busy.</p>
+            <p className="help">
+              <span className="font-medium text-neutral-300">1</span> = the
+              cheapest fee the network accepts — fine when the chain isn't
+              busy. Miners pack transactions by fee-per-size, so raise this
+              to jump the queue when blocks are full. The actual fee scales
+              with the transaction's size.
+            </p>
           </div>
           <div>
             <label className="label">Total to send</label>
