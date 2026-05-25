@@ -32,6 +32,14 @@ export function submitPassword(password: string): Promise<BootstrapStatus> {
   return invoke<BootstrapStatus>("submit_password", { password });
 }
 
+export function restoreFromMnemonic(
+  phrase: string,
+  password: string,
+): Promise<BootstrapStatus> {
+  if (devmock.isActive()) return devmock.restore_from_mnemonic(phrase, password);
+  return invoke<BootstrapStatus>("restore_from_mnemonic", { phrase, password });
+}
+
 export function getNodeRpc(): Promise<string> {
   if (devmock.isActive()) return devmock.get_node_rpc();
   return invoke<string>("get_node_rpc");

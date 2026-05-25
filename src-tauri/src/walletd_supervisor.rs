@@ -226,6 +226,59 @@ pub async fn stop(ctx: &AppCtx) {
     inner.client = None;
 }
 
+/// Restore a wallet from a 24-word recovery phrase into a clean datadir,
+/// then start it. Seals the phrase's entropy to seed.enc under
+/// `password`, persists the password to the keychain, boots walletd, and
+/// re-derives the first `MAX_ADDRESSES` addresses so the restored set
+/// reappears immediately (HD derivation is deterministic, so these are
+/// the original addresses).
+pub async fn restore(
+    ctx: &AppCtx,
+    phrase: &str,
+    password: &str,
+) -> Result<BootstrapStatus, AppError> {
+    use exfer_walletd::store::HdSeedStore;
+
+    // Re-derive this many indices after restore so the original address
+    // set reappears (matches the desktop's 6-address cap).
+    const RESTORE_ADDRESSES: usize = 6;
+
+    let datadir = { ctx.inner.lock().await.datadir.clone() };
+    let desktop_cfg = read_desktop_config(&datadir);
+    let cfg = build_walletd_config(&datadir, &desktop_cfg);
+    let wallet_dir = cfg.resolved_wallet_dir();
+
+    // Seal the phrase to a clean seed.enc (refuses if one exists).
+    HdSeedStore::init_from_mnemonic(&wallet_dir, password.as_bytes(), phrase)
+        .map_err(|e| AppError::Other(anyhow::anyhow!(e.to_string())))?;
+
+    // Persist the password + boot walletd against the restored seed.
+    crate::secrets::set_passphrase(KEYRING_SERVICE, password).map_err(AppError::Other)?;
+    let status = start(ctx, password).await;
+    if !matches!(status, BootstrapStatus::Ready { .. }) {
+        return Ok(status);
+    }
+
+    // Deterministically re-derive the address set so balances reappear
+    // without the user minting each index by hand. generate_address on a
+    // fresh state.json produces index 0,1,… = the original addresses.
+    if let (Some(client), Some(conn)) = {
+        let inner = ctx.inner.lock().await;
+        (inner.client.clone(), inner.conn.clone())
+    } {
+        for _ in 0..RESTORE_ADDRESSES {
+            let _ = crate::rpc_client::forward_rpc(
+                &client,
+                &conn,
+                "generate_address",
+                serde_json::json!({}),
+            )
+            .await;
+        }
+    }
+    Ok(status)
+}
+
 /// Restart the embedded walletd with the current desktop config. The
 /// passphrase is fetched from the keychain (no UI re-prompt) since the
 /// user already authenticated this session.

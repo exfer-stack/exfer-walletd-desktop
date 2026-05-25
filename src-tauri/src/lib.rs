@@ -14,8 +14,8 @@ use serde_json::Value;
 use tauri::{Manager, State};
 
 use walletd_supervisor::{
-    read_desktop_config, restart, start, stop, write_desktop_config, AppCtx, BootstrapStatus,
-    DesktopConfig, KEYRING_SERVICE,
+    read_desktop_config, restart, restore, start, stop, write_desktop_config, AppCtx,
+    BootstrapStatus, DesktopConfig, KEYRING_SERVICE,
 };
 
 #[tauri::command]
@@ -33,6 +33,24 @@ async fn submit_password(
     }
     secrets::set_passphrase(KEYRING_SERVICE, &password).map_err(|e| e.to_string())?;
     Ok(start(&ctx, &password).await)
+}
+
+#[tauri::command]
+async fn restore_from_mnemonic(
+    ctx: State<'_, AppCtx>,
+    phrase: String,
+    password: String,
+) -> Result<BootstrapStatus, String> {
+    if password.len() < 8 {
+        return Err("password must be at least 8 characters".into());
+    }
+    let words = phrase.split_whitespace().count();
+    if words != 24 {
+        return Err(format!("recovery phrase must be 24 words (got {words})"));
+    }
+    restore(&ctx, phrase.trim(), &password)
+        .await
+        .map_err(|e| e.to_user_string())
 }
 
 #[tauri::command]
@@ -219,6 +237,7 @@ pub fn run() {
             set_node_rpc,
             reset_wallet,
             export_wallet_key,
+            restore_from_mnemonic,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

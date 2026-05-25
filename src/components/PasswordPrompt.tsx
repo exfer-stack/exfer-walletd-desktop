@@ -1,16 +1,26 @@
 import { useState, type FormEvent } from "react";
-import { submitPassword } from "../lib/rpc";
+import { submitPassword, restoreFromMnemonic } from "../lib/rpc";
 import wordmarkUrl from "../assets/wordmark.png";
 
 interface Props {
   onReady: () => void;
 }
 
+type Mode = "create" | "restore";
+
 export function PasswordPrompt({ onReady }: Props) {
+  const [mode, setMode] = useState<Mode>("create");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [phrase, setPhrase] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function handleStatus(status: Awaited<ReturnType<typeof submitPassword>>) {
+    if (status.status === "ready") onReady();
+    else if (status.status === "failed") setError(status.message);
+    else setError("Walletd reported an unexpected state after start.");
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -23,16 +33,21 @@ export function PasswordPrompt({ onReady }: Props) {
       setError("Passwords do not match.");
       return;
     }
+    if (mode === "restore") {
+      const words = phrase.trim().split(/\s+/).filter(Boolean);
+      if (words.length !== 24) {
+        setError(`Recovery phrase must be 24 words (you entered ${words.length}).`);
+        return;
+      }
+    }
+
     setPending(true);
     try {
-      const status = await submitPassword(password);
-      if (status.status === "ready") {
-        onReady();
-      } else if (status.status === "failed") {
-        setError(status.message);
-      } else {
-        setError("Walletd reported an unexpected state after start.");
-      }
+      const status =
+        mode === "create"
+          ? await submitPassword(password)
+          : await restoreFromMnemonic(phrase.trim(), password);
+      handleStatus(status);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -54,26 +69,72 @@ export function PasswordPrompt({ onReady }: Props) {
             draggable={false}
           />
         </div>
-        <header className="space-y-2 text-center">
+
+        {/* Create / Restore toggle */}
+        <div className="flex rounded-lg border border-neutral-800 bg-neutral-900 p-1 text-sm">
+          {(["create", "restore"] as Mode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => {
+                setMode(m);
+                setError(null);
+              }}
+              disabled={pending}
+              className={
+                "flex-1 rounded-md px-3 py-1.5 font-medium transition " +
+                (mode === m
+                  ? "bg-cyan-500 text-black"
+                  : "text-neutral-400 hover:text-neutral-100")
+              }
+            >
+              {m === "create" ? "New wallet" : "Restore from phrase"}
+            </button>
+          ))}
+        </div>
+
+        <header className="space-y-1 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-50">
-            Welcome to your wallet
+            {mode === "create" ? "Welcome to your wallet" : "Restore your wallet"}
           </h1>
           <p className="text-base text-neutral-400 leading-relaxed">
-            Set a password to encrypt this wallet's seed at rest. It's stored
-            in your operating system's secure keychain, so you'll only enter
-            it once on this machine.
+            {mode === "create"
+              ? "Set a password to encrypt this wallet's seed at rest. It's saved in your OS keychain, so you only enter it once on this machine."
+              : "Enter your 24-word recovery phrase and choose a new password for this machine. Your addresses re-derive automatically."}
           </p>
         </header>
+
+        {mode === "restore" && (
+          <div>
+            <label className="label" htmlFor="phrase">
+              Recovery phrase (24 words)
+            </label>
+            <textarea
+              id="phrase"
+              className="input h-24 resize-none font-mono text-sm"
+              value={phrase}
+              onChange={(e) => setPhrase(e.target.value)}
+              disabled={pending}
+              placeholder="word1 word2 word3 … word24"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="help">
+              Only restores a wallet created by exfer-wallet (same HD
+              derivation). Words are separated by single spaces.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>
             <label className="label" htmlFor="pw1">
-              Password
+              {mode === "create" ? "Password" : "New password for this machine"}
             </label>
             <input
               id="pw1"
               type="password"
-              autoFocus
+              autoFocus={mode === "create"}
               className="input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -104,7 +165,13 @@ export function PasswordPrompt({ onReady }: Props) {
         {error && <div className="banner-error">{error}</div>}
 
         <button type="submit" className="btn w-full" disabled={pending}>
-          {pending ? "Starting walletd…" : "Continue"}
+          {pending
+            ? mode === "create"
+              ? "Starting walletd…"
+              : "Restoring…"
+            : mode === "create"
+              ? "Continue"
+              : "Restore wallet"}
         </button>
 
         <div className="banner-warn text-xs">

@@ -169,6 +169,32 @@ export const devmock = {
     return s.bootstrap;
   },
 
+  async restore_from_mnemonic(
+    phrase: string,
+    password: string,
+  ): Promise<BootstrapStatus> {
+    if (password.length < 8) throw new Error("password must be at least 8 characters");
+    if (phrase.trim().split(/\s+/).length !== 24) {
+      throw new Error("recovery phrase must be 24 words");
+    }
+    // Dev mode: pretend the restore worked and seed a couple addresses.
+    const s = loadState();
+    s.bootstrap = {
+      status: "ready",
+      local_addr: "127.0.0.1:54321",
+      fingerprint: "sha256:dev-mock-fingerprint",
+    };
+    s.addresses = [0, 1, 2].map((index) => ({
+      address: fakeHex(`restored-${index}`, 64),
+      index,
+      pubkey: fakeHex(`rpk-${index}`, 64),
+      balance: 0,
+      utxoCount: 0,
+    }));
+    saveState(s);
+    return s.bootstrap;
+  },
+
   async get_node_rpc(): Promise<string> {
     if (useRealWalletd()) {
       const st = (await realRpc("get_status", {})) as {
