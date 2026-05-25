@@ -8,9 +8,10 @@ import {
   type ReactNode,
 } from "react";
 import { rpc, formatExfer } from "./rpc";
-import type { WalletBalance } from "./types";
+import type { WalletBalance, WalletEntry } from "./types";
 import { useToast } from "./toast";
 import { osNotify } from "./notify";
+import { isHidden } from "./hidden";
 
 export interface UtxoInfo {
   utxo_count: number;
@@ -42,12 +43,23 @@ export function useWallet(): WalletData {
 }
 
 // Poll cadence. The background poll asks for balances only
-// ({ utxos: false }) — one upstream scan per address, so at the
-// 6-address cap that's ~6 scans/tick. A 20s interval (~18 scans/min)
-// stays under the public node's ~30 scans/min while feeling much more
-// live than the old balance+utxo poll. UTXO counts are fetched on
-// demand via refreshUtxos by the pages that show them.
-const POLL_MS = 20_000;
+// ({ utxos: false }) and scans only the visible (non-hidden) addresses,
+// so it's one upstream scan per visible address. We pace the interval
+// to that count — ~5s per visible address — so a single-address wallet
+// refreshes every 5s while a full 6-address wallet stays at 20s, both
+// under the public node's ~30 scans/min. UTXO counts and hidden-address
+// balances are fetched on demand, not polled.
+const MS_PER_ADDRESS = 5_000;
+const MIN_POLL_MS = 5_000;
+const MAX_POLL_MS = 20_000;
+
+// Sort matches the daemon: index asc, imported/unindexed last, then address.
+function byIndex(a: WalletEntry, b: WalletEntry): number {
+  if (a.index != null && b.index != null) return a.index - b.index;
+  if (a.index != null) return -1;
+  if (b.index != null) return 1;
+  return a.address < b.address ? -1 : a.address > b.address ? 1 : 0;
+}
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const toast = useToast();
@@ -59,6 +71,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // first successful read so we don't toast the initial balance.
   const lastTotal = useRef<number | null>(null);
   const inFlight = useRef(false);
+  // All known entries (including hidden, kept at their last-seen balance).
+  // Used to compute the visible poll set and to merge poll results without
+  // dropping hidden rows. A ref so the stable poll loop sees current data.
+  const entriesRef = useRef<WalletEntry[]>([]);
+  const loadedRef = useRef(false);
+
+  // Visible = managed minus hidden. Empty until the first full load.
+  const visibleAddrs = useCallback(
+    () =>
+      entriesRef.current
+        .filter((e) => !isHidden(e.address))
+        .map((e) => e.address),
+    [],
+  );
 
   const load = useCallback(
     async (isPoll: boolean) => {
@@ -66,63 +92,99 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       inFlight.current = true;
       if (!isPoll) setLoading(true);
       try {
-        // Balance only — UTXO counts come from refreshUtxos on demand.
-        const result = await rpc<WalletBalance>("get_wallet_balance", {
-          utxos: false,
-        });
-        setBalance(result);
+        // Full loads (manual refresh / mount) scan every managed address.
+        // Polls scan only visible addresses — skip the ones the user hid.
+        const known = entriesRef.current;
+        const useFilter = isPoll && known.length > 0;
+        const params: Record<string, unknown> = { utxos: false };
+        if (useFilter) params.addresses = visibleAddrs();
+
+        const result = await rpc<WalletBalance>("get_wallet_balance", params);
+
+        // On a filtered poll, merge fresh visible balances over the known
+        // set so hidden rows survive (at their last-seen balance). A full
+        // load replaces the set outright.
+        let entries: WalletEntry[];
+        if (useFilter) {
+          const byAddr = new Map(known.map((e) => [e.address, e]));
+          for (const e of result.entries) byAddr.set(e.address, e);
+          entries = [...byAddr.values()].sort(byIndex);
+        } else {
+          entries = [...result.entries].sort(byIndex);
+        }
+        entriesRef.current = entries;
+        loadedRef.current = true;
+
+        const total = entries.reduce((acc, e) => acc + e.balance, 0);
+        setBalance({ entries, total });
         setError(null);
 
         const prev = lastTotal.current;
-        if (prev !== null && result.total > prev) {
-          const delta = result.total - prev;
-          const msg = `+${formatExfer(delta)}`;
+        if (prev !== null && total > prev) {
+          const msg = `+${formatExfer(total - prev)}`;
           toast.incoming("Funds received", msg);
           osNotify("exfer wallet — funds received", msg);
         }
-        lastTotal.current = result.total;
+        lastTotal.current = total;
       } catch (e) {
         // Don't clobber a good balance on a transient poll failure;
         // only surface the error if we have nothing to show.
-        if (balance === null) setError(String(e));
+        if (!loadedRef.current) setError(String(e));
       } finally {
         if (!isPoll) setLoading(false);
         inFlight.current = false;
       }
     },
-    [toast, balance],
+    [toast, visibleAddrs],
   );
 
   const refresh = useCallback(() => load(false), [load]);
 
   const refreshUtxos = useCallback(async () => {
     try {
+      // Only the visible addresses — no point scanning hidden ones.
+      const addrs = loadedRef.current ? visibleAddrs() : undefined;
       const r = await rpc<WalletBalance>("get_wallet_balance", {
         utxos: true,
+        ...(addrs ? { addresses: addrs } : {}),
       });
-      const map: Record<string, UtxoInfo> = {};
-      for (const e of r.entries) {
-        if (e.utxo_count != null) {
-          map[e.address] = {
-            utxo_count: e.utxo_count,
-            truncated: e.truncated ?? false,
-          };
+      setUtxos((prev) => {
+        const next = { ...prev };
+        for (const e of r.entries) {
+          if (e.utxo_count != null) {
+            next[e.address] = {
+              utxo_count: e.utxo_count,
+              truncated: e.truncated ?? false,
+            };
+          }
         }
-      }
-      setUtxos(map);
-      // This response also carries fresh balances — adopt them and keep
-      // lastTotal in sync so the next cheap poll doesn't re-toast.
-      setBalance(r);
-      lastTotal.current = r.total;
+        return next;
+      });
     } catch {
       /* on-demand; ignore transient failures */
     }
-  }, []);
+  }, [visibleAddrs]);
 
   useEffect(() => {
-    load(false);
-    const id = window.setInterval(() => load(true), POLL_MS);
-    return () => window.clearInterval(id);
+    let cancelled = false;
+    let timer: number | undefined;
+    const schedule = () => {
+      const m = visibleAddrs().length || 1;
+      const delay = Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, m * MS_PER_ADDRESS));
+      timer = window.setTimeout(run, delay);
+    };
+    const run = async () => {
+      await load(true);
+      if (!cancelled) schedule();
+    };
+    // Initial full load, then begin the paced poll loop.
+    load(false).finally(() => {
+      if (!cancelled) schedule();
+    });
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
