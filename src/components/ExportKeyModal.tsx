@@ -12,21 +12,15 @@ interface Props {
 
 export function ExportKeyModal({ address, index, onClose }: Props) {
   const toast = useToast();
-  const [walletPassword, setWalletPassword] = useState("");
-  const [exportPassword, setExportPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (exportPassword.length < 6) {
-      setError("File password must be at least 6 characters.");
-      return;
-    }
-    if (exportPassword !== confirm) {
-      setError("File passwords don't match.");
+    if (!password) {
+      setError("Enter your wallet password.");
       return;
     }
 
@@ -50,15 +44,18 @@ export function ExportKeyModal({ address, index, onClose }: Props) {
 
     setPending(true);
     try {
+      // The wallet password both unlocks the key here AND encrypts the
+      // exported .key — one secret, so it's the same passphrase you type
+      // on exfer.dev when importing.
       await exportWalletKey({
         address,
-        walletPassword,
-        exportPassword,
+        walletPassword: password,
+        exportPassword: password,
         dest,
       });
       toast.success(
         "wallet.key exported",
-        "Import it on exfer.dev → Import wallet.key, using the file password you just set.",
+        "On exfer.dev → Import wallet.key, enter your wallet password as the wallet.key passphrase.",
       );
       onClose();
     } catch (err) {
@@ -85,14 +82,11 @@ export function ExportKeyModal({ address, index, onClose }: Props) {
           </p>
         </header>
 
-        <div className="banner-warn space-y-1 text-sm">
-          <div className="font-semibold">Two passwords, on purpose</div>
-          <p>
-            Your <strong>wallet password</strong> unlocks the key here. The{" "}
-            <strong>file password</strong> encrypts the exported{" "}
-            <span className="font-mono">.key</span> — you'll type it again on
-            exfer.dev to import. They can differ.
-          </p>
+        <div className="banner-info text-sm">
+          The file is encrypted with{" "}
+          <strong>your wallet password</strong>. When you import it on
+          exfer.dev, enter that same password as the “wallet.key
+          passphrase”.
         </div>
 
         <div>
@@ -103,42 +97,12 @@ export function ExportKeyModal({ address, index, onClose }: Props) {
             id="exp-wallet-pw"
             type="password"
             className="input"
-            value={walletPassword}
-            onChange={(e) => setWalletPassword(e.target.value)}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             disabled={pending}
             autoComplete="current-password"
+            autoFocus
           />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label" htmlFor="exp-file-pw">
-              File password
-            </label>
-            <input
-              id="exp-file-pw"
-              type="password"
-              className="input"
-              value={exportPassword}
-              onChange={(e) => setExportPassword(e.target.value)}
-              disabled={pending}
-              autoComplete="new-password"
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="exp-file-pw2">
-              Confirm file password
-            </label>
-            <input
-              id="exp-file-pw2"
-              type="password"
-              className="input"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              disabled={pending}
-              autoComplete="new-password"
-            />
-          </div>
         </div>
 
         {error && <div className="banner-error">{error}</div>}
@@ -155,7 +119,7 @@ export function ExportKeyModal({ address, index, onClose }: Props) {
           <button
             type="submit"
             className="btn"
-            disabled={pending || !walletPassword || !exportPassword}
+            disabled={pending || !password}
           >
             {pending ? "Exporting…" : "Choose location & export"}
           </button>
