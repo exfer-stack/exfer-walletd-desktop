@@ -82,22 +82,13 @@ export function Layout({ activeTab, onTabChange, children }: Props) {
     <div className="flex h-full flex-col">
       <header className="border-b border-neutral-800 bg-black">
         <div className="flex items-center px-6 py-3">
-          <div className="mr-8 flex items-center gap-2.5">
-            <img
-              src={logoUrl}
-              alt="exfer"
-              className="h-8 w-8 rounded-lg"
-              draggable={false}
-            />
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-lg font-semibold tracking-tight text-neutral-50">
-                exfer
-              </span>
-              <span className="text-sm font-medium text-neutral-500">
-                wallet
-              </span>
-            </div>
-          </div>
+          <img
+            src={logoUrl}
+            alt="exfer wallet"
+            title="exfer wallet"
+            className="mr-6 h-8 w-8 rounded-lg"
+            draggable={false}
+          />
           <nav className="flex items-center gap-1">
             {TABS.map((t) => {
               const active = t.id === activeTab;
