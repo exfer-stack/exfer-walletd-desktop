@@ -73,6 +73,23 @@ export function exportWalletKey(args: {
   });
 }
 
+/// Import a `wallet.key` (EXFK) file as a non-derived address. `path`
+/// points to the file on disk; `filePassword` decrypts it. The Rust
+/// shell parses the file, hands the raw secret to walletd's
+/// `import_private_key` RPC, and returns the resulting address.
+export function importWalletKey(args: {
+  path: string;
+  filePassword: string;
+  label?: string;
+}): Promise<string> {
+  if (devmock.isActive()) return devmock.import_wallet_key(args);
+  return invoke<string>("import_wallet_key", {
+    path: args.path,
+    filePassword: args.filePassword,
+    label: args.label ?? null,
+  });
+}
+
 /// Desktop UX cap on managed addresses. walletd itself supports ~4B
 /// HD indices, but a personal desktop wallet stays legible (and the
 /// per-address balance fan-out stays light on the public node's

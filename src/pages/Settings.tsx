@@ -3,7 +3,9 @@ import { getNodeRpc, rpc, setNodeRpc, formatExfer, resetWallet } from "../lib/rp
 import type { BootstrapStatus, WalletBalance } from "../lib/types";
 import { listLabels } from "../lib/labels";
 import { RevealPrivateKeyModal } from "../components/RevealPrivateKeyModal";
+import { ImportKeyModal } from "../components/ImportKeyModal";
 import { useToast } from "../lib/toast";
+import { useWallet } from "../lib/wallet";
 import { checkForUpdate, downloadAndApply } from "../lib/updater";
 
 interface Props {
@@ -33,6 +35,8 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
   const [status, setStatus] = useState<StatusInfo | null>(null);
 
   const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const { refresh } = useWallet();
 
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetting, setResetting] = useState(false);
@@ -327,7 +331,19 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
           >
             Export labels (JSON)
           </button>
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            className="btn-secondary"
+          >
+            Import wallet.key…
+          </button>
         </div>
+        <p className="help">
+          <span className="font-medium text-neutral-300">Import wallet.key</span>{" "}
+          adds an externally-held address (e.g. one exported from
+          exfer.dev or another machine) alongside the HD-derived ones.
+        </p>
       </section>
 
       {/* Sensitive data export — gated by password re-entry */}
@@ -372,6 +388,17 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
 
       {showPrivateKey && (
         <RevealPrivateKeyModal onClose={() => setShowPrivateKey(false)} />
+      )}
+
+      {showImport && (
+        <ImportKeyModal
+          onClose={() => setShowImport(false)}
+          onImported={() => {
+            // Pull the newly-imported address into the wallet provider
+            // so it shows up in Dashboard / Receive immediately.
+            refresh().catch(() => {});
+          }}
+        />
       )}
 
       {/* Daemon status */}

@@ -1432,8 +1432,8 @@ dependencies = [
 
 [[package]]
 name = "exfer-walletd"
-version = "1.6.0"
-source = "git+https://github.com/exfer-stack/exfer-walletd?tag=v1.6.0#076f781fbbae1934568834a033728bcbbb4de7b1"
+version = "1.8.0"
+source = "git+https://github.com/exfer-stack/exfer-walletd?tag=v1.8.0#df103ba84f6fa79e979fc0f189bd7752f70546aa"
 dependencies = [
  "anyhow",
  "argon2",
@@ -1469,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "exfer-walletd-desktop"
-version = "0.6.4"
+version = "0.7.0"
 dependencies = [
  "aes-gcm",
  "anyhow",

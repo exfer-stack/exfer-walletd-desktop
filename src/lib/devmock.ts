@@ -237,6 +237,28 @@ export const devmock = {
     // no-op: a real Tauri build writes the .key file.
   },
 
+  async import_wallet_key(args: {
+    path: string;
+    filePassword: string;
+    label?: string;
+  }): Promise<string> {
+    // Dev mode can't read EXFK files; fabricate a fake "imported" address
+    // so the modal flow is exercisable end-to-end in the browser.
+    if (!args.path) throw new Error("no wallet.key file selected");
+    if (!args.filePassword) throw new Error("file password required");
+    const s = loadState();
+    const address = fakeHex(`imported-${Date.now()}`, 64);
+    s.addresses.push({
+      address,
+      index: s.addresses.length,
+      pubkey: fakeHex(`pk-imp-${address.slice(0, 8)}`, 64),
+      balance: 0,
+      utxoCount: 0,
+    });
+    saveState(s);
+    return address;
+  },
+
   async rpc(method: string, params: unknown): Promise<unknown> {
     if (useRealWalletd()) {
       return realRpc(method, params);
@@ -252,9 +274,12 @@ export const devmock = {
         return {
           addresses: s.addresses.map((a) => ({
             address: a.address,
-            index: a.index,
+            // Imported addresses have no HD index — surface that so the
+            // UI's "Imported" pill works in dev mode too.
+            ...(a.pubkey.startsWith("pk-imp-")
+              ? { imported: true }
+              : { index: a.index, imported: false }),
             label: null,
-            imported: false,
           })),
         };
 

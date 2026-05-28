@@ -128,6 +128,58 @@ async fn export_wallet_key(
     Ok(())
 }
 
+/// Import a wallet.key (EXFK) file as a non-derived address. Reads the
+/// file, decrypts it with `file_password`, hands the raw secret to
+/// walletd's `import_private_key` RPC, and returns the resulting address.
+/// The plaintext key never crosses into the webview.
+///
+/// Errors are surfaced as short user strings (wrong password, malformed
+/// file, duplicate address, etc.). `file_password` and the in-memory
+/// secret buffer are zeroed before the call returns.
+#[tauri::command]
+async fn import_wallet_key(
+    ctx: State<'_, AppCtx>,
+    path: String,
+    file_password: String,
+    label: Option<String>,
+) -> Result<String, String> {
+    if path.is_empty() {
+        return Err("no wallet.key file selected".into());
+    }
+    let buf = std::fs::read(&path).map_err(|e| format!("reading {path}: {e}"))?;
+
+    let mut secret = export_key::parse_exfk(&buf, file_password.as_bytes())?;
+
+    let (client, conn) = {
+        let inner = ctx.inner.lock().await;
+        match (inner.client.clone(), inner.conn.clone()) {
+            (Some(c), Some(k)) => (c, k),
+            _ => {
+                secret.fill(0);
+                return Err("walletd not ready".into());
+            }
+        }
+    };
+    let secret_hex = hex::encode(secret);
+    secret.fill(0);
+
+    let mut params = serde_json::json!({ "secret_hex": secret_hex });
+    if let Some(l) = label.as_ref().filter(|l| !l.trim().is_empty()) {
+        params["label"] = serde_json::Value::String(l.trim().to_string());
+    }
+
+    let result = rpc_client::forward_rpc(&client, &conn, "import_private_key", params)
+        .await
+        .map_err(|e| e.to_user_string())?;
+
+    let address = result
+        .get("address")
+        .and_then(|v| v.as_str())
+        .ok_or("walletd response missing address")?
+        .to_string();
+    Ok(address)
+}
+
 #[tauri::command]
 async fn get_node_rpc(ctx: State<'_, AppCtx>) -> Result<String, String> {
     let datadir = ctx.inner.lock().await.datadir.clone();
@@ -237,6 +289,7 @@ pub fn run() {
             set_node_rpc,
             reset_wallet,
             export_wallet_key,
+            import_wallet_key,
             restore_from_mnemonic,
         ])
         .run(tauri::generate_context!())
