@@ -1,7 +1,7 @@
-// Client-side "hidden addresses" set. HD addresses are derived
-// deterministically from the seed, so a key can never be truly deleted
-// (re-deriving the same index reproduces it). "Hiding" just removes an
-// address from the lists — reversible, and no key material is touched.
+// Client-side "hidden addresses" set. "Hiding" just removes an address
+// from the lists — reversible, and no key material is touched. It's the
+// soft counterpart to "Delete address" (which erases the key via walletd);
+// use hide to declutter, delete to actually remove.
 
 const HIDDEN_KEY = "exfer-walletd-desktop-hidden-v1";
 

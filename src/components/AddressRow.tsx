@@ -1,6 +1,8 @@
 import { useEffect, useState, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { CopyButton } from "./CopyButton";
 import { ExportKeyModal } from "./ExportKeyModal";
+import { RecoveryPhraseModal, DeleteAddressModal } from "./KeyringModals";
 import { getLabel, setLabel, shortAddress } from "../lib/labels";
 import { hide } from "../lib/hidden";
 import { formatExfer, formatBalanceCompact } from "../lib/rpc";
@@ -19,10 +21,10 @@ interface Props {
 
 export function AddressRow({
   address,
-  // `index` (HD derivation index) is no longer shown as a column (dev
-  // jargon), but it's still passed through to ExportKeyModal below.
+  // `index` (legacy HD derivation index) isn't shown anymore — in the
+  // keyring model every address is an independent key — but it's still
+  // threaded to ExportKeyModal for the wallet.key filename default.
   index,
-  imported,
   balance,
   pendingIn,
   hidden,
@@ -33,6 +35,8 @@ export function AddressRow({
   const [draft, setDraft] = useState(() => getLabel(address) ?? "");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [showPhrase, setShowPhrase] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
   const label = getLabel(address);
 
   function commit() {
@@ -94,7 +98,6 @@ export function AddressRow({
           <div className="flex items-center gap-2">
             <code className="addr-xs">{shortAddress(address)}</code>
             <CopyButton text={address} className="btn-ghost text-xs" />
-            {imported && <span className="pill pill-warn">imported</span>}
           </div>
         </td>
         <td className="px-5 py-4 text-right">
@@ -135,6 +138,13 @@ export function AddressRow({
           y={menu.y}
           onClose={() => setMenu(null)}
           items={[
+            {
+              label: "Show recovery phrase…",
+              onClick: () => {
+                setMenu(null);
+                setShowPhrase(true);
+              },
+            },
             {
               label: "Export wallet.key…",
               onClick: () => {
@@ -181,6 +191,14 @@ export function AddressRow({
                     onLabelChange?.();
                   },
                 },
+            {
+              label: "Delete address…",
+              danger: true,
+              onClick: () => {
+                setMenu(null);
+                setShowDelete(true);
+              },
+            },
           ]}
         />
       )}
@@ -190,6 +208,22 @@ export function AddressRow({
           address={address}
           index={index}
           onClose={() => setShowExport(false)}
+        />
+      )}
+
+      {showPhrase && (
+        <RecoveryPhraseModal
+          address={address}
+          onClose={() => setShowPhrase(false)}
+        />
+      )}
+
+      {showDelete && (
+        <DeleteAddressModal
+          address={address}
+          balance={balance}
+          onClose={() => setShowDelete(false)}
+          onDeleted={() => onLabelChange?.()}
         />
       )}
     </>
@@ -208,12 +242,16 @@ function RowMenu({
   onClose: () => void;
 }) {
   useEffect(() => {
+    // Close on the next outside *mousedown* (not click): the click that
+    // OPENED this menu is still in flight, so listening on "click" would
+    // catch its own opening event and close immediately. mousedown for the
+    // opening press already fired before this menu mounted.
     const close = () => onClose();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("click", close);
+    window.addEventListener("mousedown", close);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("click", close);
+      window.removeEventListener("mousedown", close);
       window.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
@@ -224,11 +262,14 @@ function RowMenu({
     left: Math.min(x, window.innerWidth - 220),
   };
 
-  return (
+  // Portal to <body>: a fixed-position menu must not live inside <tbody>
+  // (invalid HTML — the browser reparents it and breaks interaction).
+  return createPortal(
     <div
       className="fixed z-50 w-52 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 py-1 shadow-xl fade-in"
       style={style}
       onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       {items.map((it) => (
         <button
@@ -243,6 +284,7 @@ function RowMenu({
           {it.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }

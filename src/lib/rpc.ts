@@ -90,6 +90,35 @@ export function importWalletKey(args: {
   });
 }
 
+/// Export the WHOLE keyring as one passphrase-sealed vault file at
+/// `dest`. The keyring-model backup: a single encrypted file, no seed
+/// phrase to copy. `walletPassword` authorizes + seals it. Restore with
+/// `importVaultFile` using that same password.
+export function exportVaultFile(args: {
+  walletPassword: string;
+  dest: string;
+}): Promise<void> {
+  if (devmock.isActive()) return devmock.export_vault_file(args);
+  return invoke<void>("export_vault_file", {
+    walletPassword: args.walletPassword,
+    dest: args.dest,
+  });
+}
+
+/// Restore keys from a vault file written by `exportVaultFile`.
+/// `filePassword` is the password the backup was created with. Returns the
+/// count of addresses newly restored (already-present ones are skipped).
+export function importVaultFile(args: {
+  path: string;
+  filePassword: string;
+}): Promise<number> {
+  if (devmock.isActive()) return devmock.import_vault_file(args);
+  return invoke<number>("import_vault_file", {
+    path: args.path,
+    filePassword: args.filePassword,
+  });
+}
+
 /// Desktop UX cap on managed addresses. walletd itself supports ~4B
 /// HD indices, but a personal desktop wallet stays legible (and the
 /// per-address balance fan-out stays light on the public node's

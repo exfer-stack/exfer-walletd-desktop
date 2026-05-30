@@ -114,8 +114,16 @@ pub fn pinned_client(fingerprint: &str) -> Result<reqwest::Client, AppError> {
 fn scope_for_method(method: &str) -> Scope {
     match method {
         "transfer" | "send_raw_transaction" | "sign_message"
-        | "reveal_mnemonic" | "reveal_private_key" => Scope::Spend,
-        "generate_address" | "abandon_transfer" => Scope::Manage,
+        | "reveal_mnemonic" | "reveal_private_key"
+        // walletd v1.9.x keyring lifecycle: per-address recovery phrase,
+        // key-material exports, and deletion all move/expose secrets.
+        | "reveal_address_mnemonic" | "export_vault" | "export_address"
+        | "import_vault" | "delete_address" => Scope::Spend,
+        // import_private_key/import_mnemonic add a key (Manage, like
+        // generate_*). import_private_key was previously missing here and
+        // fell through to Read, which walletd rejects with -32001.
+        "generate_address" | "generate_independent_address"
+        | "import_private_key" | "import_mnemonic" | "abandon_transfer" => Scope::Manage,
         _ => Scope::Read,
     }
 }

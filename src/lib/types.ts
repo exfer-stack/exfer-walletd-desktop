@@ -40,8 +40,12 @@ export interface WalletBalance {
 
 export interface GeneratedAddress {
   address: string;
-  index: number;
+  /// HD derivation index — present only for legacy seeded `generate_address`.
+  /// Independent (1:1) keys from `generate_independent_address` have none.
+  index?: number;
   pubkey: string;
+  /// True for an independent 1:1 key (the keyring-model default).
+  imported?: boolean;
 }
 
 export interface TransferReceipt {

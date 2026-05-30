@@ -45,10 +45,10 @@ export function Receive() {
     setGenerating(true);
     setError(null);
     try {
-      const out = await rpc<GeneratedAddress>("generate_address");
+      const out = await rpc<GeneratedAddress>("generate_independent_address");
       await refresh();
       setSelected(out.address);
-      toast.success("Address created", `Index ${out.index} is ready.`);
+      toast.success("Address created", `${out.address.slice(0, 10)}… is ready.`);
     } catch (e) {
       setError(String(e));
       toast.error("Couldn't create address", String(e));
@@ -125,7 +125,7 @@ export function Receive() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-neutral-100">
-                          {label ?? (e.imported ? "Imported" : `Address ${e.index}`)}
+                          {label ?? "Address"}
                         </div>
                         <code className="addr-xs">
                           {shortAddress(e.address)}

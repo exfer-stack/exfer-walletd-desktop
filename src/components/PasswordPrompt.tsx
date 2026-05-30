@@ -99,8 +99,8 @@ export function PasswordPrompt({ onReady }: Props) {
           </h1>
           <p className="text-base text-neutral-400 leading-relaxed">
             {mode === "create"
-              ? "Set a password to encrypt this wallet's seed at rest. It's saved in your OS keychain, so you only enter it once on this machine."
-              : "Enter your 24-word recovery phrase and choose a new password for this machine. Your addresses re-derive automatically."}
+              ? "Set a password to encrypt this wallet's keys at rest. It's saved in your OS keychain, so you only enter it once on this machine."
+              : "Restoring a legacy 24-word seed wallet? Enter the phrase and choose a new password. (For a vault backup, create a wallet first, then Settings → Restore from backup.)"}
           </p>
         </header>
 

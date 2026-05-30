@@ -35,6 +35,10 @@ interface DevState {
     pubkey: string;
     balance: number;
     utxoCount: number;
+    // True for an independent 1:1 key (the keyring-model default) — vs a
+    // legacy HD-derived address. Drives nothing visual anymore but kept so
+    // dev mode mirrors the daemon's list shape.
+    imported?: boolean;
     // Optional mocked unconfirmed credit, surfaced when get_wallet_balance
     // is called with { pending: true } — lets dev mode exercise the
     // pending/incoming UI without a live mempool.
@@ -101,9 +105,45 @@ function realToken(scope: "read" | "manage" | "spend"): string {
 }
 
 function scopeFor(method: string): "read" | "manage" | "spend" {
-  if (method === "transfer" || method === "send_raw_transaction" || method === "sign_message") return "spend";
-  if (method === "generate_address" || method === "abandon_transfer") return "manage";
+  if (
+    method === "transfer" ||
+    method === "send_raw_transaction" ||
+    method === "sign_message" ||
+    method === "reveal_mnemonic" ||
+    method === "reveal_private_key" ||
+    method === "reveal_address_mnemonic" ||
+    method === "export_vault" ||
+    method === "export_address" ||
+    method === "import_vault" ||
+    method === "delete_address"
+  )
+    return "spend";
+  if (
+    method === "generate_address" ||
+    method === "generate_independent_address" ||
+    method === "import_private_key" ||
+    method === "import_mnemonic" ||
+    method === "abandon_transfer"
+  )
+    return "manage";
   return "read";
+}
+
+// A deterministic 24-word phrase from a seed, for dev display only (NOT a
+// real BIP-39 mnemonic). Lets the recovery-phrase UI render without a
+// backend.
+const MOCK_WORDS = [
+  "ball", "panel", "web", "field", "blossom", "hire", "sketch", "viable",
+  "fragile", "museum", "cherry", "talent", "today", "sentence", "truth",
+  "camp", "dose", "essence", "crime", "patrol", "guard", "lunar", "manage",
+  "supply", "ocean", "ladder", "velvet", "puzzle", "garden", "rocket",
+];
+function mockMnemonic(seed: string): string[] {
+  const hex = fakeHex(seed, 48);
+  return Array.from({ length: 24 }, (_, i) => {
+    const byte = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    return MOCK_WORDS[byte % MOCK_WORDS.length];
+  });
 }
 
 async function realRpc(method: string, params: unknown): Promise<unknown> {
@@ -263,6 +303,42 @@ export const devmock = {
     return address;
   },
 
+  async export_vault_file(args: {
+    walletPassword: string;
+    dest: string;
+  }): Promise<void> {
+    // Dev mode can't write files; just validate so the flow is exercisable.
+    if (!args.walletPassword) throw new Error("wallet password required");
+    // no-op: a real Tauri build writes the sealed .vault file.
+  },
+
+  async import_vault_file(args: {
+    path: string;
+    filePassword: string;
+  }): Promise<number> {
+    // Dev mode can't read files; fabricate a couple of restored addresses
+    // so the restore flow is exercisable end-to-end in the browser.
+    if (!args.path) throw new Error("no backup file selected");
+    if (!args.filePassword) throw new Error("file password required");
+    const s = loadState();
+    let added = 0;
+    for (let i = 0; i < 2; i++) {
+      const address = fakeHex(`vault-${args.path}-${i}`, 64);
+      if (s.addresses.find((a) => a.address === address)) continue;
+      s.addresses.push({
+        address,
+        index: s.addresses.length,
+        pubkey: fakeHex(`vpk-${address.slice(0, 8)}`, 64),
+        balance: 0,
+        utxoCount: 0,
+        imported: true,
+      });
+      added++;
+    }
+    saveState(s);
+    return added;
+  },
+
   async rpc(method: string, params: unknown): Promise<unknown> {
     if (useRealWalletd()) {
       return realRpc(method, params);
@@ -333,6 +409,72 @@ export const devmock = {
         saveState(s);
         const out: GeneratedAddress = { address, index, pubkey };
         return out;
+      }
+
+      case "generate_independent_address": {
+        // Keyring-model default: a fresh independent 1:1 key (no HD index).
+        const n = s.addresses.length;
+        const address = fakeHex(`ind-${n}-${Date.now()}`, 64);
+        const pubkey = fakeHex(`indpk-${n}`, 64);
+        const balance = n === 0 ? Math.floor(0.1 * EXFER_UNIT) : 0;
+        s.addresses.push({
+          address,
+          index: n,
+          pubkey,
+          balance,
+          utxoCount: balance > 0 ? 1 : 0,
+          imported: true,
+        });
+        saveState(s);
+        return { address, pubkey, imported: true };
+      }
+
+      case "reveal_address_mnemonic": {
+        const p = params as { address: string; passphrase: string };
+        if (!p.passphrase || p.passphrase.length < 4) {
+          throw new Error("Keystore locked: wrong passphrase");
+        }
+        if (!s.addresses.find((a) => a.address === p.address)) {
+          throw new Error(`Wallet not found: ${p.address}`);
+        }
+        return { address: p.address, mnemonic: mockMnemonic(`am-${p.address}`) };
+      }
+
+      case "import_mnemonic": {
+        const p = params as { mnemonic: string; label?: string };
+        if (!p.mnemonic || p.mnemonic.trim().split(/\s+/).length !== 24) {
+          throw new Error("recovery phrase must be 24 words");
+        }
+        const address = fakeHex(`frommn-${p.mnemonic.trim()}`, 64);
+        if (!s.addresses.find((a) => a.address === address)) {
+          s.addresses.push({
+            address,
+            index: s.addresses.length,
+            pubkey: fakeHex(`mnpk-${address.slice(0, 8)}`, 64),
+            balance: 0,
+            utxoCount: 0,
+            imported: true,
+          });
+          saveState(s);
+        }
+        return { address, imported: true };
+      }
+
+      case "delete_address": {
+        const p = params as { address: string; passphrase: string; force?: boolean };
+        if (!p.passphrase || p.passphrase.length < 4) {
+          throw new Error("Keystore locked: wrong passphrase");
+        }
+        const target = s.addresses.find((a) => a.address === p.address);
+        if (!target) throw new Error(`Wallet not found: ${p.address}`);
+        if (!p.force && target.balance > 0) {
+          throw new Error(
+            `address ${p.address} still holds ${target.balance} exfers — sweep it first, or force the deletion`,
+          );
+        }
+        s.addresses = s.addresses.filter((a) => a.address !== p.address);
+        saveState(s);
+        return { deleted: p.address };
       }
 
       case "simulate_transfer": {

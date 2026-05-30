@@ -48,9 +48,12 @@ export function Dashboard() {
   async function generateAddress() {
     setGenerating(true);
     try {
-      const a = await rpc<GeneratedAddress>("generate_address");
+      const a = await rpc<GeneratedAddress>("generate_independent_address");
       await refreshAll();
-      toast.success("Address created", `Index ${a.index} is ready to receive.`);
+      toast.success(
+        "Address created",
+        `${a.address.slice(0, 10)}… is ready to receive.`,
+      );
     } catch (e) {
       toast.error("Couldn't create address", String(e));
     } finally {

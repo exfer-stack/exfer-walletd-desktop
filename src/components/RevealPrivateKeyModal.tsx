@@ -88,9 +88,7 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
                   const label = getLabel(e.address);
                   const tag = label
                     ? `${label} — ${shortAddress(e.address)}`
-                    : e.imported
-                      ? `imported — ${shortAddress(e.address)}`
-                      : `Address ${e.index} — ${shortAddress(e.address)}`;
+                    : shortAddress(e.address);
                   return (
                     <option key={e.address} value={e.address}>
                       {tag}

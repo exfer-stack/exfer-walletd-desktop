@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { exportWalletKey } from "../lib/rpc";
 import { devmock } from "../lib/devmock";
 import { useToast } from "../lib/toast";
@@ -136,7 +137,9 @@ function Backdrop({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  return (
+  // Portal to <body>: rendered from inside a table row, so a bare overlay
+  // div would be invalid HTML nested in <tbody>.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-6 fade-in"
       onMouseDown={(e) => {
@@ -144,6 +147,7 @@ function Backdrop({
       }}
     >
       {children}
-    </div>
+    </div>,
+    document.body,
   );
 }

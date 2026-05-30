@@ -180,6 +180,89 @@ async fn import_wallet_key(
     Ok(address)
 }
 
+/// Export the WHOLE keyring as one passphrase-sealed vault file at
+/// `dest`. walletd seals every managed key (verified by `wallet_password`)
+/// into a single WDV1 blob; we write its raw bytes to disk (0600). This is
+/// the keyring-model backup — one file, no seed mnemonic to copy. Restores
+/// via `import_vault_file`.
+#[tauri::command]
+async fn export_vault_file(
+    ctx: State<'_, AppCtx>,
+    wallet_password: String,
+    dest: String,
+) -> Result<(), String> {
+    let (client, conn) = {
+        let inner = ctx.inner.lock().await;
+        match (inner.client.clone(), inner.conn.clone()) {
+            (Some(c), Some(k)) => (c, k),
+            _ => return Err("walletd not ready".into()),
+        }
+    };
+    let result = rpc_client::forward_rpc(
+        &client,
+        &conn,
+        "export_vault",
+        serde_json::json!({ "passphrase": wallet_password }),
+    )
+    .await
+    .map_err(|e| e.to_user_string())?;
+
+    let vault_hex = result
+        .get("vault_hex")
+        .and_then(|v| v.as_str())
+        .ok_or("walletd response missing vault_hex")?;
+    let bytes = hex::decode(vault_hex).map_err(|_| "vault_hex not valid hex".to_string())?;
+
+    std::fs::write(&dest, &bytes).map_err(|e| format!("writing {dest}: {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+/// Restore keys from a vault file written by `export_vault_file`. Reads the
+/// sealed blob, hands it to walletd's `import_vault` (decrypted with
+/// `file_password` — the password the backup was created with). Each key is
+/// re-imported as an independent key; already-present addresses are
+/// skipped. Returns the number of addresses newly restored.
+#[tauri::command]
+async fn import_vault_file(
+    ctx: State<'_, AppCtx>,
+    path: String,
+    file_password: String,
+) -> Result<usize, String> {
+    if path.is_empty() {
+        return Err("no backup file selected".into());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| format!("reading {path}: {e}"))?;
+    let vault_hex = hex::encode(&bytes);
+
+    let (client, conn) = {
+        let inner = ctx.inner.lock().await;
+        match (inner.client.clone(), inner.conn.clone()) {
+            (Some(c), Some(k)) => (c, k),
+            _ => return Err("walletd not ready".into()),
+        }
+    };
+    let result = rpc_client::forward_rpc(
+        &client,
+        &conn,
+        "import_vault",
+        serde_json::json!({ "vault_hex": vault_hex, "passphrase": file_password }),
+    )
+    .await
+    .map_err(|e| e.to_user_string())?;
+
+    let count = result
+        .get("imported")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    Ok(count)
+}
+
 #[tauri::command]
 async fn get_node_rpc(ctx: State<'_, AppCtx>) -> Result<String, String> {
     let datadir = ctx.inner.lock().await.datadir.clone();
@@ -290,6 +373,8 @@ pub fn run() {
             reset_wallet,
             export_wallet_key,
             import_wallet_key,
+            export_vault_file,
+            import_vault_file,
             restore_from_mnemonic,
         ])
         .run(tauri::generate_context!())

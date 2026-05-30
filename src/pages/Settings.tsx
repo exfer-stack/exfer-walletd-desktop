@@ -4,6 +4,7 @@ import type { BootstrapStatus, WalletBalance } from "../lib/types";
 import { listLabels } from "../lib/labels";
 import { RevealPrivateKeyModal } from "../components/RevealPrivateKeyModal";
 import { ImportKeyModal } from "../components/ImportKeyModal";
+import { VaultBackupModal, VaultRestoreModal } from "../components/KeyringModals";
 import { useToast } from "../lib/toast";
 import { useWallet } from "../lib/wallet";
 import { checkForUpdate, downloadAndApply } from "../lib/updater";
@@ -36,6 +37,8 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
 
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showBackup, setShowBackup] = useState(false);
+  const [showRestore, setShowRestore] = useState(false);
   const { refresh } = useWallet();
 
   const [resetConfirm, setResetConfirm] = useState("");
@@ -279,40 +282,26 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
         )}
       </section>
 
-      {/* Backup & export */}
+      {/* Data export / import utilities */}
       <section className="card-padded space-y-4">
         <header>
           <h2 className="text-lg font-semibold text-neutral-100">
-            Backup & export
+            Export &amp; import data
           </h2>
           <p className="text-sm text-neutral-400">
-            What's worth saving outside this device.
+            Address lists, labels, and single-key files. To back up the keys
+            themselves, use <span className="font-medium text-neutral-300">Back up wallet</span>{" "}
+            above.
           </p>
         </header>
 
-        <div className="banner-warn space-y-2">
-          <div className="font-semibold">
-            How recovery works in this wallet
-          </div>
+        <div className="banner-info space-y-1 text-sm">
+          <div className="font-semibold">Don't forget your password</div>
           <p>
-            We use a custom HD derivation path, so the 24-word seed isn't
-            portable to MetaMask / Sparrow / Electrum. Backup means two
-            things:
+            Your wallet password unlocks every key and encrypts the backup
+            file. It's saved in this machine's OS keychain — write it down
+            somewhere else too, since losing it locks every address.
           </p>
-          <ol className="ml-4 list-decimal space-y-1">
-            <li>
-              <span className="font-medium">Your password.</span> Stored
-              in your OS keychain on this machine. Write it down somewhere
-              else too — losing it locks every key.
-            </li>
-            <li>
-              <span className="font-medium">
-                Your app-data directory.
-              </span>{" "}
-              Copy it to a USB / encrypted backup. Together with the
-              password, this restores every address.
-            </li>
-          </ol>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -342,7 +331,52 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
         <p className="help">
           <span className="font-medium text-neutral-300">Import wallet.key</span>{" "}
           adds an externally-held address (e.g. one exported from
-          exfer.dev or another machine) alongside the HD-derived ones.
+          exfer.dev or another machine) to this wallet. Old{" "}
+          <span className="font-mono">.key</span> files still import — the
+          format is unchanged.
+        </p>
+      </section>
+
+      {/* Whole-wallet encrypted backup — the recommended way to back up */}
+      <section className="card-padded space-y-4">
+        <header>
+          <h2 className="text-lg font-semibold text-neutral-100">
+            Back up &amp; restore
+          </h2>
+          <p className="text-sm text-neutral-400">
+            Every address in this wallet is its own key. One encrypted{" "}
+            <span className="font-mono">.vault</span> file backs up all of
+            them at once — no seed phrase to copy down.
+          </p>
+        </header>
+
+        <div className="banner-info text-sm">
+          The backup file is encrypted with{" "}
+          <strong>your wallet password</strong>. Keep the file and the
+          password somewhere safe; you need both to restore. New addresses you
+          create later aren't in an old backup — re-export after adding keys.
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setShowBackup(true)}
+          >
+            Back up wallet…
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setShowRestore(true)}
+          >
+            Restore from backup…
+          </button>
+        </div>
+        <p className="help">
+          Prefer this over single-key exports for routine backup. To move{" "}
+          <em>one</em> address elsewhere, use its row menu (Recovery phrase,
+          Export wallet.key) instead.
         </p>
       </section>
 
@@ -401,6 +435,17 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
         />
       )}
 
+      {showBackup && <VaultBackupModal onClose={() => setShowBackup(false)} />}
+
+      {showRestore && (
+        <VaultRestoreModal
+          onClose={() => setShowRestore(false)}
+          onRestored={() => {
+            refresh().catch(() => {});
+          }}
+        />
+      )}
+
       {/* Daemon status */}
       <section className="card-padded space-y-3">
         <header>
@@ -444,14 +489,14 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
         <div className="banner-error space-y-1 text-sm">
           <div className="font-semibold">Reset wipes everything locally</div>
           <p>
-            Deletes the encrypted seed, tokens, and TLS cert from this
+            Deletes the encrypted keys, tokens, and TLS cert from this
             machine's app-data directory and clears the saved password from
             your OS keychain. Coins on-chain are untouched, but{" "}
             <strong>
-              without your recovery phrase you will not be able to get back
-              in
+              without a backup (vault file, or each address's recovery
+              phrase / private key) you will not be able to get back in
             </strong>
-            . Export it first if you might need this wallet again.
+            . Back up first if you might need this wallet again.
           </p>
         </div>
 
