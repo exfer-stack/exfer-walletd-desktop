@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { rpc, formatExfer, splitExfer, MAX_ADDRESSES } from "../lib/rpc";
+import {
+  rpc,
+  formatExfer,
+  splitBalanceCompact,
+  MAX_ADDRESSES,
+} from "../lib/rpc";
 import type { GeneratedAddress } from "../lib/types";
 import { AddressRow } from "../components/AddressRow";
 import { useWallet } from "../lib/wallet";
@@ -70,23 +75,26 @@ export function Dashboard() {
         <div
           className="amount-lg mt-2 flex items-baseline tracking-normal"
           title={
-            hasPending
-              ? `Confirmed ${formatExfer(visibleTotal)}` +
-                (visiblePendingIn > 0
-                  ? ` · ${formatExfer(visiblePendingIn)} awaiting confirmation`
-                  : "") +
-                (visiblePendingOut > 0
-                  ? ` · ${formatExfer(visiblePendingOut)} leaving`
+            data
+              ? `Exact: ${formatExfer(visibleProjected)}` +
+                (hasPending
+                  ? ` · ${formatExfer(visibleTotal)} confirmed` +
+                    (visiblePendingIn > 0
+                      ? ` · ${formatExfer(visiblePendingIn)} awaiting confirmation`
+                      : "") +
+                    (visiblePendingOut > 0
+                      ? ` · ${formatExfer(visiblePendingOut)} leaving`
+                      : "")
                   : "")
               : undefined
           }
         >
           {data ? (
             <>
-              <span>{splitExfer(visibleProjected).whole}</span>
-              {splitExfer(visibleProjected).frac && (
+              <span>{splitBalanceCompact(visibleProjected).whole}</span>
+              {splitBalanceCompact(visibleProjected).frac && (
                 <span className="text-neutral-500">
-                  .{splitExfer(visibleProjected).frac}
+                  .{splitBalanceCompact(visibleProjected).frac}
                 </span>
               )}
               <span className="ml-2.5 font-sans text-xl font-medium text-neutral-400">

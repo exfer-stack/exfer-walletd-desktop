@@ -116,6 +116,42 @@ export function splitExfer(exfers: number): { whole: string; frac: string } {
   return { whole, frac };
 }
 
+/** How many fractional digits the *compact* headline shows before it stops.
+ *  Full precision still lives in tooltips and on the Send / receipt screens. */
+const COMPACT_DECIMALS = 4;
+
+/** Compact display split for the dashboard headline + rows: integer in full,
+ *  fraction capped so an 8-decimal balance like 0.79999862 reads as "0.7999"
+ *  instead of a long tail. Truncated toward zero (never rounded up) so it can
+ *  never *overstate* funds. Sub-0.0001 amounts keep going to the first few
+ *  significant digits so tiny balances don't collapse to "0". `truncated` is
+ *  true when real digits were dropped (caller can offer the full value on
+ *  hover). This mirrors how Coinbase/MetaMask/Phantom show a short balance up
+ *  top and the exact figure on the detail view. */
+export function splitBalanceCompact(exfers: number): {
+  whole: string;
+  frac: string;
+  truncated: boolean;
+} {
+  const wholeNum = Math.floor(exfers / EXFER_UNIT);
+  const whole = wholeNum.toLocaleString("en-US");
+  const fracFull = (exfers % EXFER_UNIT).toString().padStart(8, "0");
+  let cut = COMPACT_DECIMALS;
+  if (wholeNum === 0) {
+    const firstSig = fracFull.search(/[1-9]/);
+    if (firstSig >= COMPACT_DECIMALS) cut = Math.min(8, firstSig + 3);
+  }
+  const frac = fracFull.slice(0, cut).replace(/0+$/, "");
+  const truncated = fracFull.slice(cut).replace(/0+$/, "") !== "";
+  return { whole, frac, truncated };
+}
+
+/** Compact one-line balance, e.g. "1,234.5 EXFER". */
+export function formatBalanceCompact(exfers: number): string {
+  const { whole, frac } = splitBalanceCompact(exfers);
+  return frac ? `${whole}.${frac} EXFER` : `${whole} EXFER`;
+}
+
 export function parseExferAmount(input: string): number {
   // Accepts "1.234" → 123_400_000 exfers. Throws on garbage.
   const trimmed = input.trim();

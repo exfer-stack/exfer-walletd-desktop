@@ -3,7 +3,7 @@ import { CopyButton } from "./CopyButton";
 import { ExportKeyModal } from "./ExportKeyModal";
 import { getLabel, setLabel, shortAddress } from "../lib/labels";
 import { hide } from "../lib/hidden";
-import { formatExfer } from "../lib/rpc";
+import { formatExfer, formatBalanceCompact } from "../lib/rpc";
 
 interface Props {
   address: string;
@@ -123,8 +123,11 @@ export function AddressRow({
                 title={`includes ${formatExfer(pendingIn)} awaiting confirmation`}
               />
             )}
-            <div className={"amount" + (balance === 0 ? " text-neutral-600" : "")}>
-              {formatExfer(balance)}
+            <div
+              className={"amount" + (balance === 0 ? " text-neutral-600" : "")}
+              title={formatExfer(balance)}
+            >
+              {formatBalanceCompact(balance)}
             </div>
             <button
               type="button"
