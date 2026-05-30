@@ -126,7 +126,7 @@ export function Dashboard() {
               type="button"
               onClick={generateAddress}
               disabled={generating || atCap}
-              className="btn"
+              className="btn-secondary"
               title={
                 atCap
                   ? `This wallet is capped at ${MAX_ADDRESSES} addresses`
