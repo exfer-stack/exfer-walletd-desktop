@@ -10,6 +10,8 @@ interface Props {
   index: number | null;
   imported: boolean;
   balance: number;
+  /** Unconfirmed incoming value (mempool), if any. */
+  pendingIn?: number;
   utxoCount?: number;
   truncated?: boolean;
   hidden?: boolean;
@@ -22,6 +24,7 @@ export function AddressRow({
   index,
   imported,
   balance,
+  pendingIn,
   utxoCount,
   truncated,
   hidden,
@@ -111,7 +114,14 @@ export function AddressRow({
         </td>
         <td className="px-5 py-4 text-right">
           <div className="flex items-center justify-end gap-2">
-            <div className="amount">{formatExfer(balance)}</div>
+            <div>
+              <div className="amount">{formatExfer(balance)}</div>
+              {pendingIn != null && pendingIn > 0 && (
+                <div className="text-xs font-medium text-emerald-400 tabular-nums">
+                  +{formatExfer(pendingIn)} incoming
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={(e) =>

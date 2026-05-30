@@ -29,6 +29,14 @@ export function Dashboard() {
     ? allEntries
     : allEntries.filter((e) => !isHidden(e.address));
   const visibleTotal = visibleEntries.reduce((a, e) => a + e.balance, 0);
+  const visiblePendingIn = visibleEntries.reduce(
+    (a, e) => a + (e.pending_received ?? 0),
+    0,
+  );
+  const visiblePendingOut = visibleEntries.reduce(
+    (a, e) => a + (e.pending_spent ?? 0),
+    0,
+  );
 
   async function generateAddress() {
     setGenerating(true);
@@ -56,6 +64,19 @@ export function Dashboard() {
         <div className="amount-lg mt-2">
           {data ? formatExfer(visibleTotal) : "—"}
         </div>
+        {/* Unconfirmed (mempool) credit — shown the moment a deposit
+            lands, ahead of confirmation. */}
+        {data && visiblePendingIn > 0 && (
+          <div className="mt-1 text-sm font-medium text-emerald-400">
+            +{formatExfer(visiblePendingIn)} incoming
+            <span className="text-neutral-500"> · pending confirmation</span>
+          </div>
+        )}
+        {data && visiblePendingOut > 0 && (
+          <div className="mt-0.5 text-sm text-neutral-400">
+            −{formatExfer(visiblePendingOut)} pending out
+          </div>
+        )}
         <div className="mt-1 text-sm text-neutral-400">
           across{" "}
           <span className="font-medium text-neutral-300">
@@ -153,6 +174,7 @@ export function Dashboard() {
                   index={e.index}
                   imported={e.imported}
                   balance={e.balance}
+                  pendingIn={e.pending_received}
                   utxoCount={utxos[e.address]?.utxo_count}
                   truncated={utxos[e.address]?.truncated}
                   hidden={isHidden(e.address)}

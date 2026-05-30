@@ -42,16 +42,19 @@ export function useWallet(): WalletData {
   return ctx;
 }
 
-// Poll cadence. The background poll asks for balances only
-// ({ utxos: false }) and scans only the visible (non-hidden) addresses,
-// so it's one upstream scan per visible address. We pace the interval
-// to that count — ~5s per visible address — so a single-address wallet
-// refreshes every 5s while a full 6-address wallet stays at 20s, both
-// under the public node's ~30 scans/min. UTXO counts and hidden-address
-// balances are fetched on demand, not polled.
-const MS_PER_ADDRESS = 5_000;
+// Poll cadence. The background poll asks for balance + pending
+// ({ utxos: false, pending: true }) over the visible (non-hidden)
+// addresses. That's TWO upstream scans per address (get_balance +
+// get_address_mempool), so we pace at ~8s per visible address: a
+// single-address wallet refreshes every 8s, a full 6-address wallet
+// caps at 30s — keeping 2×N scans under the public node's ~30/min
+// (6 addrs → 12 scans / 30s = 24/min). Pending still means deposits
+// surface within one poll of hitting the mempool, well ahead of
+// confirmation. UTXO counts and hidden-address balances are fetched on
+// demand, not polled.
+const MS_PER_ADDRESS = 8_000;
 const MIN_POLL_MS = 5_000;
-const MAX_POLL_MS = 20_000;
+const MAX_POLL_MS = 30_000;
 
 // Sort matches the daemon: index asc, imported/unindexed last, then address.
 function byIndex(a: WalletEntry, b: WalletEntry): number {
@@ -96,7 +99,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         // Polls scan only visible addresses — skip the ones the user hid.
         const known = entriesRef.current;
         const useFilter = isPoll && known.length > 0;
-        const params: Record<string, unknown> = { utxos: false };
+        const params: Record<string, unknown> = { utxos: false, pending: true };
         if (useFilter) params.addresses = visibleAddrs();
 
         const result = await rpc<WalletBalance>("get_wallet_balance", params);
@@ -116,16 +119,32 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         loadedRef.current = true;
 
         const total = entries.reduce((acc, e) => acc + e.balance, 0);
-        setBalance({ entries, total });
+        // Projected = confirmed + unconfirmed credit − unconfirmed debit.
+        // pending_supported is false only if some entry came back without
+        // the pending fields (upstream too old); then projected == total.
+        const pendingSupported = entries.every(
+          (e) => e.pending_received !== undefined,
+        );
+        const projected = entries.reduce(
+          (acc, e) =>
+            acc + e.balance + (e.pending_received ?? 0) - (e.pending_spent ?? 0),
+          0,
+        );
+        setBalance({ entries, total, projected, pending_supported: pendingSupported });
         setError(null);
 
+        // Detect incoming funds on PROJECTED, not confirmed total: a
+        // deposit shows up the moment it lands in the mempool (seconds
+        // after the sender broadcasts), and when it later confirms,
+        // pending_received → balance leaves projected unchanged, so we
+        // don't double-notify.
         const prev = lastTotal.current;
-        if (prev !== null && total > prev) {
-          const msg = `+${formatExfer(total - prev)}`;
-          toast.incoming("Funds received", msg);
-          osNotify("exfer wallet — funds received", msg);
+        if (prev !== null && projected > prev) {
+          const msg = `+${formatExfer(projected - prev)} incoming`;
+          toast.incoming("Funds incoming", msg);
+          osNotify("exfer wallet — funds incoming", msg);
         }
-        lastTotal.current = total;
+        lastTotal.current = projected;
       } catch (e) {
         // Don't clobber a good balance on a transient poll failure;
         // only surface the error if we have nothing to show.

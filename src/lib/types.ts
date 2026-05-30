@@ -13,6 +13,14 @@ export interface WalletEntry {
   label: string | null;
   imported: boolean;
   balance: number;
+  // Unconfirmed (mempool) view, present when balance is polled with
+  // { pending: true }. `pending_received` is incoming value sitting in
+  // the mempool — visible seconds after a sender broadcasts, ahead of
+  // confirmation. `pending_spent` is this address's outputs being spent
+  // by an unconfirmed tx. Both omitted against a node too old to answer
+  // get_address_mempool.
+  pending_received?: number;
+  pending_spent?: number;
   // Omitted when balance is polled with { utxos: false }; populated on
   // demand via the wallet provider's refreshUtxos().
   utxo_count?: number;
@@ -22,6 +30,12 @@ export interface WalletEntry {
 export interface WalletBalance {
   entries: WalletEntry[];
   total: number;
+  // Confirmed + unconfirmed credit − unconfirmed debit, summed over the
+  // entries here. Equals `total` when there's nothing pending.
+  projected: number;
+  // False when the upstream node predates get_address_mempool, so no
+  // pending signal is available and `projected` falls back to `total`.
+  pending_supported: boolean;
 }
 
 export interface GeneratedAddress {

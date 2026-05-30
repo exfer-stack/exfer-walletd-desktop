@@ -35,6 +35,10 @@ interface DevState {
     pubkey: string;
     balance: number;
     utxoCount: number;
+    // Optional mocked unconfirmed credit, surfaced when get_wallet_balance
+    // is called with { pending: true } — lets dev mode exercise the
+    // pending/incoming UI without a live mempool.
+    pendingIn?: number;
   }>;
 }
 
@@ -284,10 +288,11 @@ export const devmock = {
         };
 
       case "get_wallet_balance": {
-        // Mirror the daemon: utxo_count/truncated are only returned when
-        // utxos !== false.
-        const withUtxos =
-          (params as { utxos?: boolean })?.utxos !== false;
+        // Mirror the daemon: utxo_count/truncated only when utxos !== false,
+        // and pending_received/pending_spent only when pending === true.
+        const p = params as { utxos?: boolean; pending?: boolean };
+        const withUtxos = p?.utxos !== false;
+        const withPending = p?.pending === true;
         const entries: WalletEntry[] = s.addresses.map((a) => ({
           address: a.address,
           index: a.index,
@@ -297,9 +302,22 @@ export const devmock = {
           ...(withUtxos
             ? { utxo_count: a.utxoCount, truncated: false }
             : {}),
+          ...(withPending
+            ? { pending_received: a.pendingIn ?? 0, pending_spent: 0 }
+            : {}),
         }));
         const total = entries.reduce((acc, e) => acc + e.balance, 0);
-        const out: WalletBalance = { entries, total };
+        const projected = entries.reduce(
+          (acc, e) =>
+            acc + e.balance + (e.pending_received ?? 0) - (e.pending_spent ?? 0),
+          0,
+        );
+        const out: WalletBalance = {
+          entries,
+          total,
+          projected,
+          pending_supported: withPending,
+        };
         return out;
       }
 
