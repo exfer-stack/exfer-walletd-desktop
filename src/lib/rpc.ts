@@ -107,6 +107,14 @@ export function formatExfer(exfers: number): string {
   return `${wholeGrouped}.${frac.toString().padStart(8, "0")} EXFER`;
 }
 
+/** Split a balance into grouped integer + 8-digit fraction (no unit), so the
+ *  hero can lead with the whole number and let the fraction recede. */
+export function splitExfer(exfers: number): { whole: string; frac: string } {
+  const whole = Math.floor(exfers / EXFER_UNIT).toLocaleString("en-US");
+  const frac = (exfers % EXFER_UNIT).toString().padStart(8, "0");
+  return { whole, frac };
+}
+
 export function parseExferAmount(input: string): number {
   // Accepts "1.234" → 123_400_000 exfers. Throws on garbage.
   const trimmed = input.trim();

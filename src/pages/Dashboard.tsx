@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { rpc, formatExfer, MAX_ADDRESSES } from "../lib/rpc";
+import { rpc, formatExfer, splitExfer, MAX_ADDRESSES } from "../lib/rpc";
 import type { GeneratedAddress } from "../lib/types";
 import { AddressRow } from "../components/AddressRow";
 import { useWallet } from "../lib/wallet";
@@ -61,8 +61,20 @@ export function Dashboard() {
         <div className="text-sm font-medium uppercase tracking-wide text-neutral-400">
           Total balance
         </div>
-        <div className="amount-lg mt-2">
-          {data ? formatExfer(visibleTotal) : "—"}
+        <div className="amount-lg mt-2 flex items-baseline tracking-normal">
+          {data ? (
+            <>
+              <span>{splitExfer(visibleTotal).whole}</span>
+              <span className="text-neutral-500">
+                .{splitExfer(visibleTotal).frac}
+              </span>
+              <span className="ml-2.5 font-sans text-xl font-medium text-neutral-400">
+                EXFER
+              </span>
+            </>
+          ) : (
+            "—"
+          )}
         </div>
         {/* Unconfirmed (mempool) credit — shown the moment a deposit
             lands, ahead of confirmation. */}
