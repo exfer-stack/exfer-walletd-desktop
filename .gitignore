@@ -29,3 +29,4 @@ src-tauri/target/
 # tauri icon also emits mobile sets we do not ship
 src-tauri/icons/android/
 src-tauri/icons/ios/
+.gstack/
