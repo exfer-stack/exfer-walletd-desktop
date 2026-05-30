@@ -12,8 +12,6 @@ interface Props {
   balance: number;
   /** Unconfirmed incoming value (mempool), if any. */
   pendingIn?: number;
-  utxoCount?: number;
-  truncated?: boolean;
   hidden?: boolean;
   onLabelChange?: () => void;
   onUnhide?: () => void;
@@ -27,8 +25,6 @@ export function AddressRow({
   imported,
   balance,
   pendingIn,
-  utxoCount,
-  truncated,
   hidden,
   onLabelChange,
   onUnhide,
@@ -100,17 +96,6 @@ export function AddressRow({
             <CopyButton text={address} className="btn-ghost text-xs" />
             {imported && <span className="pill pill-warn">imported</span>}
           </div>
-        </td>
-        <td className="px-5 py-4 text-sm text-neutral-400 tabular-nums">
-          {utxoCount ?? <span className="text-neutral-600">…</span>}
-          {truncated && (
-            <span
-              className="ml-2 pill pill-warn"
-              title="Node returned a truncated UTXO list (>1000)"
-            >
-              ⚠ truncated
-            </span>
-          )}
         </td>
         <td className="px-5 py-4 text-right">
           <div className="flex items-center justify-end gap-2">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   rpc,
   formatExfer,
@@ -12,20 +12,13 @@ import { useToast } from "../lib/toast";
 import { isHidden, unhide } from "../lib/hidden";
 
 export function Dashboard() {
-  const { balance: data, loading, error, refresh, utxos, refreshUtxos } =
-    useWallet();
+  const { balance: data, loading, error, refresh } = useWallet();
   const toast = useToast();
   const [generating, setGenerating] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
 
-  // UTXO counts aren't polled (to keep the background poll cheap); pull
-  // them once when the address table is on screen.
-  useEffect(() => {
-    refreshUtxos();
-  }, [refreshUtxos]);
-
   async function refreshAll() {
-    await Promise.all([refresh(), refreshUtxos()]);
+    await refresh();
   }
 
   const allEntries = data?.entries ?? [];
@@ -209,7 +202,6 @@ export function Dashboard() {
               <tr>
                 <th className="px-5 py-2.5 text-left">Label</th>
                 <th className="px-5 py-2.5 text-left">Address</th>
-                <th className="px-5 py-2.5 text-left">Coins</th>
                 <th className="px-5 py-2.5 text-right">Balance</th>
               </tr>
             </thead>
@@ -228,8 +220,6 @@ export function Dashboard() {
                     (e.pending_spent ?? 0)
                   }
                   pendingIn={e.pending_received}
-                  utxoCount={utxos[e.address]?.utxo_count}
-                  truncated={utxos[e.address]?.truncated}
                   hidden={isHidden(e.address)}
                   onLabelChange={refresh}
                   onUnhide={() => {
