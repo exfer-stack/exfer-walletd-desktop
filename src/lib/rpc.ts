@@ -99,19 +99,20 @@ export const MAX_ADDRESSES = 6;
 const EXFER_UNIT = 100_000_000; // 1 EXFER = 1e8 exfers
 
 export function formatExfer(exfers: number): string {
-  const whole = Math.floor(exfers / EXFER_UNIT);
-  const frac = exfers % EXFER_UNIT;
-  // Group the integer part with thin thousands separators so large
-  // balances are scannable (e.g. 1,234,567.00000000).
-  const wholeGrouped = whole.toLocaleString("en-US");
-  return `${wholeGrouped}.${frac.toString().padStart(8, "0")} EXFER`;
+  const { whole, frac } = splitExfer(exfers);
+  return frac ? `${whole}.${frac} EXFER` : `${whole} EXFER`;
 }
 
-/** Split a balance into grouped integer + 8-digit fraction (no unit), so the
- *  hero can lead with the whole number and let the fraction recede. */
+/** Split a balance into grouped integer + fraction (no unit), so the hero
+ *  can lead with the whole number and let the fraction recede. Trailing
+ *  zeros are dropped — "0.10000000" reads as "0.1"; a whole number returns
+ *  an empty `frac`. */
 export function splitExfer(exfers: number): { whole: string; frac: string } {
   const whole = Math.floor(exfers / EXFER_UNIT).toLocaleString("en-US");
-  const frac = (exfers % EXFER_UNIT).toString().padStart(8, "0");
+  const frac = (exfers % EXFER_UNIT)
+    .toString()
+    .padStart(8, "0")
+    .replace(/0+$/, "");
   return { whole, frac };
 }
 

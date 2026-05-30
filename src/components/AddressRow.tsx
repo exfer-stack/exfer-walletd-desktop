@@ -114,24 +114,17 @@ export function AddressRow({
         </td>
         <td className="px-5 py-4 text-right">
           <div className="flex items-center justify-end gap-2">
-            <div>
-              {/* Mute empty addresses so the eye lands on the ones that
-                  hold funds, not on a column of equal-weight zeros. */}
-              <div
-                className={
-                  "amount" +
-                  (balance === 0 && !(pendingIn && pendingIn > 0)
-                    ? " text-neutral-600"
-                    : "")
-                }
-              >
-                {formatExfer(balance)}
-              </div>
-              {pendingIn != null && pendingIn > 0 && (
-                <div className="text-xs font-medium text-emerald-400 tabular-nums">
-                  +{formatExfer(pendingIn)} incoming
-                </div>
-              )}
+            {/* `balance` is already the projected (confirmed + pending)
+                amount. A quiet dot marks rows where part is unconfirmed;
+                empty rows mute so the eye lands on the funded ones. */}
+            {pendingIn != null && pendingIn > 0 && (
+              <span
+                className="h-1.5 w-1.5 rounded-full bg-neutral-600"
+                title={`includes ${formatExfer(pendingIn)} awaiting confirmation`}
+              />
+            )}
+            <div className={"amount" + (balance === 0 ? " text-neutral-600" : "")}>
+              {formatExfer(balance)}
             </div>
             <button
               type="button"

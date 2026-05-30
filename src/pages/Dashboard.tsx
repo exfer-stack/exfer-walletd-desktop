@@ -37,6 +37,12 @@ export function Dashboard() {
     (a, e) => a + (e.pending_spent ?? 0),
     0,
   );
+  // The headline balance folds unconfirmed credit in, so a deposit reads as
+  // if it landed instantly. The pending-ness is surfaced quietly (a tooltip
+  // on the number) and enforced where it matters (spending uses confirmed
+  // funds only).
+  const visibleProjected = visibleTotal + visiblePendingIn - visiblePendingOut;
+  const hasPending = visiblePendingIn > 0 || visiblePendingOut > 0;
 
   async function generateAddress() {
     setGenerating(true);
@@ -61,34 +67,44 @@ export function Dashboard() {
         <div className="text-sm font-medium uppercase tracking-wide text-neutral-400">
           Total balance
         </div>
-        <div className="amount-lg mt-2 flex items-baseline tracking-normal">
+        <div
+          className="amount-lg mt-2 flex items-baseline tracking-normal"
+          title={
+            hasPending
+              ? `Confirmed ${formatExfer(visibleTotal)}` +
+                (visiblePendingIn > 0
+                  ? ` · ${formatExfer(visiblePendingIn)} awaiting confirmation`
+                  : "") +
+                (visiblePendingOut > 0
+                  ? ` · ${formatExfer(visiblePendingOut)} leaving`
+                  : "")
+              : undefined
+          }
+        >
           {data ? (
             <>
-              <span>{splitExfer(visibleTotal).whole}.</span>
-              <span className="text-neutral-500">
-                {splitExfer(visibleTotal).frac}
-              </span>
+              <span>{splitExfer(visibleProjected).whole}</span>
+              {splitExfer(visibleProjected).frac && (
+                <span className="text-neutral-500">
+                  .{splitExfer(visibleProjected).frac}
+                </span>
+              )}
               <span className="ml-2.5 font-sans text-xl font-medium text-neutral-400">
                 EXFER
               </span>
+              {/* Quiet tell that part of this isn't confirmed yet — a small
+                  dot, not a badge. The tooltip above carries the breakdown. */}
+              {hasPending && (
+                <span
+                  className="ml-2 h-1.5 w-1.5 self-center rounded-full bg-neutral-600"
+                  aria-label="part of this balance is awaiting confirmation"
+                />
+              )}
             </>
           ) : (
             "—"
           )}
         </div>
-        {/* Unconfirmed (mempool) credit — shown the moment a deposit
-            lands, ahead of confirmation. */}
-        {data && visiblePendingIn > 0 && (
-          <div className="mt-1 text-sm font-medium text-emerald-400">
-            +{formatExfer(visiblePendingIn)} incoming
-            <span className="text-neutral-500"> · pending confirmation</span>
-          </div>
-        )}
-        {data && visiblePendingOut > 0 && (
-          <div className="mt-0.5 text-sm text-neutral-400">
-            −{formatExfer(visiblePendingOut)} pending out
-          </div>
-        )}
         <div className="mt-1 text-sm text-neutral-400">
           across{" "}
           <span className="font-medium text-neutral-300">
@@ -184,7 +200,13 @@ export function Dashboard() {
                   address={e.address}
                   index={e.index}
                   imported={e.imported}
-                  balance={e.balance}
+                  // Projected balance: confirmed + unconfirmed credit −
+                  // unconfirmed debit, so the row reads as instant too.
+                  balance={
+                    e.balance +
+                    (e.pending_received ?? 0) -
+                    (e.pending_spent ?? 0)
+                  }
                   pendingIn={e.pending_received}
                   utxoCount={utxos[e.address]?.utxo_count}
                   truncated={utxos[e.address]?.truncated}
