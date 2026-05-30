@@ -198,7 +198,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             value={value}
             onChange={(e) => setValue(e.target.value)}
             disabled={savingNode}
-            placeholder="http://137.66.22.37:9334"
+            placeholder="http://80.78.31.82:9334"
           />
           <p className="help">
             Currently in use:{" "}

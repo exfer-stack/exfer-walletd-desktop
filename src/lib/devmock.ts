@@ -45,7 +45,7 @@ interface DevState {
 function defaultState(): DevState {
   return {
     bootstrap: { status: "needs_password" },
-    nodeRpc: "http://137.66.22.37:9334,http://80.78.31.82:9334",
+    nodeRpc: "http://80.78.31.82:9334",
     addresses: [],
   };
 }
