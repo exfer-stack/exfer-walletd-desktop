@@ -87,8 +87,8 @@
 
   /* ── typographic helpers for amounts / addresses ─────────────── */
   .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-                 "Liberation Mono", "Courier New", monospace;
+    font-family: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+                 Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   }
   .amount-lg {
     @apply mono text-3xl font-semibold tracking-tight tabular-nums text-neutral-50;
