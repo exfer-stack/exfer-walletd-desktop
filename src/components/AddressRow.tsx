@@ -115,7 +115,18 @@ export function AddressRow({
         <td className="px-5 py-4 text-right">
           <div className="flex items-center justify-end gap-2">
             <div>
-              <div className="amount">{formatExfer(balance)}</div>
+              {/* Mute empty addresses so the eye lands on the ones that
+                  hold funds, not on a column of equal-weight zeros. */}
+              <div
+                className={
+                  "amount" +
+                  (balance === 0 && !(pendingIn && pendingIn > 0)
+                    ? " text-neutral-600"
+                    : "")
+                }
+              >
+                {formatExfer(balance)}
+              </div>
               {pendingIn != null && pendingIn > 0 && (
                 <div className="text-xs font-medium text-emerald-400 tabular-nums">
                   +{formatExfer(pendingIn)} incoming
