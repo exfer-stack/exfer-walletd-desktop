@@ -34,7 +34,9 @@ export function Send() {
   // Fee priority: a multiplier over the network minimum. Most transfers
   // pay the minimum (Normal). Higher tiers bump fee-per-size so the tx
   // is packed sooner when blocks are congested.
-  const [feeRate, setFeeRate] = useState(1);
+  // No fee picker: every transfer pays the network minimum (the right choice
+  // almost always); the exact amount is computed per-transaction below.
+  const feeRate = 1;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<TransferReceipt | null>(null);
@@ -184,8 +186,7 @@ export function Send() {
           Send EXFER
         </h1>
         <p className="text-base text-neutral-400">
-          One transaction, up to 16 recipients. Pick a fee priority below —
-          Normal is fine for most transfers.
+          One transaction, up to 16 recipients. The network fee is automatic.
         </p>
       </header>
 
@@ -305,62 +306,19 @@ export function Send() {
           ))}
         </div>
 
-        {/* Network fee priority */}
-        <div>
-          <label className="label">Network fee</label>
-          <div className="grid grid-cols-3 gap-2">
-            {(
-              [
-                { rate: 1, name: "Normal", note: "recommended" },
-                { rate: 3, name: "Faster", note: "" },
-                { rate: 6, name: "Fastest", note: "" },
-              ] as const
-            ).map((tier) => {
-              const active = feeRate === tier.rate;
-              return (
-                <button
-                  key={tier.rate}
-                  type="button"
-                  onClick={() => setFeeRate(tier.rate)}
-                  disabled={pending}
-                  className={
-                    "rounded-lg border px-3 py-2.5 text-left transition " +
-                    (active
-                      ? "border-cyan-400 bg-cyan-500/10"
-                      : "border-neutral-700 bg-neutral-950 hover:border-neutral-600")
-                  }
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium text-neutral-100">
-                      {tier.name}
-                    </span>
-                    {tier.note && (
-                      <span className="pill pill-info text-[10px]">
-                        {tier.note}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mono mt-0.5 text-xs text-neutral-400">
-                    {baseFee != null
-                      ? "≈ " + formatExfer(baseFee * tier.rate)
-                      : tier.rate === 1
-                        ? "network min"
-                        : `${tier.rate}× min`}
-                  </div>
-                </button>
-              );
-            })}
+        {/* Total + the auto network fee. No tier picker: the fee is the
+            network minimum, computed for this exact transaction. */}
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm text-neutral-400">Total to send</span>
+            <span className="amount-md">{formatExfer(totalExfers)}</span>
           </div>
-          <p className="help">
-            Fees are a tiny fraction of an EXFER. Normal is the network minimum
-            and right for almost every transfer; the exact fee is on the receipt.
-          </p>
-        </div>
-
-        {/* Total */}
-        <div className="flex items-baseline justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
-          <span className="text-sm text-neutral-400">Total to send</span>
-          <span className="amount-md">{formatExfer(totalExfers)}</span>
+          <div className="mt-1.5 flex items-baseline justify-between text-xs text-neutral-500">
+            <span>Network fee (auto)</span>
+            <span className="font-mono tabular-nums">
+              {baseFee != null ? "≈ " + formatExfer(baseFee) : "network minimum"}
+            </span>
+          </div>
         </div>
 
         {error && <div className="banner-error">{error}</div>}
