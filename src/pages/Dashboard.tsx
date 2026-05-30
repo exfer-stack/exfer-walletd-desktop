@@ -7,7 +7,7 @@ import {
 } from "../lib/rpc";
 import type { GeneratedAddress } from "../lib/types";
 import { AddressRow } from "../components/AddressRow";
-import { useWallet } from "../lib/wallet";
+import { useWallet, pollIntervalMs } from "../lib/wallet";
 import { useToast } from "../lib/toast";
 import { isHidden, unhide } from "../lib/hidden";
 
@@ -48,6 +48,9 @@ export function Dashboard() {
   // funds only).
   const visibleProjected = visibleTotal + visiblePendingIn - visiblePendingOut;
   const hasPending = visiblePendingIn > 0 || visiblePendingOut > 0;
+  // Live auto-refresh interval. Only *visible* addresses cost a scan, so this
+  // tracks the visible count and drops as you hide/remove addresses.
+  const pollSecs = Math.round(pollIntervalMs(visibleEntries.length) / 1000);
 
   async function generateAddress() {
     setGenerating(true);
@@ -154,13 +157,22 @@ export function Dashboard() {
               title={
                 atCap
                   ? `This wallet is capped at ${MAX_ADDRESSES} addresses`
-                  : undefined
+                  : "Each visible address adds a poll scan — more addresses refresh a little slower. Hide ones you're not watching to keep it fast."
               }
             >
               {generating ? "Generating…" : "+ New address"}
             </button>
           </div>
         </header>
+
+        {/* Only surface the speed tradeoff once it's actually noticeable, so
+            it reads as a tip, not a nag. Hidden addresses don't count. */}
+        {!atCap && visibleEntries.length >= 3 && (
+          <div className="border-b border-neutral-800/60 px-5 py-2 text-xs text-neutral-600">
+            Auto-refreshing about every {pollSecs}s · hide addresses you're not
+            watching to refresh faster.
+          </div>
+        )}
 
         {atCap && (
           <div className="border-b border-neutral-800 bg-neutral-900/60 px-5 py-2.5 text-xs text-neutral-400">

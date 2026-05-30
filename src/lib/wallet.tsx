@@ -57,6 +57,15 @@ const MS_PER_SCAN = 2_200;
 const MIN_POLL_MS = 4_000;
 const MAX_POLL_MS = 18_000;
 
+/** The current auto-refresh interval for `visibleCount` visible addresses.
+ *  Exported so the UI can show the live rate and explain that more visible
+ *  addresses (and only visible ones — hidden cost nothing) slow it down. */
+export function pollIntervalMs(visibleCount: number): number {
+  const m = visibleCount || 1;
+  // 1 batched get_balances + m per-address mempool scans.
+  return Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, (m + 1) * MS_PER_SCAN));
+}
+
 // Sort matches the daemon: index asc, imported/unindexed last, then address.
 function byIndex(a: WalletEntry, b: WalletEntry): number {
   if (a.index != null && b.index != null) return a.index - b.index;
@@ -191,12 +200,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let timer: number | undefined;
     const schedule = () => {
-      const m = visibleAddrs().length || 1;
-      // 1 batched get_balances + m per-address mempool scans.
-      const delay = Math.min(
-        MAX_POLL_MS,
-        Math.max(MIN_POLL_MS, (m + 1) * MS_PER_SCAN),
-      );
+      // Recomputed every cycle from the *visible* count, so hiding/removing
+      // an address speeds the next poll up automatically.
+      const delay = pollIntervalMs(visibleAddrs().length);
       timer = window.setTimeout(run, delay);
     };
     const run = async () => {
