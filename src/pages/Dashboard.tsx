@@ -64,9 +64,9 @@ export function Dashboard() {
         <div className="amount-lg mt-2 flex items-baseline tracking-normal">
           {data ? (
             <>
-              <span>{splitExfer(visibleTotal).whole}</span>
+              <span>{splitExfer(visibleTotal).whole}.</span>
               <span className="text-neutral-500">
-                .{splitExfer(visibleTotal).frac}
+                {splitExfer(visibleTotal).frac}
               </span>
               <span className="ml-2.5 font-sans text-xl font-medium text-neutral-400">
                 EXFER
