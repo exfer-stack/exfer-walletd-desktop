@@ -21,6 +21,8 @@ interface Props {
 
 export function AddressRow({
   address,
+  // `index` (HD derivation index) is no longer shown as a column (dev
+  // jargon), but it's still passed through to ExportKeyModal below.
   index,
   imported,
   balance,
@@ -54,9 +56,6 @@ export function AddressRow({
         className={"hover:bg-neutral-900 " + (hidden ? "opacity-50" : "")}
         onContextMenu={openMenu}
       >
-        <td className="px-5 py-4 font-mono text-sm text-neutral-400 tabular-nums">
-          {imported ? <span className="pill pill-warn">imported</span> : index}
-        </td>
         <td className="px-5 py-4">
           {editing ? (
             <div className="flex items-center gap-1.5">
@@ -99,6 +98,7 @@ export function AddressRow({
           <div className="flex items-center gap-2">
             <code className="addr-xs">{shortAddress(address)}</code>
             <CopyButton text={address} className="btn-ghost text-xs" />
+            {imported && <span className="pill pill-warn">imported</span>}
           </div>
         </td>
         <td className="px-5 py-4 text-sm text-neutral-400 tabular-nums">

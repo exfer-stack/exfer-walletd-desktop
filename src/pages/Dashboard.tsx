@@ -171,10 +171,9 @@ export function Dashboard() {
           <table className="w-full">
             <thead className="bg-neutral-900 text-xs uppercase tracking-wide text-neutral-400">
               <tr>
-                <th className="px-5 py-2.5 text-left">Index</th>
                 <th className="px-5 py-2.5 text-left">Label</th>
                 <th className="px-5 py-2.5 text-left">Address</th>
-                <th className="px-5 py-2.5 text-left">UTXOs</th>
+                <th className="px-5 py-2.5 text-left">Coins</th>
                 <th className="px-5 py-2.5 text-right">Balance</th>
               </tr>
             </thead>
