@@ -335,6 +335,27 @@ export const devmock = {
         return out;
       }
 
+      case "simulate_transfer": {
+        // No broadcast: just return the exact fee for the template so the
+        // Send page can show a live per-tier estimate.
+        const p = params as {
+          from: string;
+          outputs: { to: string; amount: number }[];
+          fee_rate?: number;
+        };
+        const sender = s.addresses.find((a) => a.address === p.from);
+        if (!sender) throw new Error("from address not in wallet");
+        const total = p.outputs.reduce((a, o) => a + o.amount, 0);
+        const cost = 70 + 45 * Math.max(1, p.outputs.length);
+        const fee = (p.fee_rate ?? 1) * cost;
+        if (sender.balance < total + fee) throw new Error("insufficient balance");
+        return {
+          size: 180 + 34 * p.outputs.length,
+          fee,
+          fee_rate: p.fee_rate ?? 1,
+        };
+      }
+
       case "transfer": {
         const p = params as {
           from: string;

@@ -39,9 +39,57 @@ export function Send() {
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<TransferReceipt | null>(null);
   const recents = useMemo(listRecentRecipients, [receipt]);
+  // Live fee estimate: the fee at rate 1 (= the tx's cost in exfers) for the
+  // current template. Each tier's fee is `rate × baseFee`, since fee is linear
+  // in the rate. null until there's a complete, valid template to simulate.
+  const [baseFee, setBaseFee] = useState<number | null>(null);
 
   // Don't offer hidden addresses as a sending source.
   const sendable = (balance?.entries ?? []).filter((e) => !isHidden(e.address));
+
+  // Fully-parsed outputs, or [] if any recipient is incomplete/invalid (we
+  // can't estimate a fee for a template that wouldn't build).
+  const validOutputs = useMemo(() => {
+    const out: { to: string; amount: number }[] = [];
+    for (const o of outputs) {
+      if (!HEX64.test(o.to.trim())) return [];
+      try {
+        out.push({
+          to: o.to.trim().toLowerCase(),
+          amount: parseExferAmount(o.amount),
+        });
+      } catch {
+        return [];
+      }
+    }
+    return out;
+  }, [outputs]);
+
+  // Debounced simulate_transfer (no broadcast) → the real fee for this exact
+  // template. Updates as recipients change. null on any error (e.g. funds).
+  useEffect(() => {
+    if (!from || validOutputs.length === 0) {
+      setBaseFee(null);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      try {
+        const sim = await rpc<{ fee: number }>("simulate_transfer", {
+          from,
+          outputs: validOutputs,
+          fee_rate: 1,
+        });
+        if (!cancelled) setBaseFee(sim.fee);
+      } catch {
+        if (!cancelled) setBaseFee(null);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [from, validOutputs]);
 
   useEffect(() => {
     if (sendable.length > 0 && !from) {
@@ -263,9 +311,9 @@ export function Send() {
           <div className="grid grid-cols-3 gap-2">
             {(
               [
-                { rate: 1, name: "Normal", approx: "≈ 0.0000007 EXFER", note: "recommended" },
-                { rate: 3, name: "Faster", approx: "≈ 0.000002 EXFER", note: "" },
-                { rate: 6, name: "Fastest", approx: "≈ 0.000004 EXFER", note: "" },
+                { rate: 1, name: "Normal", note: "recommended" },
+                { rate: 3, name: "Faster", note: "" },
+                { rate: 6, name: "Fastest", note: "" },
               ] as const
             ).map((tier) => {
               const active = feeRate === tier.rate;
@@ -293,17 +341,19 @@ export function Send() {
                     )}
                   </div>
                   <div className="mono mt-0.5 text-xs text-neutral-400">
-                    {tier.approx}
+                    {baseFee != null
+                      ? "≈ " + formatExfer(baseFee * tier.rate)
+                      : tier.rate === 1
+                        ? "network min"
+                        : `${tier.rate}× min`}
                   </div>
                 </button>
               );
             })}
           </div>
           <p className="help">
-            Fees are tiny — well under a millionth of 1 EXFER. Normal pays the
-            network minimum and confirms fine when the chain isn't busy;
-            pick a higher tier only if transfers are slow to confirm. The
-            exact fee is shown on the receipt.
+            Fees are a tiny fraction of an EXFER. Normal is the network minimum
+            and right for almost every transfer; the exact fee is on the receipt.
           </p>
         </div>
 
