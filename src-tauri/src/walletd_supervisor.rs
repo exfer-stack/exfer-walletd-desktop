@@ -148,6 +148,13 @@ fn build_walletd_config(datadir: &std::path::Path, desktop_cfg: &DesktopConfig) 
         upstream_timeout_secs: 15,
         upstream_attempts: 3,
         upstream_retry_backoff_ms: 250,
+        // No upstream indexer: the desktop only queries its own wallet's
+        // addresses, which the node answers directly. The indexer-delegated
+        // methods (get_address_history, contract_stats, …) return
+        // -32041 IndexerNotConfigured, which the desktop never calls.
+        indexer_rpc: None,
+        indexer_token: None,
+        indexer_timeout_secs: None,
     }
 }
 
