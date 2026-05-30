@@ -44,17 +44,18 @@ export function useWallet(): WalletData {
 
 // Poll cadence. The background poll asks for balance + pending
 // ({ utxos: false, pending: true }) over the visible (non-hidden)
-// addresses. That's TWO upstream scans per address (get_balance +
-// get_address_mempool), so we pace at ~8s per visible address: a
-// single-address wallet refreshes every 8s, a full 6-address wallet
-// caps at 30s — keeping 2×N scans under the public node's ~30/min
-// (6 addrs → 12 scans / 30s = 24/min). Pending still means deposits
-// surface within one poll of hitting the mempool, well ahead of
-// confirmation. UTXO counts and hidden-address balances are fetched on
-// demand, not polled.
-const MS_PER_ADDRESS = 8_000;
-const MIN_POLL_MS = 5_000;
-const MAX_POLL_MS = 30_000;
+// addresses. With walletd's batched reads (v1.9.3+) the balances come
+// back in ONE node scan (get_balances) regardless of address count, so a
+// poll costs `1 + N` node scans (the +N is the per-address mempool, which
+// has no batch form yet). We pace one scan every ~2.2s so the cost stays
+// ~27/min, comfortably under the public node's 30/min — which lets a
+// single-address wallet refresh every ~4.4s (was 8s) and a 6-address
+// wallet every ~15s (was 30s). Deposits surface within one poll of
+// hitting the mempool, well ahead of confirmation. UTXO counts and
+// hidden-address balances are fetched on demand, not polled.
+const MS_PER_SCAN = 2_200;
+const MIN_POLL_MS = 4_000;
+const MAX_POLL_MS = 18_000;
 
 // Sort matches the daemon: index asc, imported/unindexed last, then address.
 function byIndex(a: WalletEntry, b: WalletEntry): number {
@@ -191,7 +192,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     let timer: number | undefined;
     const schedule = () => {
       const m = visibleAddrs().length || 1;
-      const delay = Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, m * MS_PER_ADDRESS));
+      // 1 batched get_balances + m per-address mempool scans.
+      const delay = Math.min(
+        MAX_POLL_MS,
+        Math.max(MIN_POLL_MS, (m + 1) * MS_PER_SCAN),
+      );
       timer = window.setTimeout(run, delay);
     };
     const run = async () => {
