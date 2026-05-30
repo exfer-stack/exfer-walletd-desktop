@@ -1,6 +1,6 @@
 [package]
 name        = "exfer-walletd-desktop"
-version     = "0.8.0"
+version     = "0.8.1"
 description = "Desktop GUI for exfer-walletd. One double-click → walletd in-process + a window for balance / generate-address / transfer."
 edition     = "2021"
 license     = "MIT"

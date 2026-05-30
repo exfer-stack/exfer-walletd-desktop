@@ -26,7 +26,13 @@ use crate::error::AppError;
 use crate::rpc_client::ConnectionInfo;
 
 pub const KEYRING_SERVICE: &str = "com.exfer.walletd-desktop";
-pub const DEFAULT_NODE_RPC: &str = "http://89.127.232.155:9334";
+// Two upstreams, comma-separated for walletd's round-robin + failover.
+// Both run node v1.11.3+ and answer get_address_mempool, so the pending
+// (incoming-before-confirmation) balance works out of the box; the old
+// default (89.127.232.155) predates that method and would silently show
+// no pending. Both track the live tip, so round-robin doesn't flicker.
+pub const DEFAULT_NODE_RPC: &str =
+    "http://137.66.22.37:9334,http://80.78.31.82:9334";
 pub const DESKTOP_CONFIG_FILE: &str = "desktop-config.json";
 
 #[derive(Debug, Clone, Serialize)]
