@@ -172,7 +172,20 @@ export function Send() {
               {fromUtxoCount != null && (
                 <>
                   {" "}
-                  · {fromUtxoCount} {fromUtxoCount === 1 ? "UTXO" : "UTXOs"}
+                  · {fromUtxoCount} {fromUtxoCount === 1 ? "coin" : "coins"}
+                </>
+              )}
+              {/* The quiet truth, surfaced exactly where it matters: an
+                  incoming deposit shows in the balance instantly, but it
+                  can't be spent until it confirms. */}
+              {(fromEntry.pending_received ?? 0) > 0 && (
+                <>
+                  {" "}
+                  ·{" "}
+                  <span className="text-neutral-500">
+                    {formatExfer(fromEntry.pending_received ?? 0)} still
+                    confirming, not yet spendable
+                  </span>
                 </>
               )}
             </p>
