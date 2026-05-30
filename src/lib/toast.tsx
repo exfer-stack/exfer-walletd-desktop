@@ -87,27 +87,32 @@ function ToastHost({
 
 const KIND_STYLE: Record<
   ToastKind,
-  { ring: string; icon: ReactNode; iconWrap: string }
+  { ring: string; icon: ReactNode; iconWrap: string; title: string }
 > = {
   success: {
-    ring: "border-emerald-500/30",
+    ring: "border-emerald-500/25",
     iconWrap: "bg-emerald-500/15 text-emerald-300",
     icon: <span aria-hidden>✓</span>,
+    title: "text-neutral-100",
   },
   error: {
     ring: "border-red-500/30",
     iconWrap: "bg-red-500/15 text-red-300",
     icon: <span aria-hidden>!</span>,
+    title: "text-neutral-100",
   },
   info: {
-    ring: "border-cyan-500/30",
+    ring: "border-cyan-500/25",
     iconWrap: "bg-cyan-500/15 text-cyan-300",
     icon: <span aria-hidden>i</span>,
+    title: "text-neutral-100",
   },
   incoming: {
-    ring: "border-emerald-500/40",
-    iconWrap: "bg-emerald-500/20 text-emerald-300",
+    ring: "border-emerald-500/30",
+    iconWrap: "bg-emerald-500/15 text-emerald-300",
     icon: <span aria-hidden>↓</span>,
+    // The amount is the message — render it as money: emerald, mono, tabular.
+    title: "font-mono tabular-nums tracking-tight text-emerald-300",
   },
 };
 
@@ -130,7 +135,7 @@ function ToastCard({ toast, onClose }: { toast: Toast; onClose: () => void }) {
         {s.icon}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-neutral-100">{toast.title}</div>
+        <div className={"text-sm font-semibold " + s.title}>{toast.title}</div>
         {toast.message && (
           <div className="mt-0.5 break-words text-xs text-neutral-400">
             {toast.message}

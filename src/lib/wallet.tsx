@@ -140,9 +140,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         // don't double-notify.
         const prev = lastTotal.current;
         if (prev !== null && projected > prev) {
-          const msg = `+${formatExfer(projected - prev)} incoming`;
-          toast.incoming("Funds incoming", msg);
-          osNotify("exfer wallet — funds incoming", msg);
+          // Lead with the amount — it reads as money that just landed, not a
+          // status update. The balance already reflects it (feels instant).
+          const amount = formatExfer(projected - prev);
+          toast.incoming(`+${amount}`, "Received");
+          osNotify("Deposit received", `+${amount}`);
         }
         lastTotal.current = projected;
       } catch (e) {
