@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { rpc, parseExferAmount, formatExfer } from "../lib/rpc";
+import {
+  rpc,
+  parseExferAmount,
+  formatExfer,
+  formatBalanceCompact,
+} from "../lib/rpc";
 import type { TransferReceipt } from "../lib/types";
 import { getLabel, shortAddress } from "../lib/labels";
 import {
@@ -140,44 +145,75 @@ export function Send() {
         {/* From */}
         <div>
           <label className="label">From</label>
-          <select
-            className="input"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            disabled={pending || sendable.length === 0}
-          >
-            {sendable.length === 0 && (
-              <option value="">No addresses — generate one first</option>
-            )}
-            {sendable.map((e) => {
-              const label = getLabel(e.address);
-              const tag = label
-                ? `${label} — ${shortAddress(e.address)}`
-                : e.imported
-                  ? `imported — ${shortAddress(e.address)}`
-                  : `Address ${e.index} — ${shortAddress(e.address)}`;
-              return (
-                <option key={e.address} value={e.address}>
-                  {tag} · {formatExfer(e.balance)}
-                </option>
-              );
-            })}
-          </select>
+          {sendable.length === 0 ? (
+            <p className="help">No addresses — generate one first.</p>
+          ) : (
+            // Selectable list rather than a bare <select>: every address and
+            // its (spendable) balance is visible at once, with the chosen one
+            // highlighted. Max 6 addresses, so the list never gets long.
+            <div className="space-y-2" role="radiogroup" aria-label="From address">
+              {sendable.map((e) => {
+                const label = getLabel(e.address);
+                const name =
+                  label ?? (e.imported ? "Imported" : `Address ${e.index}`);
+                const selected = from === e.address;
+                const hasPending = (e.pending_received ?? 0) > 0;
+                return (
+                  <button
+                    key={e.address}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setFrom(e.address)}
+                    disabled={pending}
+                    className={
+                      "flex w-full items-center justify-between gap-3 rounded-lg border px-3.5 py-2.5 text-left transition disabled:opacity-50 " +
+                      (selected
+                        ? "border-cyan-400 bg-cyan-500/10"
+                        : "border-neutral-700 bg-neutral-950 hover:border-neutral-600")
+                    }
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-neutral-100">
+                        {name}
+                      </div>
+                      <code className="addr-xs text-neutral-500">
+                        {shortAddress(e.address)}
+                      </code>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {hasPending && (
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-neutral-600"
+                          title="has an incoming deposit still confirming"
+                        />
+                      )}
+                      <span
+                        className="font-mono text-sm font-medium tabular-nums text-neutral-100"
+                        title={formatExfer(e.balance)}
+                      >
+                        {formatBalanceCompact(e.balance)}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {fromEntry && (
-            <p className="help">
-              Available:{" "}
+            <p className="help mt-2">
+              Spendable:{" "}
               <span className="font-medium text-neutral-300">
                 {formatExfer(fromEntry.balance)}
               </span>
               {fromUtxoCount != null && (
                 <>
                   {" "}
-                  · {fromUtxoCount} {fromUtxoCount === 1 ? "coin" : "coins"}
+                  · {fromUtxoCount} {fromUtxoCount === 1 ? "UTXO" : "UTXOs"}
                 </>
               )}
-              {/* The quiet truth, surfaced exactly where it matters: an
-                  incoming deposit shows in the balance instantly, but it
-                  can't be spent until it confirms. */}
+              {/* An incoming deposit shows in the balance instantly, but it
+                  can't be spent until it confirms — say so right here. */}
               {(fromEntry.pending_received ?? 0) > 0 && (
                 <>
                   {" "}
