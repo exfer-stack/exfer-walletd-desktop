@@ -14,8 +14,8 @@ use serde_json::Value;
 use tauri::{Manager, State};
 
 use walletd_supervisor::{
-    read_desktop_config, restart, restore, start, start_with_app, stop, write_desktop_config,
-    AppCtx, BootstrapStatus, DesktopConfig, KEYRING_SERVICE,
+    read_desktop_config, restart, restore, start_with_app, stop, write_desktop_config, AppCtx,
+    BootstrapStatus, KEYRING_SERVICE,
 };
 
 #[tauri::command]
@@ -271,17 +271,55 @@ async fn get_node_rpc(ctx: State<'_, AppCtx>) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn set_node_rpc(
-    ctx: State<'_, AppCtx>,
-    url: String,
-) -> Result<BootstrapStatus, String> {
+async fn set_node_rpc(ctx: State<'_, AppCtx>, url: String) -> Result<BootstrapStatus, String> {
     let url = url.trim().to_string();
     if url.is_empty() {
         return Err("node_rpc URL must not be empty".into());
     }
     let datadir = ctx.inner.lock().await.datadir.clone();
-    write_desktop_config(&datadir, &DesktopConfig { node_rpc: url })
-        .map_err(|e| format!("persisting config: {e}"))?;
+    // Read-modify-write so changing the node preserves the indexer config.
+    let mut cfg = read_desktop_config(&datadir);
+    cfg.node_rpc = url;
+    write_desktop_config(&datadir, &cfg).map_err(|e| format!("persisting config: {e}"))?;
+    restart(&ctx).await.map_err(|e| e.to_user_string())
+}
+
+/// Configured indexer endpoint. Empty strings mean "use the built-in default".
+#[derive(serde::Serialize)]
+struct IndexerConfig {
+    rpc: String,
+    token: String,
+}
+
+#[tauri::command]
+async fn get_indexer_config(ctx: State<'_, AppCtx>) -> Result<IndexerConfig, String> {
+    let datadir = ctx.inner.lock().await.datadir.clone();
+    let cfg = read_desktop_config(&datadir);
+    Ok(IndexerConfig {
+        rpc: cfg.indexer_rpc.unwrap_or_default(),
+        token: cfg.indexer_token.unwrap_or_default(),
+    })
+}
+
+#[tauri::command]
+async fn set_indexer_config(
+    ctx: State<'_, AppCtx>,
+    rpc: String,
+    token: String,
+) -> Result<BootstrapStatus, String> {
+    let datadir = ctx.inner.lock().await.datadir.clone();
+    let mut cfg = read_desktop_config(&datadir);
+    let norm = |s: String| {
+        let t = s.trim().to_string();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
+    };
+    cfg.indexer_rpc = norm(rpc);
+    cfg.indexer_token = norm(token);
+    write_desktop_config(&datadir, &cfg).map_err(|e| format!("persisting config: {e}"))?;
     restart(&ctx).await.map_err(|e| e.to_user_string())
 }
 
@@ -337,10 +375,7 @@ pub fn run() {
             // managed AppCtx; everything else (datadir creation, token
             // files, sealed seed) is handled inside walletd's
             // `run_embedded`.
-            let datadir = app
-                .path()
-                .app_data_dir()
-                .expect("resolving app_data_dir");
+            let datadir = app.path().app_data_dir().expect("resolving app_data_dir");
             std::fs::create_dir_all(&datadir).expect("creating app_data_dir");
             let ctx = AppCtx::new(datadir);
             app.manage(ctx.clone());
@@ -354,8 +389,8 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 match secrets::get_passphrase(KEYRING_SERVICE) {
                     Ok(Some(passphrase)) => {
-                        let _ = start_with_app(&ctx_for_spawn, &passphrase, Some(app_for_spawn))
-                            .await;
+                        let _ =
+                            start_with_app(&ctx_for_spawn, &passphrase, Some(app_for_spawn)).await;
                     }
                     Ok(None) => {
                         // First launch — stay in NeedsPassword.
@@ -373,6 +408,8 @@ pub fn run() {
             rpc,
             get_node_rpc,
             set_node_rpc,
+            get_indexer_config,
+            set_indexer_config,
             reset_wallet,
             export_wallet_key,
             import_wallet_key,

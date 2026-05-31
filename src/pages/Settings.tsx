@@ -1,5 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { getNodeRpc, rpc, setNodeRpc, formatExfer, resetWallet } from "../lib/rpc";
+import {
+  getNodeRpc,
+  rpc,
+  setNodeRpc,
+  getIndexerConfig,
+  setIndexerConfig,
+  formatExfer,
+  resetWallet,
+} from "../lib/rpc";
 import type { BootstrapStatus, WalletBalance } from "../lib/types";
 import { listLabels } from "../lib/labels";
 import { RevealPrivateKeyModal } from "../components/RevealPrivateKeyModal";
@@ -32,6 +40,16 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
   const [nodeError, setNodeError] = useState<string | null>(null);
   const [nodeInfo, setNodeInfo] = useState<string | null>(null);
 
+  // Indexer config ("" = use the bundled default). `current*` track what's
+  // saved so the Save button can disable when nothing changed.
+  const [indexerUrl, setIndexerUrl] = useState("");
+  const [indexerToken, setIndexerToken] = useState("");
+  const [indexerCurUrl, setIndexerCurUrl] = useState("");
+  const [indexerCurToken, setIndexerCurToken] = useState("");
+  const [savingIndexer, setSavingIndexer] = useState(false);
+  const [indexerError, setIndexerError] = useState<string | null>(null);
+  const [indexerInfo, setIndexerInfo] = useState<string | null>(null);
+
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState<StatusInfo | null>(null);
 
@@ -55,8 +73,38 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       setCurrent(v);
       setValue(v);
     });
+    getIndexerConfig().then((c) => {
+      setIndexerUrl(c.rpc);
+      setIndexerToken(c.token);
+      setIndexerCurUrl(c.rpc);
+      setIndexerCurToken(c.token);
+    }, () => {});
     rpc<StatusInfo>("get_status").then(setStatus, () => {});
   }, []);
+
+  async function saveIndexer(e: FormEvent) {
+    e.preventDefault();
+    setIndexerError(null);
+    setIndexerInfo(null);
+    setSavingIndexer(true);
+    try {
+      const s = await setIndexerConfig(indexerUrl, indexerToken);
+      setIndexerCurUrl(indexerUrl.trim());
+      setIndexerCurToken(indexerToken.trim());
+      setIndexerInfo(
+        indexerUrl.trim()
+          ? "Saved — walletd reconnected to the new indexer."
+          : "Saved — using the bundled default indexer.",
+      );
+      toast.success("Indexer updated", "walletd reconnected.");
+      onRestart(s);
+    } catch (err) {
+      setIndexerError(String(err));
+      toast.error("Couldn't update indexer", String(err));
+    } finally {
+      setSavingIndexer(false);
+    }
+  }
 
   async function saveNode(e: FormEvent) {
     e.preventDefault();
@@ -222,6 +270,64 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
               className="btn-secondary"
               onClick={() => setValue(current)}
               disabled={savingNode}
+            >
+              Revert
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* Indexer */}
+      <section className="card-padded space-y-4">
+        <header>
+          <h2 className="text-lg font-semibold text-neutral-100">Indexer</h2>
+          <p className="text-sm text-neutral-400">
+            The exfer-indexer walletd delegates address-history queries to —
+            it powers the Activity feed and the From/To on each transfer. Leave
+            blank to use the bundled default.
+          </p>
+        </header>
+        <form onSubmit={saveIndexer} className="space-y-3">
+          <input
+            className="input font-mono text-sm"
+            value={indexerUrl}
+            onChange={(e) => setIndexerUrl(e.target.value)}
+            disabled={savingIndexer}
+            placeholder="http://198.13.38.245:9335 (default)"
+          />
+          <input
+            className="input font-mono text-sm"
+            value={indexerToken}
+            onChange={(e) => setIndexerToken(e.target.value)}
+            disabled={savingIndexer}
+            placeholder="Bearer token (blank = default)"
+          />
+          <p className="help">
+            Currently in use:{" "}
+            <code className="addr-xs">{indexerCurUrl || "Default (bundled)"}</code>
+          </p>
+          {indexerError && <div className="banner-error">{indexerError}</div>}
+          {indexerInfo && <div className="banner-success">{indexerInfo}</div>}
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="btn"
+              disabled={
+                savingIndexer ||
+                (indexerUrl.trim() === indexerCurUrl.trim() &&
+                  indexerToken.trim() === indexerCurToken.trim())
+              }
+            >
+              {savingIndexer ? "Restarting walletd…" : "Save & reconnect"}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setIndexerUrl(indexerCurUrl);
+                setIndexerToken(indexerCurToken);
+              }}
+              disabled={savingIndexer}
             >
               Revert
             </button>

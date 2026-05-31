@@ -45,8 +45,7 @@ pub fn build_exfk(secret: &[u8; 32], passphrase: &[u8]) -> Result<Vec<u8>, Strin
     OsRng.fill_bytes(&mut nonce_bytes);
 
     let aes_key = derive_key(passphrase, &salt)?;
-    let cipher =
-        Aes256Gcm::new_from_slice(&aes_key).map_err(|e| format!("aes init: {e}"))?;
+    let cipher = Aes256Gcm::new_from_slice(&aes_key).map_err(|e| format!("aes init: {e}"))?;
     let ciphertext = cipher
         .encrypt(Nonce::from_slice(&nonce_bytes), secret.as_slice())
         .map_err(|e| format!("aes encrypt: {e}"))?;
@@ -85,8 +84,7 @@ pub fn parse_exfk(buf: &[u8], passphrase: &[u8]) -> Result<[u8; 32], String> {
     let ciphertext = &buf[33..81];
 
     let aes_key = derive_key(passphrase, salt)?;
-    let cipher =
-        Aes256Gcm::new_from_slice(&aes_key).map_err(|e| format!("aes init: {e}"))?;
+    let cipher = Aes256Gcm::new_from_slice(&aes_key).map_err(|e| format!("aes init: {e}"))?;
     let plaintext = cipher
         .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
         .map_err(|_| "wrong password or corrupt wallet.key".to_string())?;
