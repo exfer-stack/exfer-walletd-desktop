@@ -220,6 +220,54 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Phase 2 SSE push: when the embedded walletd's SseClient gets a
+  // script_changed / tip / resync nudge from the upstream node, the
+  // Rust supervisor emits a "wallet-nudge" Tauri event. Listening
+  // here means the balance refreshes the instant the mempool sees an
+  // incoming tx, rather than waiting for the next poll tick (was up
+  // to ~15 s for a 6-address wallet — now bounded by node→walletd RTT,
+  // typically <100 ms).
+  //
+  // Falls back to polling silently when the node doesn't speak SSE
+  // (pre-1.12): the walletd SseClient never connects, no nudges arrive,
+  // and this listener is a no-op. The existing setTimeout loop above
+  // covers the gap unchanged.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    let lastRefreshAt = 0;
+    // Coalesce: a tx touching N owned addresses fires N script_changed
+    // events. We only need one refresh per burst. 250ms is fast enough
+    // that "instant" still feels instant, and keeps us out of the
+    // rate-limiter even if a block confirms 50 owned txs at once.
+    const COALESCE_MS = 250;
+
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        if (cancelled) return;
+        unlisten = await listen("wallet-nudge", () => {
+          const now = Date.now();
+          if (now - lastRefreshAt < COALESCE_MS) return;
+          lastRefreshAt = now;
+          // Fire-and-forget; load(true) is the same path the poll uses.
+          load(true).catch(() => {
+            /* transient; next poll covers it */
+          });
+        });
+      } catch {
+        // @tauri-apps/api/event missing (e.g. running under vite dev
+        // without the Tauri shell) — just stay on polling.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <WalletCtx.Provider
       value={{ balance, loading, error, refresh, utxos, refreshUtxos }}
