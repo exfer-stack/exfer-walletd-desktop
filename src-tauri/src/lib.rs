@@ -284,11 +284,11 @@ async fn set_node_rpc(ctx: State<'_, AppCtx>, url: String) -> Result<BootstrapSt
     restart(&ctx).await.map_err(|e| e.to_user_string())
 }
 
-/// Configured indexer endpoint. Empty strings mean "use the built-in default".
+/// Configured indexer endpoint. An empty string means "use the built-in
+/// default". The indexer is anonymous (public read-only chain data); no token.
 #[derive(serde::Serialize)]
 struct IndexerConfig {
     rpc: String,
-    token: String,
 }
 
 #[tauri::command]
@@ -297,7 +297,6 @@ async fn get_indexer_config(ctx: State<'_, AppCtx>) -> Result<IndexerConfig, Str
     let cfg = read_desktop_config(&datadir);
     Ok(IndexerConfig {
         rpc: cfg.indexer_rpc.unwrap_or_default(),
-        token: cfg.indexer_token.unwrap_or_default(),
     })
 }
 
@@ -305,20 +304,11 @@ async fn get_indexer_config(ctx: State<'_, AppCtx>) -> Result<IndexerConfig, Str
 async fn set_indexer_config(
     ctx: State<'_, AppCtx>,
     rpc: String,
-    token: String,
 ) -> Result<BootstrapStatus, String> {
     let datadir = ctx.inner.lock().await.datadir.clone();
     let mut cfg = read_desktop_config(&datadir);
-    let norm = |s: String| {
-        let t = s.trim().to_string();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t)
-        }
-    };
-    cfg.indexer_rpc = norm(rpc);
-    cfg.indexer_token = norm(token);
+    let trimmed = rpc.trim().to_string();
+    cfg.indexer_rpc = if trimmed.is_empty() { None } else { Some(trimmed) };
     write_desktop_config(&datadir, &cfg).map_err(|e| format!("persisting config: {e}"))?;
     restart(&ctx).await.map_err(|e| e.to_user_string())
 }

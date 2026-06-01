@@ -43,9 +43,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
   // Indexer config ("" = use the bundled default). `current*` track what's
   // saved so the Save button can disable when nothing changed.
   const [indexerUrl, setIndexerUrl] = useState("");
-  const [indexerToken, setIndexerToken] = useState("");
   const [indexerCurUrl, setIndexerCurUrl] = useState("");
-  const [indexerCurToken, setIndexerCurToken] = useState("");
   const [savingIndexer, setSavingIndexer] = useState(false);
   const [indexerError, setIndexerError] = useState<string | null>(null);
   const [indexerInfo, setIndexerInfo] = useState<string | null>(null);
@@ -75,9 +73,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
     });
     getIndexerConfig().then((c) => {
       setIndexerUrl(c.rpc);
-      setIndexerToken(c.token);
       setIndexerCurUrl(c.rpc);
-      setIndexerCurToken(c.token);
     }, () => {});
     rpc<StatusInfo>("get_status").then(setStatus, () => {});
   }, []);
@@ -88,9 +84,8 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
     setIndexerInfo(null);
     setSavingIndexer(true);
     try {
-      const s = await setIndexerConfig(indexerUrl, indexerToken);
+      const s = await setIndexerConfig(indexerUrl);
       setIndexerCurUrl(indexerUrl.trim());
-      setIndexerCurToken(indexerToken.trim());
       setIndexerInfo(
         indexerUrl.trim()
           ? "Saved — walletd reconnected to the new indexer."
@@ -284,7 +279,8 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
           <p className="text-sm text-neutral-400">
             The exfer-indexer walletd delegates address-history queries to —
             it powers the Activity feed and the From/To on each transfer. Leave
-            blank to use the bundled default.
+            blank to use the bundled default. The indexer serves public
+            read-only chain data, so no token is needed.
           </p>
         </header>
         <form onSubmit={saveIndexer} className="space-y-3">
@@ -294,13 +290,6 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             onChange={(e) => setIndexerUrl(e.target.value)}
             disabled={savingIndexer}
             placeholder="http://198.13.38.245:9335 (default)"
-          />
-          <input
-            className="input font-mono text-sm"
-            value={indexerToken}
-            onChange={(e) => setIndexerToken(e.target.value)}
-            disabled={savingIndexer}
-            placeholder="Bearer token (blank = default)"
           />
           <p className="help">
             Currently in use:{" "}
@@ -313,9 +302,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
               type="submit"
               className="btn"
               disabled={
-                savingIndexer ||
-                (indexerUrl.trim() === indexerCurUrl.trim() &&
-                  indexerToken.trim() === indexerCurToken.trim())
+                savingIndexer || indexerUrl.trim() === indexerCurUrl.trim()
               }
             >
               {savingIndexer ? "Restarting walletd…" : "Save & reconnect"}
@@ -323,10 +310,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => {
-                setIndexerUrl(indexerCurUrl);
-                setIndexerToken(indexerCurToken);
-              }}
+              onClick={() => setIndexerUrl(indexerCurUrl)}
               disabled={savingIndexer}
             >
               Revert

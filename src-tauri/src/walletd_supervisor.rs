@@ -34,12 +34,11 @@ pub const KEYRING_SERVICE: &str = "com.exfer.walletd-desktop";
 // wallet observes incoming pending balance within ~RTT instead of
 // the 2 s poll interval. Tokyo region.
 pub const DEFAULT_NODE_RPC: &str = "http://198.13.38.245:9334";
-// Co-located exfer-indexer (public, token-gated) that answers
+// Co-located exfer-indexer (public, anonymous) that answers
 // get_address_history — the authoritative per-address confirmed timeline that
-// powers the Activity feed and the From/To on each transfer. Token is a public
-// bind-gate (the indexer is read-only, holds no keys), not a secret.
+// powers the Activity feed and the From/To on each transfer. The indexer is
+// read-only and serves only public chain data, so no bearer token is needed.
 pub const DEFAULT_INDEXER_RPC: &str = "http://198.13.38.245:9335";
-pub const DEFAULT_INDEXER_TOKEN: &str = "c5a0e5aca096d97d015e08d76f218674fd29f69aaf1c5505";
 pub const DESKTOP_CONFIG_FILE: &str = "desktop-config.json";
 
 #[derive(Debug, Clone, Serialize)]
@@ -66,9 +65,6 @@ pub struct DesktopConfig {
     /// `serde(default)` so pre-existing configs (node_rpc only) still parse.
     #[serde(default)]
     pub indexer_rpc: Option<String>,
-    /// Bearer token for the indexer. `None`/empty ⇒ [`DEFAULT_INDEXER_TOKEN`].
-    #[serde(default)]
-    pub indexer_token: Option<String>,
 }
 
 impl Default for DesktopConfig {
@@ -76,7 +72,6 @@ impl Default for DesktopConfig {
         Self {
             node_rpc: DEFAULT_NODE_RPC.to_string(),
             indexer_rpc: None,
-            indexer_token: None,
         }
     }
 }
@@ -87,14 +82,6 @@ impl DesktopConfig {
         match self.indexer_rpc.as_deref() {
             Some(s) if !s.trim().is_empty() => s.trim().to_string(),
             _ => DEFAULT_INDEXER_RPC.to_string(),
-        }
-    }
-
-    /// Effective indexer bearer token (configured, or built-in default).
-    pub fn effective_indexer_token(&self) -> String {
-        match self.indexer_token.as_deref() {
-            Some(s) if !s.trim().is_empty() => s.trim().to_string(),
-            _ => DEFAULT_INDEXER_TOKEN.to_string(),
         }
     }
 }
@@ -188,7 +175,8 @@ fn build_walletd_config(datadir: &std::path::Path, desktop_cfg: &DesktopConfig) 
         // history with real tx ids + From/To. Configurable in Settings; falls
         // back to the bundled default when unset.
         indexer_rpc: Some(desktop_cfg.effective_indexer_rpc()),
-        indexer_token: Some(desktop_cfg.effective_indexer_token()),
+        // The indexer is anonymous (public read-only chain data); no token.
+        indexer_token: None,
         indexer_timeout_secs: Some(15),
     }
 }
