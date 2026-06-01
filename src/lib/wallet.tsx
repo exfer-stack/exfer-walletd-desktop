@@ -47,15 +47,19 @@ export function useWallet(): WalletData {
 // addresses. With walletd's batched reads (v1.9.3+) the balances come
 // back in ONE node scan (get_balances) regardless of address count, so a
 // poll costs `1 + N` node scans (the +N is the per-address mempool, which
-// has no batch form yet). We pace one scan every ~2.2s so the cost stays
-// ~27/min, comfortably under the public node's 30/min — which lets a
-// single-address wallet refresh every ~4.4s (was 8s) and a 6-address
-// wallet every ~15s (was 30s). Deposits surface within one poll of
-// hitting the mempool, well ahead of confirmation. UTXO counts and
-// hidden-address balances are fetched on demand, not polled.
-const MS_PER_SCAN = 2_200;
-const MIN_POLL_MS = 4_000;
-const MAX_POLL_MS = 18_000;
+// has no batch form yet). The node caps balance/utxo queries at 30/min/IP,
+// and the poll is NOT the only consumer — a send fires simulate_transfer on
+// each edit plus the transfer, Activity fans out a mempool scan per address,
+// and every SSE reconnect triggers a refresh. The old ~27/min pacing left
+// almost no headroom, so a normal send tipped the budget over and failed with
+// "Rate limit exceeded". We now pace one scan every ~10s, holding the steady
+// poll near ~6/min for a 1–2 address wallet and leaving the rest of the budget
+// for the actions the user takes. Deposits still surface instantly via the SSE
+// push; the poll is just the fallback. UTXO counts and hidden-address balances
+// are fetched on demand, not polled.
+const MS_PER_SCAN = 10_000;
+const MIN_POLL_MS = 15_000;
+const MAX_POLL_MS = 60_000;
 
 /** The current auto-refresh interval for `visibleCount` visible addresses.
  *  Exported so the UI can show the live rate and explain that more visible
