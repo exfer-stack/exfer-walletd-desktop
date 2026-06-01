@@ -8,6 +8,17 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  build: {
+    // Inline the logo (64px) and wordmark (128px) PNGs as base64 data
+    // URIs instead of emitting them as separate files. At their post-
+    // downscale sizes (~4KB / ~17KB) they paint with the React component
+    // that references them, rather than triggering a second HTTP request
+    // that can't even start until the JS bundle has booted — which is
+    // what made the header logo appear half a beat late. 24KB covers
+    // both with headroom; anything larger still emits as a file.
+    assetsInlineLimit: 24 * 1024,
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
