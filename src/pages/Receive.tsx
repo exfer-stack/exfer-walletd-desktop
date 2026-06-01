@@ -32,9 +32,9 @@ export function Receive() {
     }
     QRCode.toDataURL(selected, {
       errorCorrectionLevel: "M",
-      // 4-module quiet zone (spec minimum) so the code scans reliably off a
-      // screen; margin:1 left too little white border for finder detection.
-      margin: 4,
+      // Small quiet zone so finder patterns are locatable (margin:1 was too
+      // tight) without a heavy white border — the QR sits in a white card.
+      margin: 2,
       width: 320,
       color: {
         dark: "#171717",
