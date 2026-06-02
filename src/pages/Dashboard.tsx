@@ -48,7 +48,7 @@ export function Dashboard() {
   async function generateAddress() {
     setGenerating(true);
     try {
-      const a = await rpc<GeneratedAddress>("generate_independent_address");
+      const a = await rpc<GeneratedAddress>("generate_standard_address");
       await refreshAll();
       toast.success(
         "Address created",

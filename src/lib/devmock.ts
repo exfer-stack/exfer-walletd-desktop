@@ -121,6 +121,7 @@ function scopeFor(method: string): "read" | "manage" | "spend" {
   if (
     method === "generate_address" ||
     method === "generate_independent_address" ||
+    method === "generate_standard_address" ||
     method === "import_private_key" ||
     method === "import_mnemonic" ||
     method === "abandon_transfer"
@@ -438,6 +439,23 @@ export const devmock = {
           pubkey,
           balance,
           utxoCount: balance > 0 ? 1 : 0,
+          imported: true,
+        });
+        saveState(s);
+        return { address, pubkey, imported: true };
+      }
+
+      case "generate_standard_address": {
+        // Standard BIP39 address (walletd v1.12+). Dev mock: a fresh fake key.
+        const n = s.addresses.length;
+        const address = fakeHex(`std-${n}-${Date.now()}`, 64);
+        const pubkey = fakeHex(`stdpk-${n}`, 64);
+        s.addresses.push({
+          address,
+          index: n,
+          pubkey,
+          balance: 0,
+          utxoCount: 0,
           imported: true,
         });
         saveState(s);

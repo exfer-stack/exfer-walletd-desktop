@@ -47,7 +47,7 @@ export function Receive() {
     setGenerating(true);
     setError(null);
     try {
-      const out = await rpc<GeneratedAddress>("generate_independent_address");
+      const out = await rpc<GeneratedAddress>("generate_standard_address");
       await refresh();
       setSelected(out.address);
       toast.success("Address created", `${out.address.slice(0, 10)}… is ready.`);
