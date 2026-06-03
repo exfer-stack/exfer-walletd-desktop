@@ -32,6 +32,14 @@ interface WalletData {
   /** Fetch UTXO counts (one extra upstream scan per address). Pages that
    *  display counts call this on mount and after mutating actions. */
   refreshUtxos: () => Promise<void>;
+  /** Suspend the background balance poll (and SSE-triggered refreshes) and
+   *  return a release fn. While suspended, simulate_transfer / transfer get
+   *  the full per-IP scan-rate budget instead of competing with the poll — the
+   *  public node caps balance/utxo queries per minute, and a poll running
+   *  through a send is what tips a normal transfer over the edge ("network is
+   *  busy"). Ref-counted, so nested/overlapping suspends are safe. The Send
+   *  screen calls this on mount. */
+  suspendPolling: () => () => void;
 }
 
 const WalletCtx = createContext<WalletData | null>(null);
@@ -175,6 +183,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(() => load(false), [load]);
 
+  // Ref-counted poll suspension. >0 means the background poll + SSE-triggered
+  // refreshes are paused (e.g. while the Send screen is open) so user-initiated
+  // simulate/transfer scans get the full per-IP rate-limit budget.
+  const suspendCount = useRef(0);
+  const suspendPolling = useCallback(() => {
+    suspendCount.current += 1;
+    return () => {
+      suspendCount.current = Math.max(0, suspendCount.current - 1);
+    };
+  }, []);
+
   const refreshUtxos = useCallback(async () => {
     try {
       // Only the visible addresses — no point scanning hidden ones.
@@ -210,7 +229,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       timer = window.setTimeout(run, delay);
     };
     const run = async () => {
-      await load(true);
+      // Skip the scan while suspended (Send screen open), but keep the loop
+      // alive so it resumes on the next tick once the suspend is released.
+      if (!suspendCount.current) await load(true);
       if (!cancelled) schedule();
     };
     // Initial full load, then begin the paced poll loop.
@@ -251,6 +272,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const { listen } = await import("@tauri-apps/api/event");
         if (cancelled) return;
         unlisten = await listen("wallet-nudge", () => {
+          // Honor the same suspension as the poll: a nudge mid-send must not
+          // spend scan budget the transfer needs.
+          if (suspendCount.current) return;
           const now = Date.now();
           if (now - lastRefreshAt < COALESCE_MS) return;
           lastRefreshAt = now;
@@ -274,7 +298,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   return (
     <WalletCtx.Provider
-      value={{ balance, loading, error, refresh, utxos, refreshUtxos }}
+      value={{ balance, loading, error, refresh, utxos, refreshUtxos, suspendPolling }}
     >
       {children}
     </WalletCtx.Provider>

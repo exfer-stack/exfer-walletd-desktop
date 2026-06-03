@@ -25,8 +25,14 @@ interface OutputRow {
 const HEX64 = /^[0-9a-fA-F]{64}$/;
 
 export function Send() {
-  const { balance, refresh, utxos, refreshUtxos } = useWallet();
+  const { balance, refresh, utxos, refreshUtxos, suspendPolling } = useWallet();
   const toast = useToast();
+
+  // Suspend the background balance poll + SSE-triggered refreshes for as long
+  // as the Send screen is open, so the per-IP scan-rate budget is reserved for
+  // simulate_transfer + the transfer itself (otherwise a poll firing mid-send
+  // tips a normal transfer into "network is busy"). Matches the mobile wallet.
+  useEffect(() => suspendPolling(), [suspendPolling]);
   const [from, setFrom] = useState("");
   const [outputs, setOutputs] = useState<OutputRow[]>([
     { to: "", amount: "" },
