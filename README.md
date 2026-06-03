@@ -47,16 +47,42 @@ Built with Tauri 2 + React 18+ + TypeScript + Vite + Tailwind.
 
 ## First-run UX
 
-- Password modal — the user picks a passphrase that will encrypt
-  walletd's HD seed at rest. Stored silently in the OS keychain
-  afterwards (macOS Keychain, Windows Credential Manager, Linux
-  libsecret); on subsequent launches walletd boots without asking.
-- No BIP-39 mnemonic display. Walletd's custom derivation path
-  (`m/44'/9527'/0'/0'/i'`) isn't interoperable with standard
-  wallets, so the 24 words don't help with cross-wallet recovery.
-  Backup story: keep the password safe and the per-user app-data
-  directory backed up.
-- Default upstream node: `http://89.127.232.155:9334`. Editable in
+- Password modal — the user picks a passphrase that encrypts the
+  keystore at rest. Stored silently in the OS keychain afterwards
+  (macOS Keychain, Windows Credential Manager, Linux libsecret); on
+  subsequent launches walletd boots without asking.
+
+### Mnemonics &amp; the standard scheme
+
+New addresses are minted with the **standard** derivation scheme —
+`secret = SHA-256("EXFER-MNEMONIC-ED25519-V1" || BIP39_seed(phrase))` —
+the same one exfer.dev (the web wallet) and the Exfer mobile wallet use.
+A phrase therefore lands on the **same address** across all three, so the
+24 words you reveal here are a real cross-wallet backup of that address.
+
+- **Reveal recovery phrase** — every address can show its own 24-word
+  standard phrase (Settings → per-address). Importing it back into any
+  Exfer wallet recovers the same address.
+- **Import recovery phrase** (Settings) — brings in one address from its
+  24 words. The phrase maps to two possible addresses (standard vs the
+  older raw-key "legacy" encoding); the app previews **both with their
+  on-chain balance** and defaults to the funded one, so a phrase exported
+  on exfer.dev / mobile imports to the right address without guessing.
+- **Import wallet.key** — the encrypted EXFK key-file path (unchanged);
+  imports an externally-held address from exfer.dev / the CLI.
+
+### Backward compatibility
+
+- Older desktop wallets created with the legacy **HD seed**
+  (`m/44'/9527'/0'/0'/i'`) still restore: the first-run "Restore from
+  24-word phrase" flow seals that seed and re-derives the original HD
+  addresses. New standard-scheme imports live alongside them as
+  independent 1:1 keys and never touch the HD seed.
+- The whole-wallet backup is a single encrypted **`.vault`** file
+  (Settings → Back up &amp; restore) — it captures every address (HD +
+  imported + standard) in one file, no seed phrase to copy.
+
+- Default upstream node: `http://198.13.38.245:9334`. Editable in
   Settings; comma-separated for round-robin + failover.
 
 ## Install

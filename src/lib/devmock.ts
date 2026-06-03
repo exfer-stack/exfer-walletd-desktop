@@ -240,6 +240,52 @@ export const devmock = {
     return s.bootstrap;
   },
 
+  /// Preview the two candidate addresses for a phrase, with fake balances so
+  /// the picker / "found your wallet" UX is exercisable in browser dev. By
+  /// default the standard candidate is funded (the common case).
+  async preview_mnemonic_import(
+    phrase: string,
+  ): Promise<{
+    standard: { address: string; balance: number | null };
+    legacy: { address: string; balance: number | null };
+  }> {
+    if (phrase.trim().split(/\s+/).length !== 24) {
+      throw new Error("recovery phrase must be 24 words");
+    }
+    const key = phrase.trim();
+    return {
+      standard: { address: fakeHex(`std-${key}`, 64), balance: 125_000_000 },
+      legacy: { address: fakeHex(`legacy-${key}`, 64), balance: 0 },
+    };
+  },
+
+  /// Import a phrase under the chosen scheme; mirrors the `import_mnemonic`
+  /// case but keyed by scheme so the address matches the preview.
+  async import_mnemonic_scheme(
+    phrase: string,
+    scheme: string,
+    _label?: string,
+  ): Promise<{ address: string }> {
+    if (phrase.trim().split(/\s+/).length !== 24) {
+      throw new Error("recovery phrase must be 24 words");
+    }
+    const s = loadState();
+    const prefix = scheme === "legacy" ? "legacy" : "std";
+    const address = fakeHex(`${prefix}-${phrase.trim()}`, 64);
+    if (!s.addresses.find((a) => a.address === address)) {
+      s.addresses.push({
+        address,
+        index: s.addresses.length,
+        pubkey: fakeHex(`mnpk-${address.slice(0, 8)}`, 64),
+        balance: 0,
+        utxoCount: 0,
+        imported: true,
+      });
+      saveState(s);
+    }
+    return { address };
+  },
+
   async get_node_rpc(): Promise<string> {
     if (useRealWalletd()) {
       const st = (await realRpc("get_status", {})) as {

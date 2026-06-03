@@ -40,6 +40,45 @@ export function restoreFromMnemonic(
   return invoke<BootstrapStatus>("restore_from_mnemonic", { phrase, password });
 }
 
+/** A 24-word phrase maps to two different addresses depending on the
+ *  derivation scheme. "standard" is what exfer.dev / the mobile wallet
+ *  produce (BIP39 → EXFER-MNEMONIC-ED25519); "legacy" treats the words as a
+ *  raw private key (walletd's own per-address backup phrase). */
+export type MnemonicScheme = "standard" | "legacy";
+
+/** One candidate address for a phrase, with its on-chain balance (null when
+ *  the chain is unreachable — the address is still valid, balance just unknown). */
+export type MnemonicCandidate = { address: string; balance: number | null };
+
+/// Preview both addresses a 24-word phrase maps to (standard BIP39 vs legacy
+/// raw-key) WITH each one's on-chain balance, so the user picks the one that
+/// holds their coins. Derives locally + does a read-only balance query;
+/// imports nothing.
+export function previewMnemonicImport(
+  phrase: string,
+): Promise<{ standard: MnemonicCandidate; legacy: MnemonicCandidate }> {
+  if (devmock.isActive()) return devmock.preview_mnemonic_import(phrase);
+  return invoke("preview_mnemonic_import", { phrase });
+}
+
+/// Import a 24-word phrase under the chosen scheme. Standard re-imports a
+/// phrase that exfer.dev / the mobile wallet exported to the SAME address;
+/// legacy is walletd's raw-key encoding. The address joins as an independent
+/// key (it does not touch the HD seed used by full restore).
+export function importMnemonicScheme(
+  phrase: string,
+  scheme: MnemonicScheme,
+  label?: string,
+): Promise<{ address: string }> {
+  if (devmock.isActive())
+    return devmock.import_mnemonic_scheme(phrase, scheme, label);
+  return invoke("import_mnemonic_scheme", {
+    phrase,
+    scheme,
+    label: label ?? null,
+  });
+}
+
 export function getNodeRpc(): Promise<string> {
   if (devmock.isActive()) return devmock.get_node_rpc();
   return invoke<string>("get_node_rpc");

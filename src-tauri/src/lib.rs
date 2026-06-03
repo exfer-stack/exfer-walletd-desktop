@@ -6,6 +6,7 @@
 
 mod error;
 mod export_key;
+mod mnemonic;
 mod rpc_client;
 mod secrets;
 mod walletd_supervisor;
@@ -69,6 +70,77 @@ async fn rpc(
     };
     let params = params.unwrap_or(Value::Object(Default::default()));
     rpc_client::forward_rpc(&client, &conn, &method, params)
+        .await
+        .map_err(|e| e.to_user_string())
+}
+
+/// Best-effort on-chain balance (base units) for ANY address — used to show,
+/// before importing, which candidate address actually holds the coins.
+async fn address_balance(
+    client: &reqwest::Client,
+    conn: &rpc_client::ConnectionInfo,
+    address: &str,
+) -> Option<u64> {
+    let params = serde_json::json!({ "address": address });
+    let v = rpc_client::forward_rpc(client, conn, "get_balance", params)
+        .await
+        .ok()?;
+    v.get("balance").and_then(|b| b.as_u64()).or_else(|| v.as_u64())
+}
+
+/// Preview the two addresses a 24-word phrase maps to (standard BIP39 vs the
+/// legacy raw-key scheme) WITH each address's on-chain balance, so the user can
+/// pick the one that holds their coins instead of guessing a scheme. Pure
+/// derivation + a read-only balance query; mints no key, imports nothing. This
+/// is the same derivation + preview the mobile wallet uses, so a phrase shows
+/// the same candidate addresses on both.
+#[tauri::command]
+async fn preview_mnemonic_import(ctx: State<'_, AppCtx>, phrase: String) -> Result<Value, String> {
+    let (standard, legacy) = mnemonic::preview(&phrase)?;
+    let cc = {
+        let inner = ctx.inner.lock().await;
+        inner.client.clone().zip(inner.conn.clone())
+    };
+    let (std_bal, leg_bal) = if let Some((client, conn)) = cc {
+        tokio::join!(
+            address_balance(&client, &conn, &standard),
+            address_balance(&client, &conn, &legacy),
+        )
+    } else {
+        (None, None)
+    };
+    Ok(serde_json::json!({
+        "standard": { "address": standard, "balance": std_bal },
+        "legacy": { "address": legacy, "balance": leg_bal },
+    }))
+}
+
+/// Import a 24-word phrase under the chosen scheme (`"standard"` | `"legacy"`).
+/// Routes to walletd so the phrase is sealed and reveals back: standard →
+/// `import_standard_mnemonic` (same address as exfer.dev / the mobile wallet),
+/// legacy → `import_mnemonic` (raw-key encoding). The address joins the wallet
+/// as an independent key; it does not touch the HD seed used by full restore.
+/// Returns `{ address, imported }`.
+#[tauri::command]
+async fn import_mnemonic_scheme(
+    ctx: State<'_, AppCtx>,
+    phrase: String,
+    scheme: String,
+    label: Option<String>,
+) -> Result<Value, String> {
+    let method = match mnemonic::Scheme::parse(&scheme)? {
+        mnemonic::Scheme::Standard => "import_standard_mnemonic",
+        mnemonic::Scheme::Legacy => "import_mnemonic",
+    };
+    let (client, conn) = {
+        let inner = ctx.inner.lock().await;
+        match (inner.client.clone(), inner.conn.clone()) {
+            (Some(c), Some(k)) => (c, k),
+            _ => return Err("walletd not ready".into()),
+        }
+    };
+    let params = serde_json::json!({ "mnemonic": phrase.trim(), "label": label });
+    rpc_client::forward_rpc(&client, &conn, method, params)
         .await
         .map_err(|e| e.to_user_string())
 }
@@ -406,6 +478,8 @@ pub fn run() {
             export_vault_file,
             import_vault_file,
             restore_from_mnemonic,
+            preview_mnemonic_import,
+            import_mnemonic_scheme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

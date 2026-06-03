@@ -1481,11 +1481,12 @@ dependencies = [
 
 [[package]]
 name = "exfer-walletd-desktop"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
  "argon2",
+ "bip39",
  "exfer-walletd",
  "hex",
  "keyring",

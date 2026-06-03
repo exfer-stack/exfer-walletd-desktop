@@ -1,6 +1,6 @@
 [package]
 name        = "exfer-walletd-desktop"
-version     = "0.13.1"
+version     = "0.14.0"
 description = "Desktop GUI for exfer-walletd. One double-click → walletd in-process + a window for balance / generate-address / transfer."
 edition     = "2021"
 license     = "MIT"
@@ -41,6 +41,10 @@ reqwest            = { version = "0.12", default-features = false, features = ["
 rustls             = "0.23"
 sha2               = "0.10"
 hex                = "0.4"
+# Standard-scheme mnemonic import preview: parse a 24-word BIP39 phrase and
+# derive the standard / legacy candidate address before importing. Same pin as
+# the mobile wallet so the derivation matches byte-for-byte.
+bip39              = "2.2"
 
 # Persist the keystore passphrase in the OS keychain (Keychain on
 # macOS, Credential Manager on Windows, libsecret on Linux).

@@ -12,6 +12,7 @@ import type { BootstrapStatus, WalletBalance } from "../lib/types";
 import { listLabels } from "../lib/labels";
 import { RevealPrivateKeyModal } from "../components/RevealPrivateKeyModal";
 import { ImportKeyModal } from "../components/ImportKeyModal";
+import { ImportMnemonicModal } from "../components/ImportMnemonicModal";
 import { VaultBackupModal, VaultRestoreModal } from "../components/KeyringModals";
 import { useToast } from "../lib/toast";
 import { useWallet } from "../lib/wallet";
@@ -53,6 +54,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
 
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showImportPhrase, setShowImportPhrase] = useState(false);
   const [showBackup, setShowBackup] = useState(false);
   const [showRestore, setShowRestore] = useState(false);
   const { refresh } = useWallet();
@@ -417,13 +419,26 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
           >
             Import wallet.key…
           </button>
+          <button
+            type="button"
+            onClick={() => setShowImportPhrase(true)}
+            className="btn-secondary"
+          >
+            Import recovery phrase…
+          </button>
         </div>
         <p className="help">
           <span className="font-medium text-neutral-300">Import wallet.key</span>{" "}
           adds an externally-held address (e.g. one exported from
           exfer.dev or another machine) to this wallet. Old{" "}
           <span className="font-mono">.key</span> files still import — the
-          format is unchanged.
+          format is unchanged.{" "}
+          <span className="font-medium text-neutral-300">
+            Import recovery phrase
+          </span>{" "}
+          brings in an address from its 24 words; the standard scheme matches
+          exfer.dev and the Exfer mobile wallet, so the same phrase lands on the
+          same address.
         </p>
       </section>
 
@@ -520,6 +535,15 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
           onImported={() => {
             // Pull the newly-imported address into the wallet provider
             // so it shows up in Dashboard / Receive immediately.
+            refresh().catch(() => {});
+          }}
+        />
+      )}
+
+      {showImportPhrase && (
+        <ImportMnemonicModal
+          onClose={() => setShowImportPhrase(false)}
+          onImported={() => {
             refresh().catch(() => {});
           }}
         />
