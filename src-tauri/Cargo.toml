@@ -33,7 +33,7 @@ tokio-util         = { version = "0.7", features = ["rt"] }
 # The embedded walletd. Pinned to the same rev as the mobile wallet so the
 # cross-chain swap engine (swap_*/bsc_* RPC, BSC address derivation, HTLC legs)
 # is present and behaves byte-for-byte identically. v1.12.1 predates swap.
-exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "4034e187f0b3e0760f26753043650e8be96d24cc" }
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "604f6e2" }
 
 # HTTP client used by the Tauri Rust side to talk to the embedded
 # walletd over loopback HTTPS. `rustls-tls-manual-roots` disables
@@ -41,6 +41,10 @@ exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev
 # the TLS handshake can take.
 reqwest            = { version = "0.12", default-features = false, features = ["json", "rustls-tls-manual-roots"] }
 rustls             = "0.23"
+# Public-internet TLS roots for outbound HTTPS to e.g. Binance (BNB/USD spot).
+# The pinned walletd client uses manual roots; public_https_client() builds a
+# separate webpki-rooted client so cert validation works for public hosts.
+webpki-roots       = "0.26"
 sha2               = "0.10"
 hex                = "0.4"
 # Standard-scheme mnemonic import preview: parse a 24-word BIP39 phrase and

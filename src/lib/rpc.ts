@@ -79,6 +79,15 @@ export function importMnemonicScheme(
   });
 }
 
+/// Reveal the wallet's BSC/EVM private key (m/44'/60'/0'/0/0) for import into
+/// MetaMask. Spend-scoped + passphrase-gated. The hex never gets persisted —
+/// the UI shows it once and clears it.
+export function revealEvmPrivateKey(
+  passphrase: string,
+): Promise<{ address: string; private_key_hex: string }> {
+  return rpc("reveal_evm_private_key", { passphrase });
+}
+
 export function getNodeRpc(): Promise<string> {
   if (devmock.isActive()) return devmock.get_node_rpc();
   return invoke<string>("get_node_rpc");

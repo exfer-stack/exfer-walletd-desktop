@@ -425,6 +425,39 @@ async fn set_swap_config(
     restart(&ctx).await.map_err(|e| e.to_user_string())
 }
 
+/// A reqwest client trusting the public webpki root store, for outbound HTTPS
+/// to public hosts (Binance). The app's other reqwest client pins walletd's
+/// self-signed cert via manual roots, which would reject a public CA chain —
+/// hence a separate client here.
+fn public_https_client() -> Result<reqwest::Client, String> {
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let tls = rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    reqwest::ClientBuilder::new()
+        .use_preconfigured_tls(tls)
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("building http client: {e}"))
+}
+
+/// BNB/USD spot from Binance, returned as the raw JSON body ({"price":"..."}).
+/// The frontend (lib/market.ts) parses `price` and derives EXFER/USD from the
+/// pool ratio. Read-only; a failure just means USD values don't render.
+#[tauri::command]
+async fn get_bnb_price() -> Result<String, String> {
+    let resp = public_https_client()?
+        .get("https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT")
+        .send()
+        .await
+        .map_err(|e| format!("bnb price request failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("bnb price endpoint returned {}", resp.status()));
+    }
+    resp.text().await.map_err(|e| format!("reading bnb price body: {e}"))
+}
+
 /// Wipe everything on this device: stop the embedded walletd, delete the
 /// entire app-data directory (sealed seed, tokens, TLS cert, desktop
 /// config), and clear the keychain passphrase. Returns the app to the
@@ -514,6 +547,7 @@ pub fn run() {
             set_indexer_config,
             get_swap_config,
             set_swap_config,
+            get_bnb_price,
             reset_wallet,
             export_wallet_key,
             import_wallet_key,

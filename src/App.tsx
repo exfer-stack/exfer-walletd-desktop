@@ -17,6 +17,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Receive } from "./pages/Receive";
 import { Send } from "./pages/Send";
 import { Swap } from "./pages/Swap";
+import { Liquidity } from "./pages/Liquidity";
 import { Activity } from "./pages/Activity";
 import { Settings } from "./pages/Settings";
 import { SwapWatcher } from "./components/SwapWatcher";
@@ -109,6 +110,7 @@ function AppInner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void })
         {tab === "receive" && <Receive />}
         {tab === "send" && <Send />}
         {tab === "swap" && <Swap />}
+        {tab === "liquidity" && <Liquidity />}
         {tab === "activity" && <Activity />}
         {tab === "settings" && (
           <Settings

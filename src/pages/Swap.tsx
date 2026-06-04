@@ -16,9 +16,9 @@
 // pool-info / bsc calls throw, we catch them, and the page shows a quiet
 // "swap unavailable" notice instead of erroring.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import QRCode from "qrcode";
-import { rpc, formatExfer, formatBalanceCompact } from "../lib/rpc";
+import { rpc, formatExfer, formatBalanceCompact, revealEvmPrivateKey } from "../lib/rpc";
 import type {
   SwapDirection,
   SwapRec,
@@ -32,6 +32,8 @@ import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
+import { usePrice, useBnbUsd, usdNumber } from "../lib/market";
+import { recordSwapUsd } from "../lib/swapPrice";
 import { CopyButton } from "../components/CopyButton";
 
 // Permissive decimal: BNB carries up to 18 fractional digits, EXFER up to 8.
@@ -71,6 +73,17 @@ function fmtUnits(raw: string | undefined, decimals: number, frac = 4): string {
   } catch {
     return "0";
   }
+}
+
+/** A tiny inline spinner (Tailwind animate-spin) for the refunding/waiting bits. */
+function Spinner({ size = 14 }: { size?: number }) {
+  return (
+    <span
+      className="inline-block animate-spin rounded-full border-2 border-current border-t-transparent align-[-2px]"
+      style={{ width: size, height: size }}
+      aria-hidden
+    />
+  );
 }
 
 /** Small QR that renders an address to a data URL (same palette as Receive). */
@@ -123,6 +136,8 @@ export function Swap() {
   const { balance, refresh, suspendPolling } = useWallet();
   const toast = useToast();
   const { t } = useT();
+  const price = usePrice();
+  const bnbUsd = useBnbUsd();
 
   // Reserve the per-IP scan-rate budget while swapping, exactly like Send.
   useEffect(() => suspendPolling(), [suspendPolling]);
@@ -136,8 +151,14 @@ export function Swap() {
   const [quote, setQuote] = useState<SwapRec | null>(null);
   const [live, setLive] = useState<SwapRec | null>(null);
   const [poolInfo, setPoolInfo] = useState<PoolInfo | null>(null);
+  // Gate: a high-impact trade must be explicitly confirmed before execute.
+  const [showImpactConfirm, setShowImpactConfirm] = useState(false);
   // null = unknown yet; false = engine confirmed off (pool_info threw).
   const [engineOn, setEngineOn] = useState<boolean | null>(null);
+
+  // The wallet's BSC balance (wei) — drives the buy-side deposit lead, the
+  // buyMax button, and the "Waiting for your BNB…" spinner. Polled on step 1.
+  const [bnbWei, setBnbWei] = useState<string | null>(null);
 
   const sell = direction === "exfer_to_bnb";
   const sendUnit = sell ? "EXFER" : "BNB";
@@ -178,27 +199,110 @@ export function Swap() {
     };
   }, []);
 
+  // Poll the wallet's BNB balance on the build step so the buy-side deposit
+  // lead, buyMax, and "waiting for BNB" spinner stay live — and announce a fresh
+  // deposit with a toast so it's never silent. (BnbAccount polls its own copy;
+  // this drives the swap form.)
+  const lastBnbRef = useRef<bigint | null>(null);
+  useEffect(() => {
+    if (step !== 1) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const b = await rpc<{ bnb_wei: string }>("bsc_get_balances");
+        if (cancelled) return;
+        setBnbWei(b.bnb_wei);
+        const now = BigInt(b.bnb_wei);
+        const prev = lastBnbRef.current;
+        if (prev != null && now > prev) {
+          const delta = fmtUnits((now - prev).toString(), 18, 5);
+          toast.incoming(`+${delta} BNB`, t("swap.bnbReceived"));
+        }
+        lastBnbRef.current = now;
+      } catch {
+        /* engine off / no HD seed — form just hides the BNB bits */
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [step, toast, t]);
+
   const amountValid = AMOUNT_RE.test(amount.trim()) && Number(amount) > 0;
 
   // Live client-side estimate of the output (the real quote happens on Review).
+  // Uses the SAME constant-product formula as the pool (Uniswap-v2 with fee) —
+  // NOT a flat amount×mid — so the estimate already includes slippage: a bigger
+  // trade gets a visibly worse rate, matching what swap_get_quote returns. Falls
+  // back to the linear mid only when the reserves aren't known yet.
   const estOut = useMemo(() => {
     if (!poolInfo || !amountValid || poolInfo.mid <= 0) return null;
     const a = Number(amount);
     if (!isFinite(a) || a <= 0) return null;
+    const reserveIn = sell ? poolInfo.exferReserve : poolInfo.bnbReserve;
+    const reserveOut = sell ? poolInfo.bnbReserve : poolInfo.exferReserve;
+    if (reserveIn > 0 && reserveOut > 0) {
+      const inWithFee = (a * (10_000 - poolInfo.feeBps)) / 10_000;
+      return (inWithFee * reserveOut) / (reserveIn + inWithFee);
+    }
     return sell ? a * poolInfo.mid : a / poolInfo.mid;
   }, [poolInfo, amount, amountValid, sell]);
 
-  // Most the pool can fill right now in input units — the smaller of the
-  // per-swap size cap and what keeps the output within the output reserve.
-  const maxIn = useMemo(() => {
-    if (!poolInfo || poolInfo.mid <= 0) return 0;
-    const outReserve = sell ? poolInfo.bnbReserve : poolInfo.exferReserve;
+  // Effective EXFER/USD: the OTC EXFER quote, falling back to the pool mid ×
+  // BNB/USD. Best-effort — null hides the ≈$ figures.
+  const exferUsd =
+    price?.usd ?? (poolInfo && poolInfo.mid > 0 && bnbUsd ? poolInfo.mid * bnbUsd : null);
+
+  // Price impact = the fraction of the input-side reserve this trade consumes
+  // (constant-product). We DON'T cap the amount — the user may swap whatever
+  // they want and eat the slippage — but we warn when impact is high so the
+  // consequence is clear. maxSwapBps (the old hard cap) is reused as the
+  // "high impact" threshold.
+  const priceImpact = useMemo(() => {
+    if (!poolInfo || !amountValid) return 0;
+    const a = Number(amount);
+    if (!isFinite(a) || a <= 0) return 0;
     const inReserve = sell ? poolInfo.exferReserve : poolInfo.bnbReserve;
-    const capByOut = sell ? outReserve / poolInfo.mid : outReserve * poolInfo.mid;
-    const capBySize = inReserve * (poolInfo.maxSwapBps / 10_000);
-    return Math.max(0, Math.min(capByOut, capBySize) * 0.98);
-  }, [poolInfo, sell]);
-  const overLimit = amountValid && maxIn > 0 && Number(amount) > maxIn;
+    if (inReserve <= 0) return 1;
+    return a / (inReserve + a);
+  }, [poolInfo, amount, amountValid, sell]);
+  const highImpact = !!poolInfo && priceImpact * 10_000 >= poolInfo.maxSwapBps;
+
+  const bnbZero = (() => {
+    if (bnbWei == null) return false;
+    try {
+      return BigInt(bnbWei) === 0n;
+    } catch {
+      return false;
+    }
+  })();
+  // Buy with no BNB yet: lead with the deposit card and de-emphasize the amount
+  // field so the order of operations reads top-to-bottom (1. Add BNB → 2. Enter).
+  const needsFunding = !sell && bnbZero;
+
+  // Sell Max = the funded address's spendable EXFER. Buy Max = all spendable
+  // BNB, less a small gas reserve (BNB is also the gas token), capped at the
+  // pool's per-swap size cap.
+  const sendBal = pickList.find((e) => e.address === fromAddr)?.balance ?? 0;
+  const buyMax = useMemo(() => {
+    if (sell || !bnbWei) return 0;
+    let bnbHuman = 0;
+    try {
+      bnbHuman = Number(BigInt(bnbWei)) / 1e18;
+    } catch {
+      return 0;
+    }
+    const GAS_RESERVE = 0.002; // ample for a BSC HTLC lock (gas is ~0.0001 BNB)
+    let m = Math.max(0, bnbHuman - GAS_RESERVE);
+    if (poolInfo && poolInfo.bnbReserve > 0) {
+      const capBySize = poolInfo.bnbReserve * (poolInfo.maxSwapBps / 10_000);
+      m = Math.min(m, capBySize);
+    }
+    return Math.max(0, m);
+  }, [sell, bnbWei, poolInfo]);
 
   function reset() {
     setStep(1);
@@ -243,12 +347,27 @@ export function Swap() {
     }
   }
 
-  async function confirm() {
+  // Tapping Confirm: a high-impact trade pops a confirmation first; everything
+  // else goes straight to execute.
+  function confirm() {
     if (!quote) return;
+    if (highImpact) {
+      setShowImpactConfirm(true);
+      return;
+    }
+    void doExecute();
+  }
+
+  async function doExecute() {
+    if (!quote) return;
+    setShowImpactConfirm(false);
     setBusy(true);
     setErr(null);
     try {
       const r = await rpc<SwapRec>("swap_execute", { swap_id: quote.swap_id });
+      // Snapshot the effective EXFER/USD now, so the activity record can later
+      // show what this swap was worth at execution time.
+      if (exferUsd != null) recordSwapUsd(quote.swap_id, exferUsd);
       setLive(r);
       setStep(3);
       toast.success(t("swap.toastStartedTitle"), t("swap.toastStartedBody"));
@@ -308,6 +427,15 @@ export function Swap() {
     };
   }, [step, watchId, refresh]);
 
+  // On completion, gently auto-reset back to step 1 after a beat so the user
+  // isn't left staring at a finished screen.
+  useEffect(() => {
+    if (step !== 3) return;
+    if (live?.status !== "completed") return;
+    const id = window.setTimeout(() => reset(), 3200);
+    return () => window.clearTimeout(id);
+  }, [step, live?.status]);
+
   // Elapsed seconds on the progress screen, for the "taking longer" hint + the
   // manual-refund escape hatch after 90s.
   const [elapsed, setElapsed] = useState(0);
@@ -341,6 +469,10 @@ export function Swap() {
 
       {step === 1 && (
         <>
+          {/* Buy with no BNB yet: lead with the deposit card so the order of
+              operations reads top-to-bottom (1. Add BNB → 2. Enter amount). */}
+          {needsFunding && <BnbAccount lead waiting />}
+
           <div className="card-padded space-y-6">
             <DirectionToggle direction={direction} onChange={switchDirection} />
 
@@ -411,18 +543,30 @@ export function Swap() {
               )}
             </div>
 
-            {/* Amount */}
-            <div>
+            {/* Amount — de-emphasized until there's BNB to swap on the buy side. */}
+            <div className={needsFunding ? "opacity-50" : ""}>
               <div className="flex items-center justify-between">
-                <label className="label mb-0">{t("swap.youSendUnit", { unit: sendUnit })}</label>
-                {maxIn > 0 && (
+                <label className="label mb-0">
+                  {needsFunding ? t("swap.amountStep") : t("swap.youSendUnit", { unit: sendUnit })}
+                </label>
+                {sell && sendBal > 0 && (
                   <button
                     type="button"
                     className="btn-ghost text-xs"
-                    onClick={() => setAmount(String(maxIn))}
+                    onClick={() => setAmount(formatExfer(sendBal).replace(" EXFER", ""))}
                     disabled={busy}
                   >
-                    {t("swap.max", { amt: fmtAmt(String(maxIn), 6) })}
+                    {t("swap.maxLabel")}
+                  </button>
+                )}
+                {!sell && buyMax > 0 && (
+                  <button
+                    type="button"
+                    className="btn-ghost text-xs"
+                    onClick={() => setAmount(fmtAmt(String(buyMax), 8))}
+                    disabled={busy}
+                  >
+                    {t("swap.maxLabel")}
                   </button>
                 )}
               </div>
@@ -443,10 +587,28 @@ export function Swap() {
                   {estOut != null ? `≈ ${fmtAmt(String(estOut), 6)} ${recvUnit}` : `— ${recvUnit}`}
                 </span>
               </div>
-              {overLimit && (
-                <p className="mt-2 text-xs text-amber-300">
-                  {t("swap.overLimit", { max: fmtAmt(String(maxIn), 6), unit: sendUnit })}
-                </p>
+              {/* ≈$ value of the EXFER side (sell sends EXFER, buy receives it). */}
+              {exferUsd != null && estOut != null && (
+                <div className="mt-1 flex items-baseline justify-between text-xs">
+                  <span className="text-neutral-600">{t("swap.usdValue")}</span>
+                  <span className="font-mono tabular-nums text-neutral-500">
+                    ≈ {usdNumber((sell ? Number(amount) : estOut) * exferUsd)}
+                  </span>
+                </div>
+              )}
+              {/* Price impact — warn (amber) when it's high, but never block. */}
+              {priceImpact > 0 && (
+                <div className="mt-1 flex items-baseline justify-between text-xs">
+                  <span className="text-neutral-600">{t("swap.priceImpact")}</span>
+                  <span
+                    className={
+                      "font-mono tabular-nums " +
+                      (highImpact ? "text-amber-300" : "text-neutral-500")
+                    }
+                  >
+                    {(priceImpact * 100).toFixed(2)}%
+                  </span>
+                </div>
               )}
             </div>
 
@@ -455,7 +617,7 @@ export function Swap() {
             <button
               type="button"
               className="btn w-full text-base"
-              disabled={busy || !amountValid || overLimit || !fromAddr}
+              disabled={busy || !amountValid || !fromAddr}
               onClick={getQuote}
             >
               {busy ? t("swap.gettingQuote") : t("swap.review")}
@@ -463,25 +625,39 @@ export function Swap() {
           </div>
 
           {/* In-wallet BNB account — the buy-side deposit target + a place to
-              read/withdraw BNB. Always visible so users can manage it. */}
-          <BnbAccount lead={!sell} />
+              read/withdraw BNB. When already shown as the funding lead above,
+              don't render it twice. */}
+          {!needsFunding && <BnbAccount lead={!sell} />}
         </>
       )}
 
       {step === 2 && quote && (
-        <ReviewCard
-          quote={quote}
-          sendUnit={sendUnit}
-          recvUnit={recvUnit}
-          busy={busy}
-          err={err}
-          onBack={() => {
-            setStep(1);
-            setQuote(null);
-            setErr(null);
-          }}
-          onConfirm={confirm}
-        />
+        <>
+          <ReviewCard
+            quote={quote}
+            sendUnit={sendUnit}
+            recvUnit={recvUnit}
+            sell={sell}
+            priceImpact={priceImpact}
+            highImpact={highImpact}
+            exferUsd={exferUsd}
+            busy={busy}
+            err={err}
+            onBack={() => {
+              setStep(1);
+              setQuote(null);
+              setErr(null);
+            }}
+            onConfirm={confirm}
+          />
+          {showImpactConfirm && (
+            <ImpactConfirmModal
+              pct={priceImpact * 100}
+              onCancel={() => setShowImpactConfirm(false)}
+              onProceed={() => void doExecute()}
+            />
+          )}
+        </>
       )}
 
       {step === 3 && (
@@ -552,6 +728,10 @@ function ReviewCard({
   quote,
   sendUnit,
   recvUnit,
+  sell,
+  priceImpact,
+  highImpact,
+  exferUsd,
   busy,
   err,
   onBack,
@@ -560,6 +740,10 @@ function ReviewCard({
   quote: SwapRec;
   sendUnit: string;
   recvUnit: string;
+  sell: boolean;
+  priceImpact: number;
+  highImpact: boolean;
+  exferUsd: number | null;
   busy: boolean;
   err: string | null;
   onBack: () => void;
@@ -570,6 +754,9 @@ function ReviewCard({
     Number(quote.amount_in) > 0
       ? Number(quote.amount_out) / Number(quote.amount_in)
       : 0;
+  // ≈$ of the EXFER leg: sell sends EXFER (amount_in), buy receives it (amount_out).
+  const exferAmt = sell ? Number(quote.amount_in) : Number(quote.amount_out);
+  const usd = exferUsd != null && isFinite(exferAmt) ? exferAmt * exferUsd : null;
   return (
     <div className="card-padded space-y-5">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
@@ -579,10 +766,24 @@ function ReviewCard({
       <div className="space-y-3">
         <Row label={t("swap.youSend")} value={`${fmtAmt(quote.amount_in, 8)} ${sendUnit}`} />
         <Row label={t("swap.youReceive")} value={`${fmtAmt(quote.amount_out, 8)} ${recvUnit}`} strong />
+        {usd != null && <Row label={t("swap.usdValue")} value={`≈ ${usdNumber(usd)}`} />}
         <Row
           label={t("swap.rate")}
           value={`1 ${sendUnit} ≈ ${fmtAmt(String(rate), 8)} ${recvUnit}`}
         />
+        {priceImpact > 0 && (
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-sm text-neutral-400">{t("swap.priceImpact")}</span>
+            <span
+              className={
+                "font-mono text-sm tabular-nums " +
+                (highImpact ? "text-amber-300" : "text-neutral-200")
+              }
+            >
+              {(priceImpact * 100).toFixed(2)}%
+            </span>
+          </div>
+        )}
         {quote.fee_bps != null && (
           <Row label={t("swap.poolFee")} value={`${(quote.fee_bps / 100).toFixed(2)}%`} />
         )}
@@ -646,6 +847,13 @@ function ProgressCard({
         <Banner kind="info" title={t("swap.refundedTitle")} body={t("swap.refundedBody")} />
       ) : status === "failed" ? (
         <Banner kind="error" title={t("swap.failedTitle")} body={live?.error ?? t("swap.failedBody")} />
+      ) : status === "refunding" ? (
+        <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-amber-200">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Spinner /> {t("swap.refundingTitle")}
+          </div>
+          <div className="mt-0.5 text-xs opacity-90">{t("swap.statusRefunding")}</div>
+        </div>
       ) : (
         <ol className="space-y-3">
           {nodes.map((n) => {
@@ -676,7 +884,7 @@ function ProgressCard({
         </ol>
       )}
 
-      {!terminal && elapsed > 20 && (
+      {!terminal && status !== "refunding" && elapsed > 20 && (
         <p className="text-xs text-neutral-500">
           {t("swap.takingLonger")}
         </p>
@@ -687,6 +895,9 @@ function ProgressCard({
           {t("swap.done")}
         </button>
       ) : (
+        // Manual refund is only meaningful while the user's leg is still locked
+        // (user_locked / pool_locked) and after a long wait.
+        ["user_locked", "pool_locked"].includes(status) &&
         elapsed > 90 && (
           <button
             type="button"
@@ -703,10 +914,13 @@ function ProgressCard({
 }
 
 /** In-wallet BNB account on BSC: address (QR + copy), live balance, withdraw.
- *  This is the "manage your BSC address" surface — funds the buy direction. */
-function BnbAccount({ lead }: { lead: boolean }) {
+ *  This is the "manage your BSC address" surface — funds the buy direction.
+ *  `waiting` shows a "Waiting for your BNB…" spinner when leading the buy flow
+ *  with a zero balance. */
+function BnbAccount({ lead, waiting = false }: { lead: boolean; waiting?: boolean }) {
   const toast = useToast();
   const { t } = useT();
+  const bnbUsd = useBnbUsd();
   const [addr, setAddr] = useState<string | null>(null);
   const [bnbWei, setBnbWei] = useState<string | null>(null);
   const [open, setOpen] = useState(lead);
@@ -714,7 +928,20 @@ function BnbAccount({ lead }: { lead: boolean }) {
   const [to, setTo] = useState("");
   const [amt, setAmt] = useState("");
   const [wErr, setWErr] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const lastWei = useRef<bigint | null>(null);
+
+  // Human BNB balance + its ≈$ value (best-effort; hidden when BNB/USD absent).
+  const bnbHuman = (() => {
+    if (!bnbWei) return 0;
+    try {
+      return Number(BigInt(bnbWei)) / 1e18;
+    } catch {
+      return 0;
+    }
+  })();
+  const bnbUsdValue = bnbUsd != null && bnbHuman > 0 ? bnbHuman * bnbUsd : null;
+  const isZero = bnbWei != null && bnbHuman === 0;
 
   const load = useCallback(async () => {
     try {
@@ -784,8 +1011,15 @@ function BnbAccount({ lead }: { lead: boolean }) {
             {t("swap.bnbAccountSubtitle")}
           </div>
         </div>
-        <span className="font-mono text-sm tabular-nums text-neutral-200">
-          {fmtUnits(bnbWei ?? undefined, 18, 5)} BNB
+        <span className="text-right">
+          <span className="block font-mono text-sm tabular-nums text-neutral-200">
+            {fmtUnits(bnbWei ?? undefined, 18, 5)} BNB
+          </span>
+          {bnbUsdValue != null && (
+            <span className="block font-mono text-xs tabular-nums text-neutral-500">
+              ≈ {usdNumber(bnbUsdValue)}
+            </span>
+          )}
         </span>
       </button>
 
@@ -802,11 +1036,21 @@ function BnbAccount({ lead }: { lead: boolean }) {
             <p className="text-xs text-neutral-500">
               {t("swap.depositHint")}
             </p>
+            {waiting && isZero && (
+              <div className="flex items-center gap-2 text-xs text-neutral-400">
+                <Spinner size={13} /> {t("swap.waitingBnb")}
+              </div>
+            )}
           </div>
 
           {/* Withdraw */}
           <div className="space-y-2 border-t border-neutral-800 pt-4">
-            <div className="label">{t("swap.withdrawBnb")}</div>
+            <div className="flex items-baseline justify-between">
+              <div className="label mb-0">{t("swap.withdrawBnb")}</div>
+              <span className="font-mono text-xs tabular-nums text-neutral-500">
+                {fmtUnits(bnbWei ?? undefined, 18, 5)} BNB
+              </span>
+            </div>
             <div className="grid grid-cols-[1.5fr_1fr] gap-2">
               <input
                 className="input font-mono text-xs"
@@ -816,15 +1060,27 @@ function BnbAccount({ lead }: { lead: boolean }) {
                 disabled={withdrawing}
                 autoComplete="off"
               />
-              <input
-                className="input"
-                placeholder={t("swap.withdrawAmtPlaceholder")}
-                value={amt}
-                onChange={(e) => setAmt(e.target.value)}
-                disabled={withdrawing}
-                inputMode="decimal"
-              />
+              <div className="relative">
+                <input
+                  className="input pr-12"
+                  placeholder={t("swap.withdrawAmtPlaceholder")}
+                  value={amt}
+                  onChange={(e) => setAmt(e.target.value)}
+                  disabled={withdrawing}
+                  inputMode="decimal"
+                />
+                <button
+                  type="button"
+                  className="btn-ghost absolute right-1 top-1/2 -translate-y-1/2 text-xs"
+                  onClick={() => setAmt("max")}
+                  disabled={withdrawing}
+                >
+                  {t("swap.maxLabel")}
+                </button>
+              </div>
             </div>
+            {/* Gas-reserve + irreversible-address warning. */}
+            <div className="banner-info text-xs">{t("swap.withdrawNote")}</div>
             {wErr && <div className="banner-error">{wErr}</div>}
             <button
               type="button"
@@ -835,9 +1091,161 @@ function BnbAccount({ lead }: { lead: boolean }) {
               {withdrawing ? t("swap.sending") : t("swap.withdraw")}
             </button>
           </div>
+
+          {/* Export the BSC private key for MetaMask import. */}
+          <div className="border-t border-neutral-800 pt-4">
+            <button
+              type="button"
+              className="btn-ghost w-full text-neutral-400"
+              onClick={() => setExportOpen(true)}
+            >
+              {t("swap.exportBnbKey")}
+            </button>
+          </div>
         </div>
       )}
+
+      {exportOpen && <ExportBnbKeyModal onClose={() => setExportOpen(false)} />}
     </section>
+  );
+}
+
+/* The BNB (BSC/EVM) private key — passphrase-gated — so the user can import
+ * their BNB address into MetaMask-style wallets ("Import account → Private
+ * key"). The key is derived at m/44'/60'/0'/0/0, the standard path, so the same
+ * address appears in MetaMask. Shown once and never persisted. */
+function ExportBnbKeyModal({ onClose }: { onClose: () => void }) {
+  const { t } = useT();
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [data, setData] = useState<{ address: string; key: string } | null>(null);
+
+  async function reveal(e: FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (pw.length < 4) {
+      setErr(t("swap.expEnterPw"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await revealEvmPrivateKey(pw);
+      setData({ address: res.address, key: res.private_key_hex });
+      setPw("");
+    } catch (e) {
+      setErr(humanizeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-6 fade-in"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="card-padded w-full max-w-xl space-y-5">
+        <header>
+          <h2 className="text-xl font-semibold text-neutral-100">{t("swap.exportBnbKey")}</h2>
+          <p className="mt-1 text-sm text-neutral-400">{t("swap.expDesc")}</p>
+        </header>
+
+        {!data ? (
+          <form onSubmit={reveal} className="space-y-4">
+            <div className="banner-warn text-sm text-amber-200">{t("swap.expWarn")}</div>
+            <div>
+              <label className="label" htmlFor="export-bnb-pw">
+                {t("swap.walletPassword")}
+              </label>
+              <input
+                id="export-bnb-pw"
+                type="password"
+                className="input"
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+                disabled={busy}
+                autoFocus
+                autoComplete="current-password"
+              />
+            </div>
+            {err && <div className="banner-error">{err}</div>}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={onClose} disabled={busy}>
+                {t("swap.back")}
+              </button>
+              <button type="submit" className="btn-danger" disabled={busy || pw === ""}>
+                {busy ? t("swap.confirming") : t("swap.expReveal")}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div className="banner-error">{t("swap.expRevealed")}</div>
+            <div>
+              <div className="label">{t("swap.bnbAddressLabel")}</div>
+              <code className="addr block break-all rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs">
+                {data.address}
+              </code>
+            </div>
+            <div>
+              <div className="label">{t("swap.expPrivKey")}</div>
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 font-mono text-sm break-all text-red-200">
+                {data.key}
+              </div>
+            </div>
+            <div className="banner-info text-xs">{t("swap.expMetaMask")}</div>
+            <div className="flex justify-end gap-2">
+              <CopyButton text={data.key} className="btn-secondary" />
+              <button type="button" className="btn" onClick={onClose}>
+                {t("swap.done")}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** High price-impact confirmation — mobile WARNS but permits, so this is a soft
+ *  gate, not a hard block. */
+function ImpactConfirmModal({
+  pct,
+  onCancel,
+  onProceed,
+}: {
+  pct: number;
+  onCancel: () => void;
+  onProceed: () => void;
+}) {
+  const { t } = useT();
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-6 fade-in"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div className="card-padded w-full max-w-md space-y-5">
+        <header>
+          <h2 className="text-xl font-semibold text-neutral-100">{t("swap.impactConfirmTitle")}</h2>
+        </header>
+        <p className="text-sm leading-relaxed text-neutral-300">
+          {t("swap.impactConfirmBody", { pct: pct.toFixed(1) })}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={onCancel}>
+            {t("swap.back")}
+          </button>
+          <button type="button" className="btn-danger" onClick={onProceed}>
+            {t("swap.impactConfirmCta")}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

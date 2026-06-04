@@ -7,6 +7,7 @@ export type Tab =
   | "receive"
   | "send"
   | "swap"
+  | "liquidity"
   | "activity"
   | "settings";
 
@@ -59,6 +60,15 @@ function Icon({ name }: { name: Tab }) {
           <path d="m20.5 16.5-3.5 3.5-3.5-3.5" />
         </svg>
       );
+    case "liquidity":
+      // Stacked layers — the "pooled liquidity" glyph.
+      return (
+        <svg {...common}>
+          <path d="m12 2 9 5-9 5-9-5 9-5Z" />
+          <path d="m3 12 9 5 9-5" />
+          <path d="m3 17 9 5 9-5" />
+        </svg>
+      );
     case "activity":
       return (
         <svg {...common}>
@@ -86,6 +96,7 @@ const TABS: { id: Tab }[] = [
   { id: "receive" },
   { id: "send" },
   { id: "swap" },
+  { id: "liquidity" },
   { id: "activity" },
   { id: "settings" },
 ];
