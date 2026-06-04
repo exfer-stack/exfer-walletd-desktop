@@ -395,10 +395,16 @@ export function Swap() {
     return () => window.clearInterval(id);
   }, [step]);
 
+  // Pool rate metadata for the page bar (rendered once, replaces the step-1 strip).
+  const poolRate =
+    poolInfo && poolInfo.mid > 0
+      ? `${t("swap.poolRateValue", { rate: fmtAmt(String(poolInfo.mid), 6) })} · ${t("swap.poolFeeShort", { pct: (poolInfo.feeBps / 100).toFixed(2) })}`
+      : null;
+
   if (engineOn === false) {
     return (
-      <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-        <Header />
+      <div className="mx-auto max-w-6xl space-y-6 p-6 fade-in">
+        <PageBar price={price} poolRate={null} />
         <div className="card-padded text-sm text-neutral-400">
           {t("swap.unavailablePre")}
           <span className="text-neutral-200">{t("swap.unavailableSettings")}</span>
@@ -409,232 +415,235 @@ export function Swap() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-      <Header />
+    <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
+      {/* Page bar: title left, live EXFER/USD + 24h change + pool rate right. */}
+      <PageBar price={price} poolRate={poolRate} />
 
-      {/* Live market header: EXFER/USD + 24h change, an interval toggle, the
-          candlestick chart, and a stats row (period high/low/avg + market cap).
-          Everything degrades quietly — no price hides the $ figure, no candles
-          shows an empty/loading state, supply RPC failure just drops mcap. */}
-      <MarketHeader price={price} />
+      {/* Two fixed panes — market (left) stays put across all 3 steps, the swap
+          wizard (right) mutates in place so chart context never disappears. */}
+      <div className="grid grid-cols-12 gap-6">
+        {/* LEFT — market chart + stats, plus the BNB account as a footer strip. */}
+        <div className="col-span-12 space-y-4 lg:col-span-7">
+          <MarketHeader price={price} />
+          <BnbAccount asset={bnbAsset} variant="compact" />
+        </div>
 
-      {step === 1 && (
-        <>
-          {/* Buy with no BNB yet: lead with the deposit card so the order of
-              operations reads top-to-bottom (1. Add BNB → 2. Enter amount). */}
-          {needsFunding && <BnbAccount asset={bnbAsset} lead waiting />}
+        {/* RIGHT — the swap wizard, sticky so it tracks the chart on scroll. */}
+        <div className="col-span-12 lg:col-span-5">
+          <div className="lg:sticky lg:top-6">
+            {step === 1 && (
+              <div className="card-padded space-y-4">
+                <DirectionToggle direction={direction} onChange={switchDirection} />
 
-          <div className="card-padded space-y-6">
-            <DirectionToggle direction={direction} onChange={switchDirection} />
+                {/* Buy with no BNB yet: lead with the deposit card so the order
+                    of operations reads top-to-bottom (1. Add BNB → 2. Enter). */}
+                {needsFunding && <BnbAccount asset={bnbAsset} lead waiting />}
 
-            {poolInfo && poolInfo.mid > 0 && (
-              <div className="flex items-baseline justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-2.5 text-sm">
-                <span className="text-neutral-400">{t("swap.poolRate")}</span>
-                <span className="font-mono tabular-nums text-neutral-200">
-                  {t("swap.poolRateValue", { rate: fmtAmt(String(poolInfo.mid), 8) })}
-                  <span className="ml-2 text-neutral-500">
-                    {t("swap.poolFeeShort", { pct: (poolInfo.feeBps / 100).toFixed(2) })}
-                  </span>
-                </span>
+                {/* From / receive-to address — a compact dropdown, not a stack. */}
+                <div>
+                  <label className="label">
+                    {sell ? t("swap.swapFrom") : t("swap.receiveTo")}
+                  </label>
+                  {pickList.length === 0 ? (
+                    <p className="help">
+                      {sell ? t("swap.noFundedAddr") : t("swap.noAddrGenerate")}
+                    </p>
+                  ) : (
+                    <select
+                      className="input mt-1.5"
+                      value={fromAddr}
+                      onChange={(e) => setFrom(e.target.value)}
+                      disabled={busy}
+                      aria-label={t("swap.addressGroupLabel")}
+                    >
+                      {pickList.map((e) => {
+                        const label = getLabel(e.address);
+                        const name =
+                          label ??
+                          (e.imported
+                            ? t("swap.imported")
+                            : t("swap.addressN", { n: e.index ?? "" }));
+                        return (
+                          <option key={e.address} value={e.address}>
+                            {`${name} · ${shortAddress(e.address)} · ${formatBalanceCompact(e.balance)}`}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                </div>
+
+                {/* Amount — de-emphasized until there's BNB to swap on buy. */}
+                <div className={needsFunding ? "opacity-50" : ""}>
+                  <div className="flex items-center justify-between">
+                    <label className="label mb-0">
+                      {needsFunding
+                        ? t("swap.amountStep")
+                        : t("swap.youSendUnit", { unit: sendUnit })}
+                    </label>
+                    {sell && sendBal > 0 && (
+                      <button
+                        type="button"
+                        className="btn-ghost text-xs"
+                        onClick={() =>
+                          setAmount(formatExfer(sendBal).replace(" EXFER", ""))
+                        }
+                        disabled={busy}
+                      >
+                        {t("swap.maxLabel")}
+                      </button>
+                    )}
+                    {!sell && buyMax > 0 && (
+                      <button
+                        type="button"
+                        className="btn-ghost text-xs"
+                        onClick={() => setAmount(fmtAmt(String(buyMax), 8))}
+                        disabled={busy}
+                      >
+                        {t("swap.maxLabel")}
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    className="input mt-1.5"
+                    placeholder="0.0"
+                    value={amount}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "" || AMOUNT_RE.test(v)) setAmount(v);
+                    }}
+                    disabled={busy}
+                    inputMode="decimal"
+                  />
+
+                  {/* Compact summary: est-out + ≈$ + impact in one tight block. */}
+                  <div className="mt-3 space-y-1.5 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2.5">
+                    <div className="flex items-baseline justify-between text-sm">
+                      <span className="text-neutral-500">{t("swap.youReceiveEst")}</span>
+                      <span className="font-mono tabular-nums text-neutral-200">
+                        {estOut != null
+                          ? `≈ ${fmtAmt(String(estOut), 6)} ${recvUnit}`
+                          : `— ${recvUnit}`}
+                      </span>
+                    </div>
+                    {exferUsd != null && estOut != null && (
+                      <div className="flex items-baseline justify-between text-xs">
+                        <span className="text-neutral-600">{t("swap.usdValue")}</span>
+                        <span className="font-mono tabular-nums text-neutral-500">
+                          ≈ {usdNumber((sell ? Number(amount) : estOut) * exferUsd)}
+                        </span>
+                      </div>
+                    )}
+                    {priceImpact > 0 && (
+                      <div className="flex items-baseline justify-between text-xs">
+                        <span className="text-neutral-600">{t("swap.priceImpact")}</span>
+                        <span
+                          className={
+                            "font-mono tabular-nums " +
+                            (highImpact ? "text-amber-300" : "text-neutral-500")
+                          }
+                        >
+                          {(priceImpact * 100).toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {err && <div className="banner-error">{err}</div>}
+
+                <button
+                  type="button"
+                  className="btn w-full text-base"
+                  disabled={busy || !amountValid || !fromAddr}
+                  onClick={getQuote}
+                >
+                  {busy ? t("swap.gettingQuote") : t("swap.review")}
+                </button>
               </div>
             )}
 
-            {/* From / receive-to address */}
-            <div>
-              <label className="label">{sell ? t("swap.swapFrom") : t("swap.receiveTo")}</label>
-              {pickList.length === 0 ? (
-                <p className="help">
-                  {sell
-                    ? t("swap.noFundedAddr")
-                    : t("swap.noAddrGenerate")}
-                </p>
-              ) : (
-                <div className="space-y-2" role="radiogroup" aria-label={t("swap.addressGroupLabel")}>
-                  {pickList.map((e) => {
-                    const label = getLabel(e.address);
-                    const name =
-                      label ??
-                      (e.imported
-                        ? t("swap.imported")
-                        : t("swap.addressN", { n: e.index ?? "" }));
-                    const selected = fromAddr === e.address;
-                    return (
-                      <button
-                        key={e.address}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        onClick={() => setFrom(e.address)}
-                        disabled={busy}
-                        className={
-                          "flex w-full items-center justify-between gap-3 rounded-lg border px-3.5 py-2.5 text-left transition disabled:opacity-50 " +
-                          (selected
-                            ? "border-cyan-400 bg-cyan-500/10"
-                            : "border-neutral-700 bg-neutral-950 hover:border-neutral-600")
-                        }
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-neutral-100">
-                            {name}
-                          </div>
-                          <code className="addr-xs text-neutral-500">
-                            {shortAddress(e.address)}
-                          </code>
-                        </div>
-                        <span
-                          className="font-mono text-sm font-medium tabular-nums text-neutral-100"
-                          title={formatExfer(e.balance)}
-                        >
-                          {formatBalanceCompact(e.balance)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            {step === 2 && quote && (
+              <>
+                <ReviewCard
+                  quote={quote}
+                  sendUnit={sendUnit}
+                  recvUnit={recvUnit}
+                  sell={sell}
+                  priceImpact={priceImpact}
+                  highImpact={highImpact}
+                  exferUsd={exferUsd}
+                  busy={busy}
+                  err={err}
+                  onBack={() => {
+                    setStep(1);
+                    setQuote(null);
+                    setErr(null);
+                  }}
+                  onConfirm={confirm}
+                />
+                {showImpactConfirm && (
+                  <ImpactConfirmModal
+                    pct={priceImpact * 100}
+                    onCancel={() => setShowImpactConfirm(false)}
+                    onProceed={() => void doExecute()}
+                  />
+                )}
+              </>
+            )}
 
-            {/* Amount — de-emphasized until there's BNB to swap on the buy side. */}
-            <div className={needsFunding ? "opacity-50" : ""}>
-              <div className="flex items-center justify-between">
-                <label className="label mb-0">
-                  {needsFunding ? t("swap.amountStep") : t("swap.youSendUnit", { unit: sendUnit })}
-                </label>
-                {sell && sendBal > 0 && (
-                  <button
-                    type="button"
-                    className="btn-ghost text-xs"
-                    onClick={() => setAmount(formatExfer(sendBal).replace(" EXFER", ""))}
-                    disabled={busy}
-                  >
-                    {t("swap.maxLabel")}
-                  </button>
-                )}
-                {!sell && buyMax > 0 && (
-                  <button
-                    type="button"
-                    className="btn-ghost text-xs"
-                    onClick={() => setAmount(fmtAmt(String(buyMax), 8))}
-                    disabled={busy}
-                  >
-                    {t("swap.maxLabel")}
-                  </button>
-                )}
-              </div>
-              <input
-                className="input mt-1.5"
-                placeholder="0.0"
-                value={amount}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === "" || AMOUNT_RE.test(v)) setAmount(v);
-                }}
-                disabled={busy}
-                inputMode="decimal"
+            {step === 3 && (
+              <ProgressCard
+                live={live}
+                recvUnit={recvUnit}
+                elapsed={elapsed}
+                busy={busy}
+                onRefund={manualRefund}
+                onDone={reset}
               />
-              <div className="mt-2 flex items-baseline justify-between text-sm">
-                <span className="text-neutral-500">{t("swap.youReceiveEst")}</span>
-                <span className="font-mono tabular-nums text-neutral-200">
-                  {estOut != null ? `≈ ${fmtAmt(String(estOut), 6)} ${recvUnit}` : `— ${recvUnit}`}
-                </span>
-              </div>
-              {/* ≈$ value of the EXFER side (sell sends EXFER, buy receives it). */}
-              {exferUsd != null && estOut != null && (
-                <div className="mt-1 flex items-baseline justify-between text-xs">
-                  <span className="text-neutral-600">{t("swap.usdValue")}</span>
-                  <span className="font-mono tabular-nums text-neutral-500">
-                    ≈ {usdNumber((sell ? Number(amount) : estOut) * exferUsd)}
-                  </span>
-                </div>
-              )}
-              {/* Price impact — warn (amber) when it's high, but never block. */}
-              {priceImpact > 0 && (
-                <div className="mt-1 flex items-baseline justify-between text-xs">
-                  <span className="text-neutral-600">{t("swap.priceImpact")}</span>
-                  <span
-                    className={
-                      "font-mono tabular-nums " +
-                      (highImpact ? "text-amber-300" : "text-neutral-500")
-                    }
-                  >
-                    {(priceImpact * 100).toFixed(2)}%
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {err && <div className="banner-error">{err}</div>}
-
-            <button
-              type="button"
-              className="btn w-full text-base"
-              disabled={busy || !amountValid || !fromAddr}
-              onClick={getQuote}
-            >
-              {busy ? t("swap.gettingQuote") : t("swap.review")}
-            </button>
+            )}
           </div>
-
-          {/* In-wallet BNB account — the buy-side deposit target + a place to
-              read/withdraw BNB. When already shown as the funding lead above,
-              don't render it twice. */}
-          {!needsFunding && <BnbAccount asset={bnbAsset} lead={!sell} />}
-        </>
-      )}
-
-      {step === 2 && quote && (
-        <>
-          <ReviewCard
-            quote={quote}
-            sendUnit={sendUnit}
-            recvUnit={recvUnit}
-            sell={sell}
-            priceImpact={priceImpact}
-            highImpact={highImpact}
-            exferUsd={exferUsd}
-            busy={busy}
-            err={err}
-            onBack={() => {
-              setStep(1);
-              setQuote(null);
-              setErr(null);
-            }}
-            onConfirm={confirm}
-          />
-          {showImpactConfirm && (
-            <ImpactConfirmModal
-              pct={priceImpact * 100}
-              onCancel={() => setShowImpactConfirm(false)}
-              onProceed={() => void doExecute()}
-            />
-          )}
-        </>
-      )}
-
-      {step === 3 && (
-        <ProgressCard
-          live={live}
-          recvUnit={recvUnit}
-          elapsed={elapsed}
-          busy={busy}
-          onRefund={manualRefund}
-          onDone={reset}
-        />
-      )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function Header() {
+/** Single compact page bar: title left; live EXFER/USD + 24h change + pool rate
+ *  pulled right as muted mono metadata (the only place the price/rate render). */
+function PageBar({
+  price,
+  poolRate,
+}: {
+  price: MarketPrice | null;
+  poolRate: string | null;
+}) {
   const { t } = useT();
+  const usd = price?.usd ?? null;
+  const usdStr =
+    usd == null
+      ? "—"
+      : usd >= 1
+        ? usd.toFixed(2)
+        : usd.toLocaleString("en-US", {
+            maximumSignificantDigits: 4,
+            useGrouping: false,
+          });
   return (
-    <header className="space-y-1">
-      <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <h1 className="text-xl font-semibold tracking-tight text-neutral-100">
         {t("swap.title")}
       </h1>
-      <p className="text-base text-neutral-400">
-        {t("swap.headerDesc")}
-      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-sm tabular-nums text-neutral-400">
+        <span className="text-neutral-200">${usdStr}</span>
+        {price && <ChangePill pct={price.change24h} />}
+        {poolRate && (
+          <span className="text-neutral-500">
+            <span className="mr-2 text-neutral-700">·</span>
+            {poolRate}
+          </span>
+        )}
+      </div>
     </header>
   );
 }
@@ -741,8 +750,6 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
           maximumSignificantDigits: 4,
           useGrouping: false,
         });
-  const usdStr = exferUsd == null ? "—" : fp(exferUsd);
-
   // Period high / low / average over the loaded candles (USD).
   const stats = useMemo(() => {
     if (!candles.length) return null;
@@ -772,23 +779,8 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
 
   return (
     <div className="card-padded space-y-3">
-      {/* Price + 24h change. */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            EXFER · USD
-          </div>
-          <div className="mt-1 font-mono text-3xl font-semibold leading-none tabular-nums text-neutral-100">
-            <span className="mr-0.5 text-xl font-medium text-neutral-400">
-              $
-            </span>
-            {usdStr}
-          </div>
-        </div>
-        {price && <ChangePill pct={price.change24h} />}
-      </div>
-
-      {/* Interval toggle — scrolls horizontally if it ever overflows. */}
+      {/* Interval toggle — tight segmented row directly above the chart. The
+          price now lives once in the page bar, so this card is de-chromed. */}
       <div
         className="flex gap-1 overflow-x-auto"
         style={{ scrollbarWidth: "none" }}
@@ -816,17 +808,17 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
         })}
       </div>
 
-      {/* Chart with empty / loading states. */}
-      <div className="min-h-[200px]">
+      {/* Chart with empty / loading states — taller to use reclaimed space. */}
+      <div className="min-h-[280px]">
         {candles.length > 0 ? (
           <PriceChart
             candles={candles}
-            height={200}
+            height={280}
             timeVisible={activeIv?.timeVisible ?? true}
             onHover={setHovered}
           />
         ) : (
-          <div className="flex h-[200px] items-center justify-center text-sm text-neutral-500">
+          <div className="flex h-[280px] items-center justify-center text-sm text-neutral-500">
             {loadingChart ? <Spinner size={20} /> : t("swapTab.noChart")}
           </div>
         )}
@@ -879,8 +871,9 @@ function DirectionToggle({
     { id: "exfer_to_bnb", label: t("swap.sellDirection") },
     { id: "bnb_to_exfer", label: t("swap.buyDirection") },
   ];
+  // A single inline segmented control — one row, one bordered track.
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="flex rounded-lg border border-neutral-700 bg-neutral-950 p-1">
       {opts.map((o) => {
         const active = o.id === direction;
         return (
@@ -889,10 +882,10 @@ function DirectionToggle({
             type="button"
             onClick={() => onChange(o.id)}
             className={
-              "rounded-lg border px-4 py-2.5 text-sm font-medium transition " +
+              "flex-1 rounded-md px-4 py-2 text-sm font-medium transition " +
               (active
-                ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
-                : "border-neutral-700 bg-neutral-950 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200")
+                ? "bg-cyan-500/10 text-cyan-200"
+                : "text-neutral-400 hover:text-neutral-200")
             }
           >
             {o.label}
@@ -936,54 +929,60 @@ function ReviewCard({
   // ≈$ of the EXFER leg: sell sends EXFER (amount_in), buy receives it (amount_out).
   const exferAmt = sell ? Number(quote.amount_in) : Number(quote.amount_out);
   const usd = exferUsd != null && isFinite(exferAmt) ? exferAmt * exferUsd : null;
+  // Rate + impact folded onto one line; fee + BNB account onto another.
+  const rateImpact =
+    `1 ${sendUnit} ≈ ${fmtAmt(String(rate), 8)} ${recvUnit}` +
+    (priceImpact > 0 ? ` · ${(priceImpact * 100).toFixed(2)}%` : "");
+  const feeAcct =
+    quote.fee_bps != null
+      ? `${(quote.fee_bps / 100).toFixed(2)}%` +
+        (quote.our_bsc_address
+          ? ` · ${shortAddress(quote.our_bsc_address, 6, 4)}`
+          : "")
+      : quote.our_bsc_address
+        ? shortAddress(quote.our_bsc_address, 6, 4)
+        : null;
   return (
-    <div className="card-padded space-y-5">
+    <div className="card-padded space-y-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
         {t("swap.reviewTitle")}
       </h2>
 
       <div className="space-y-3">
         <Row label={t("swap.youSend")} value={`${fmtAmt(quote.amount_in, 8)} ${sendUnit}`} />
-        <Row label={t("swap.youReceive")} value={`${fmtAmt(quote.amount_out, 8)} ${recvUnit}`} strong />
-        {/* Minimum received (locked): the HTLC locks the quoted amount_out, so
-            this is the exact amount that settles — no post-lock slippage. */}
-        <Row label={t("swap.minReceived")} value={`${fmtAmt(quote.amount_out, 8)} ${recvUnit}`} />
-        {usd != null && <Row label={t("swap.usdValue")} value={`≈ ${usdNumber(usd)}`} />}
-        {/* Effective unit price of the EXFER leg in USD. */}
-        {exferUsd != null && (
-          <Row
-            label={t("swap.unitPrice")}
-            value={`${usdNumber(exferUsd)} / EXFER`}
-          />
-        )}
-        <Row
-          label={t("swap.rate")}
-          value={`1 ${sendUnit} ≈ ${fmtAmt(String(rate), 8)} ${recvUnit}`}
-        />
-        {priceImpact > 0 && (
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-sm text-neutral-400">{t("swap.priceImpact")}</span>
-            <span
-              className={
-                "font-mono text-sm tabular-nums " +
-                (highImpact ? "text-amber-300" : "text-neutral-200")
-              }
-            >
-              {(priceImpact * 100).toFixed(2)}%
+        {/* Receive is the primary number; the HTLC locks amount_out exactly, so
+            it's also the minimum received — flagged as "(locked)", not a row. */}
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-sm text-neutral-400">
+            {t("swap.youReceive")}{" "}
+            <span className="text-neutral-600" title={t("swap.minReceived")}>
+              · {t("swap.lockedTag")}
             </span>
-          </div>
-        )}
-        {quote.fee_bps != null && (
-          <Row label={t("swap.poolFee")} value={`${(quote.fee_bps / 100).toFixed(2)}%`} />
-        )}
-        {quote.our_bsc_address && (
-          <Row label={t("swap.bnbAccount")} value={shortAddress(quote.our_bsc_address, 10, 8)} mono />
-        )}
+          </span>
+          <span className="font-mono text-base font-semibold tabular-nums text-neutral-100">
+            {fmtAmt(quote.amount_out, 8)} {recvUnit}
+            {usd != null && (
+              <span className="ml-2 text-xs font-normal text-neutral-500">
+                ≈ {usdNumber(usd)}
+              </span>
+            )}
+          </span>
+        </div>
+        {/* Rate + impact on one line (impact amber when high). */}
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-sm text-neutral-400">{t("swap.rate")}</span>
+          <span
+            className={
+              "font-mono text-sm tabular-nums " +
+              (highImpact ? "text-amber-300" : "text-neutral-200")
+            }
+          >
+            {rateImpact}
+          </span>
+        </div>
+        {/* Fee + BNB account on one line. */}
+        {feeAcct && <Row label={t("swap.poolFee")} value={feeAcct} mono />}
       </div>
-
-      <p className="text-xs text-neutral-500">
-        {t("swap.htlcExplain")}
-      </p>
 
       {err && <div className="banner-error">{err}</div>}
 
@@ -1025,7 +1024,7 @@ function ProgressCard({
   ];
 
   return (
-    <div className="card-padded space-y-6">
+    <div className="card-padded space-y-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
         {t("swap.inProgressTitle")}
       </h2>
@@ -1044,7 +1043,7 @@ function ProgressCard({
           <div className="mt-0.5 text-xs opacity-90">{t("swap.statusRefunding")}</div>
         </div>
       ) : (
-        <ol className="space-y-3">
+        <ol className="space-y-2">
           {nodes.map((n) => {
             // In this branch status is non-terminal (the ternary above peeled
             // off completed/refunded/failed), so progress is purely rank-based.
@@ -1075,7 +1074,7 @@ function ProgressCard({
 
       {!terminal && status !== "refunding" && elapsed > 20 && (
         <p className="text-xs text-neutral-500">
-          {t("swap.takingLonger")}
+          {t("swap.settlingHint")}
         </p>
       )}
 

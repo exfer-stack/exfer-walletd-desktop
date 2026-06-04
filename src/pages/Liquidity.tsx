@@ -3,8 +3,13 @@
 // pool reports reserves and a per-share NAV, and we never touch wei — every
 // LP RPC speaks human-decimal strings.
 //
-// Single desktop page with three sub-views, mirroring the mobile LiquiditySheet:
-//   overview  — pool stats + your position (across every wallet address)
+// Single desktop screen, two-pane:
+//   LEFT  — read-only context: pool stats + your position (across every address)
+//   RIGHT — action card with [Add] / [Remove] tabs; add/remove never take over
+//           the screen — progress + result collapse into an inline status strip
+//           at the top of the right pane while the left context stays visible.
+//
+// Flows:
 //   add       — pick a funded EXFER address, enter EXFER, BNB auto-matched,
 //               lp_deposit_start → transfer EXFER + bsc_send_bnb → poll status
 //   withdraw  — 25/50/75/100% → lp_withdraw_self
@@ -22,8 +27,8 @@
 //   lp_deposit_status → { status } | { error:"deposit not found" }
 //   lp_withdraw_self  → { withdrawal_id? } | { error:"no liquidity position…" }
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { rpc, formatExfer, formatBalanceCompact, parseExferAmount } from "../lib/rpc";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { rpc, formatBalanceCompact, parseExferAmount } from "../lib/rpc";
 import type { WalletEntry } from "../lib/types";
 import { getLabel, shortAddress } from "../lib/labels";
 import { isHidden } from "../lib/hidden";
@@ -57,7 +62,10 @@ interface Position {
   value_exfer?: string;
 }
 type ResultKind = "added" | "refunded" | "removed" | "failed";
-type Step = "overview" | "add" | "withdraw" | "progress" | "done";
+// `tab` is the persistent right-pane view; `phase` overlays a transient status
+// strip (progress / done) on top of it without leaving the two-pane layout.
+type Tab = "add" | "remove";
+type Phase = "form" | "progress" | "done";
 
 const AMOUNT_RE = /^\d*\.?\d*$/;
 
@@ -95,7 +103,8 @@ export function Liquidity() {
   const exferAddr = fromAddr || defaultAddr;
   const exferBal = entries.find((e) => e.address === exferAddr)?.balance ?? 0;
 
-  const [step, setStep] = useState<Step>("overview");
+  const [tab, setTab] = useState<Tab>("add");
+  const [phase, setPhase] = useState<Phase>("form");
   const [pool, setPool] = useState<PoolInfo | null>(null);
   const [pos, setPos] = useState<Position | null>(null);
   const [posLoaded, setPosLoaded] = useState(false);
@@ -112,7 +121,6 @@ export function Liquidity() {
   // this, a position on a non-default address reads as "no liquidity".
   const [positions, setPositions] = useState<{ address: string; pos: Position }[]>([]);
   const [posScanned, setPosScanned] = useState(false);
-  const [feeOpen, setFeeOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -166,16 +174,16 @@ export function Liquidity() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pool]);
 
-  // Refresh the BNB balance when entering Add — a cold walletd can return 0 at
-  // first load, which would wrongly read as "not enough BNB".
+  // Refresh the BNB balance when entering the Add tab — a cold walletd can
+  // return 0 at first load, which would wrongly read as "not enough BNB".
   useEffect(() => {
-    if (step !== "add") return;
+    if (tab !== "add" || phase !== "form") return;
     rpc<{ bnb_wei: string }>("bsc_get_balances")
       .then((b) => {
         if (b?.bnb_wei) setBnbWei(b.bnb_wei);
       })
       .catch(() => {});
-  }, [step]);
+  }, [tab, phase]);
 
   // Resume an in-progress add: routed here from an in-flight LP row, reopen
   // straight onto THIS deposit's progress and poll it to completion (mirrors
@@ -186,7 +194,8 @@ export function Liquidity() {
     const id = resumeLpAddId;
     clearResumeTarget();
     let cancelled = false;
-    setStep("progress");
+    setTab("add");
+    setPhase("progress");
     setStage(1);
     (async () => {
       try {
@@ -201,12 +210,12 @@ export function Liquidity() {
         } else {
           setResult({ kind: "refunded" });
         }
-        setStep("done");
+        setPhase("done");
       } catch (e) {
         if (cancelled) return;
         setErr(humanizeError(e));
         setResult({ kind: "failed" });
-        setStep("done");
+        setPhase("done");
       }
     })();
     return () => {
@@ -267,7 +276,7 @@ export function Liquidity() {
     setBusy(true);
     setErr(null);
     setStage(0);
-    setStep("progress");
+    setPhase("progress");
     try {
       const intent = await rpc<{ id: string; deposit_exfer_address: string; deposit_bsc_address: string }>(
         "lp_deposit_start",
@@ -296,12 +305,12 @@ export function Liquidity() {
         setResult({ kind: "refunded" });
         toast.info(t("lp.refundedTitle"), t("lp.refundedBody"));
       }
-      setStep("done");
+      setPhase("done");
       setAmount("");
     } catch (e) {
       setErr(humanizeError(e));
       setResult({ kind: "failed" });
-      setStep("done");
+      setPhase("done");
     } finally {
       setBusy(false);
     }
@@ -332,485 +341,282 @@ export function Liquidity() {
       await refresh();
       setResult({ kind: "removed", exfer: owed.exfer, bnb: owed.bnb });
       toast.success(t("lp.removeQueuedTitle"), t("lp.removeQueuedBody"));
-      setStep("done");
+      setPhase("done");
     } catch (e) {
       setErr(humanizeError(e));
-      setStep("withdraw");
+      setPhase("form");
     } finally {
       setBusy(false);
     }
   }
 
-  // ── unavailable ──
+  // Reset the right pane back to its form (used by Done + tab switches).
+  function resetPane(next?: Tab) {
+    setResult(null);
+    setErr(null);
+    setStage(0);
+    setPhase("form");
+    if (next) setTab(next);
+  }
+
+  const hasPosition = !!pos?.has_position;
+
+  // ── unavailable / loading ──
   if (unavailable) {
     return (
-      <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-        <Header />
+      <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
+        <Header mid={0} exferUsd={0} ready={false} />
         <div className="card-padded text-sm text-neutral-400">{t("lp.unavailable")}</div>
       </div>
     );
   }
   if (!pool) {
     return (
-      <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-        <Header />
+      <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
+        <Header mid={0} exferUsd={0} ready={false} />
         <div className="card-padded text-sm text-neutral-500">{t("lp.loading")}</div>
       </div>
     );
   }
 
-  // ── progress (staged) ──
-  if (step === "progress") {
-    const labels = [t("lp.stepSend"), t("lp.stepSweep"), t("lp.stepCredit")];
-    return (
-      <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-        <Header />
-        <div className="card-padded space-y-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-            {t("lp.progressHeading")}
-          </h2>
-          <ol className="space-y-3">
-            {labels.map((label, i) => {
-              const done = stage > i;
-              const current = stage === i;
-              return (
-                <li key={label} className="flex items-center gap-3">
-                  <span
+  const posValueUsd = hasPosition ? Number(pos!.value_exfer ?? 0) * exferUsd * 2 : 0;
+  const poolUsd = exferReserve * exferUsd * 2;
+  const maxAdd = Math.min(exferBal / 1e8, mid > 0 ? bnbHuman / mid : Infinity);
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
+      <Header mid={mid} exferUsd={exferUsd} ready={mid > 0} />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* ── LEFT RAIL — read-only context ── */}
+        <div className="lg:col-span-5">
+          <div className="card-padded space-y-4">
+            {/* Pool */}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Stat label={t("lp.poolValue")} value={`≈ ${usdNumber(poolUsd)}`} />
+                <Stat label={t("lp.providers")} value={String(pool.lp_count)} />
+                <Stat label={t("lp.reserveExfer")} value={sig(exferReserve)} />
+                <Stat label={t("lp.reserveBnb")} value={sig(bnbReserve, 6)} />
+              </div>
+              <div className="flex items-baseline justify-between border-t border-neutral-800 pt-2 text-xs">
+                <span className="uppercase tracking-wide text-neutral-500">{t("lp.totalShares")}</span>
+                <span className="font-mono tabular-nums text-neutral-400">{pool.total_shares}</span>
+              </div>
+            </div>
+
+            {/* Your position */}
+            <div className="space-y-2 border-t border-neutral-800 pt-4">
+              {hasPosition ? (
+                <>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.yourPosition")}</span>
+                    <code className="addr-xs text-neutral-500">{shortAddress(exferAddr)}</code>
+                  </div>
+                  <div className="font-mono text-3xl font-semibold tabular-nums text-neutral-100">
+                    ≈ {usdNumber(posValueUsd)}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 font-mono text-sm tabular-nums text-neutral-300">
+                    <span>{sig(Number(pos!.value_exfer ?? 0))} EXFER</span>
+                    <span className="text-right">{sig(Number(pos!.value_bnb ?? 0), 4)} BNB</span>
+                  </div>
+                  <div className="text-xs text-neutral-500">
+                    {sig(pos!.pool_share_pct ?? 0, 3)}% {t("lp.ofPool")}
+                  </div>
+                </>
+              ) : !posScanned || !posLoaded ? (
+                <div className="text-sm text-neutral-500">{t("lp.loading")}</div>
+              ) : (
+                <>
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.yourPosition")}</div>
+                  <div className="text-sm text-neutral-400">{t("lp.emptyOneLine")}</div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── RIGHT PANE — action card ── */}
+        <div className="lg:col-span-7">
+          <div className="card-padded space-y-4">
+            {/* Tabs */}
+            <div className="inline-flex rounded-lg border border-neutral-800 bg-neutral-950 p-1 text-sm">
+              <TabButton active={tab === "add"} onClick={() => resetPane("add")}>
+                {t("lp.add")}
+              </TabButton>
+              {hasPosition && (
+                <TabButton active={tab === "remove"} onClick={() => resetPane("remove")}>
+                  {t("lp.remove")}
+                </TabButton>
+              )}
+            </div>
+
+            {/* Inline status strip (progress / done) replaces the form body. */}
+            {phase === "progress" ? (
+              <ProgressStrip stage={stage} labels={[t("lp.stepSend"), t("lp.stepSweep"), t("lp.stepCredit")]} />
+            ) : phase === "done" && result ? (
+              <DoneStrip result={result} err={err} onDone={() => resetPane(hasPosition ? undefined : "add")} />
+            ) : tab === "add" ? (
+              /* ── ADD ── */
+              <div className="space-y-3">
+                {/* EXFER source */}
+                <div>
+                  <label className="label">{t("lp.fromExfer")}</label>
+                  {funded.length === 0 ? (
+                    <div className="banner-error">{t("lp.noFunded")}</div>
+                  ) : (
+                    <select
+                      className="input"
+                      value={exferAddr}
+                      onChange={(e) => setFromAddr(e.target.value)}
+                      disabled={busy}
+                      aria-label={t("lp.fromExfer")}
+                    >
+                      {funded.map((e) => {
+                        const label = getLabel(e.address) ?? e.label ?? undefined;
+                        const name =
+                          label ?? (e.imported ? t("lp.imported") : t("lp.addressN", { n: e.index ?? "" }));
+                        return (
+                          <option key={e.address} value={e.address}>
+                            {name} · {shortAddress(e.address)} · {formatBalanceCompact(e.balance)}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                </div>
+
+                {/* EXFER amount */}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="label mb-0">{t("lp.addExferAmount")}</label>
+                    {isFinite(maxAdd) && maxAdd > 0 && (
+                      <button
+                        type="button"
+                        className="btn-ghost text-xs"
+                        onClick={() => setAmount(sig(maxAdd))}
+                        disabled={busy}
+                      >
+                        {t("lp.max")}
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    className="input mt-1.5"
+                    placeholder="0.0"
+                    value={amount}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "" || AMOUNT_RE.test(v)) setAmount(v);
+                    }}
+                    disabled={busy}
+                    inputMode="decimal"
+                  />
+                  <div className="mt-1.5 flex items-baseline justify-between text-xs">
+                    <span className={amountValid && !enoughExfer ? "text-amber-300" : "text-neutral-500"}>
+                      {amountValid && !enoughExfer
+                        ? t("lp.needExfer")
+                        : `${t("lp.balance")}: ${formatBalanceCompact(exferBal)}`}
+                    </span>
+                    {minExfer > 0 && (
+                      <span
+                        className={belowMin ? "text-amber-300" : "text-neutral-500"}
+                        title={t("lp.gasNote")}
+                      >
+                        {t("lp.minHint", { n: sig(Math.ceil(minExfer), 2) })} ⓘ
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Matched pair + total — one dense row */}
+                <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-sm tabular-nums">
+                    <span className="text-neutral-100">{amountValid ? sig(amtNum) : "0"} EXFER</span>
+                    <span className="text-neutral-500">+</span>
+                    <span className="text-neutral-100">{amountValid ? sig(bnbNeeded, 4) : "0"} BNB</span>
+                    <span className="text-neutral-500">=</span>
+                    <span className="font-semibold text-neutral-100">
+                      ≈ {amountValid ? usdNumber(addUsd) : "$0"}
+                    </span>
+                  </div>
+                  <div
                     className={
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold " +
-                      (done
-                        ? "bg-emerald-500/15 text-emerald-300"
-                        : current
-                          ? "bg-cyan-500/15 text-cyan-300"
-                          : "bg-neutral-800 text-neutral-500")
+                      "mt-1.5 text-xs " + (amountValid && !enoughBnb ? "text-amber-300" : "text-neutral-500")
                     }
                   >
-                    {done ? "✓" : current ? "…" : ""}
-                  </span>
-                  <span className={done || current ? "text-neutral-100" : "text-neutral-500"}>{label}</span>
-                </li>
-              );
-            })}
-          </ol>
-          <p className="text-xs text-neutral-500">{t("lp.progressHint")}</p>
-        </div>
-      </div>
-    );
-  }
+                    {t("lp.bnbSource", {
+                      addr: bscAddr ? shortAddress(bscAddr) : "—",
+                      bnb: sig(bnbHuman, 4),
+                    })}
+                  </div>
+                </div>
 
-  // ── result ──
-  if (step === "done" && result) {
-    const k = result.kind;
-    const tone =
-      k === "added" || k === "removed"
-        ? "success"
-        : k === "refunded"
-          ? "info"
-          : "error";
-    const heading =
-      k === "added"
-        ? t("lp.addedHeading")
-        : k === "removed"
-          ? t("lp.removedHeading")
-          : k === "refunded"
-            ? t("lp.refundedTitle")
-            : t("lp.failedHeading");
-    const body =
-      k === "added"
-        ? t("lp.addedDoneBody")
-        : k === "removed"
-          ? t("lp.removeQueuedBody")
-          : k === "refunded"
-            ? t("lp.refundedBody")
-            : err || t("lp.failedBody");
-    return (
-      <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-        <Header />
-        <div className="card-padded space-y-5">
-          <ResultBanner tone={tone} title={heading} body={body} />
-          {(k === "added" || k === "removed") && result.exfer && (
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="text-neutral-400">{k === "added" ? t("lp.youProvided") : t("lp.youReceivedBack")}</span>
-              <span className="font-mono tabular-nums text-neutral-200">
-                {sig(Number(result.exfer))} EXFER + {sig(Number(result.bnb), 4)} BNB
-              </span>
-            </div>
-          )}
-          <button
-            type="button"
-            className="btn w-full"
-            onClick={() => {
-              setResult(null);
-              setStep("overview");
-            }}
-          >
-            {t("lp.done")}
-          </button>
-        </div>
-      </div>
-    );
-  }
+                {amountValid && !enoughBnb && (
+                  <div className="banner-error">{t("lp.needBnb", { bnb: sig(bnbNeeded, 4) })}</div>
+                )}
+                {belowMin && (
+                  <div className="banner-error">{t("lp.belowMin", { n: sig(Math.ceil(minExfer), 2) })}</div>
+                )}
+                {err && <div className="banner-error">{err}</div>}
 
-  // ── add ──
-  if (step === "add") {
-    const maxAdd = Math.min(exferBal / 1e8, mid > 0 ? bnbHuman / mid : Infinity);
-    return (
-      <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-        <Header />
-        <div className="card-padded space-y-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">{t("lp.addTitle")}</h2>
-
-          {/* EXFER source: user sees AND chooses which wallet funds the deposit. */}
-          <div>
-            <label className="label">{t("lp.fromExfer")}</label>
-            {funded.length === 0 ? (
-              <div className="banner-error">{t("lp.noFunded")}</div>
+                <button type="button" className="btn w-full" disabled={busy || !canAdd} onClick={confirmAdd}>
+                  {busy ? t("lp.working") : t("lp.addConfirm")}
+                </button>
+              </div>
             ) : (
-              <div className="space-y-2" role="radiogroup" aria-label={t("lp.fromExfer")}>
-                {funded.map((e) => {
-                  const label = getLabel(e.address) ?? e.label ?? undefined;
-                  const name = label ?? (e.imported ? t("lp.imported") : t("lp.addressN", { n: e.index ?? "" }));
-                  const selected = exferAddr === e.address;
+              /* ── REMOVE ── */
+              hasPosition && (
+                <RemoveForm
+                  pos={pos!}
+                  withdrawPct={withdrawPct}
+                  setWithdrawPct={setWithdrawPct}
+                  exferAddr={exferAddr}
+                  bscAddr={bscAddr}
+                  busy={busy}
+                  err={err}
+                  onConfirm={confirmWithdraw}
+                />
+              )
+            )}
+          </div>
+
+          {/* Other-address positions — tight list, folds picking into the pane. */}
+          {posScanned && positions.length > 0 && (
+            <div className="card-padded mt-4 space-y-2">
+              <div className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.otherPositions")}</div>
+              <div className="max-h-32 space-y-1 overflow-y-auto">
+                {positions.map((p) => {
+                  const active = p.address.toLowerCase() === exferAddr.toLowerCase();
                   return (
                     <button
-                      key={e.address}
+                      key={p.address}
                       type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => setFromAddr(e.address)}
-                      disabled={busy}
+                      onClick={() => {
+                        setFromAddr(p.address);
+                        setPos(p.pos);
+                        setPosLoaded(true);
+                        resetPane("add");
+                      }}
                       className={
-                        "flex w-full items-center justify-between gap-3 rounded-lg border px-3.5 py-2.5 text-left transition disabled:opacity-50 " +
-                        (selected
-                          ? "border-cyan-400 bg-cyan-500/10"
-                          : "border-neutral-700 bg-neutral-950 hover:border-neutral-600")
+                        "flex w-full items-baseline justify-between gap-3 rounded px-2 py-1 text-xs transition " +
+                        (active ? "bg-cyan-500/10" : "hover:bg-neutral-800/60")
                       }
                     >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-neutral-100">{name}</div>
-                        <code className="addr-xs text-neutral-500">{shortAddress(e.address)}</code>
-                      </div>
-                      <span
-                        className="font-mono text-sm font-medium tabular-nums text-neutral-100"
-                        title={formatExfer(e.balance)}
-                      >
-                        {formatBalanceCompact(e.balance)}
+                      <code className="addr-xs text-neutral-300">{shortAddress(p.address)}</code>
+                      <span className="font-mono tabular-nums text-neutral-500">
+                        {sig(p.pos.pool_share_pct ?? 0, 3)}%
+                      </span>
+                      <span className="font-mono tabular-nums text-neutral-200">
+                        ≈ {usdNumber(Number(p.pos.value_exfer ?? 0) * exferUsd * 2)}
                       </span>
                     </button>
                   );
                 })}
               </div>
-            )}
-          </div>
-
-          {/* EXFER amount */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="label mb-0">{t("lp.addExferAmount")}</label>
-              {isFinite(maxAdd) && maxAdd > 0 && (
-                <button
-                  type="button"
-                  className="btn-ghost text-xs"
-                  onClick={() => setAmount(sig(maxAdd))}
-                  disabled={busy}
-                >
-                  {t("lp.max")}
-                </button>
-              )}
             </div>
-            <input
-              className="input mt-1.5"
-              placeholder="0.0"
-              value={amount}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "" || AMOUNT_RE.test(v)) setAmount(v);
-              }}
-              disabled={busy}
-              inputMode="decimal"
-            />
-            <div className="mt-2 flex items-baseline justify-between text-sm">
-              <span className={amountValid && !enoughExfer ? "text-amber-300" : "text-neutral-500"}>
-                {amountValid && !enoughExfer
-                  ? t("lp.needExfer")
-                  : `${t("lp.balance")}: ${formatBalanceCompact(exferBal)}`}
-              </span>
-              {minExfer > 0 && (
-                <span className={belowMin ? "text-amber-300" : "text-neutral-500"}>
-                  {t("lp.minHint", { n: sig(Math.ceil(minExfer), 2) })}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Matched pair + total */}
-          <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
-            <PairRow unit="EXFER" amount={amountValid ? sig(amtNum) : "0"} />
-            <div className="h-px bg-neutral-800" />
-            <PairRow unit="BNB" amount={amountValid ? sig(bnbNeeded, 4) : "0"} />
-            <div className="h-px bg-neutral-800" />
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="text-neutral-400">{t("lp.total")}</span>
-              <span className="font-mono tabular-nums font-semibold text-neutral-100">
-                ≈ {amountValid ? usdNumber(addUsd) : "$0"}
-              </span>
-            </div>
-          </div>
-          <p className="text-xs text-neutral-500">{t("lp.matchRatio")}</p>
-
-          {/* BNB source: the single in-wallet BSC address. */}
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
-            <div className="min-w-0">
-              <div className="text-xs text-neutral-500">{t("lp.bnbFrom")}</div>
-              <code className="addr-xs text-neutral-300">{bscAddr ? shortAddress(bscAddr, 10, 8) : "—"}</code>
-            </div>
-            <span
-              className={
-                "font-mono text-sm tabular-nums " +
-                (amountValid && !enoughBnb ? "text-amber-300" : "text-neutral-300")
-              }
-            >
-              {sig(bnbHuman, 4)} BNB
-            </span>
-          </div>
-
-          {amountValid && !enoughBnb && (
-            <div className="banner-error">{t("lp.needBnb", { bnb: sig(bnbNeeded, 4) })}</div>
           )}
-          {belowMin && <div className="banner-error">{t("lp.belowMin", { n: sig(Math.ceil(minExfer), 2) })}</div>}
-          <p className="text-xs text-neutral-500">{t("lp.gasNote")}</p>
-          {err && <div className="banner-error">{err}</div>}
-
-          <div className="flex gap-3">
-            <button
-              type="button"
-              className="btn-secondary flex-1"
-              disabled={busy}
-              onClick={() => {
-                setStep("overview");
-                setErr(null);
-              }}
-            >
-              {t("lp.back")}
-            </button>
-            <button type="button" className="btn flex-1" disabled={busy || !canAdd} onClick={confirmAdd}>
-              {busy ? t("lp.working") : t("lp.addConfirm")}
-            </button>
-          </div>
         </div>
-      </div>
-    );
-  }
-
-  // ── withdraw ──
-  if (step === "withdraw" && pos?.has_position) {
-    const outExfer = (Number(pos.value_exfer ?? 0) * withdrawPct) / 100;
-    const outBnb = (Number(pos.value_bnb ?? 0) * withdrawPct) / 100;
-    return (
-      <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-        <Header />
-        <div className="card-padded space-y-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">{t("lp.removeTitle")}</h2>
-
-          {/* Partial withdrawal */}
-          <div>
-            <label className="label">{t("lp.removeAmount")}</label>
-            <div className="grid grid-cols-4 gap-2">
-              {[25, 50, 75, 100].map((p) => {
-                const active = withdrawPct === p;
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setWithdrawPct(p)}
-                    disabled={busy}
-                    className={
-                      "rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 " +
-                      (active
-                        ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
-                        : "border-neutral-700 bg-neutral-950 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200")
-                    }
-                  >
-                    {`${p}%`}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
-            <div className="label mb-0">{t("lp.youReceiveBack")}</div>
-            <PairRow unit="EXFER" amount={sig(outExfer)} />
-            <div className="h-px bg-neutral-800" />
-            <PairRow unit="BNB" amount={sig(outBnb, 4)} />
-          </div>
-
-          {/* Where the money lands. */}
-          <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
-            <div className="text-xs text-neutral-500">{t("lp.payoutTo")}</div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-neutral-300">EXFER</span>
-              <code className="addr-xs text-neutral-400">{shortAddress(exferAddr)}</code>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-neutral-300">BNB</span>
-              <code className="addr-xs text-neutral-400">{bscAddr ? shortAddress(bscAddr) : "—"}</code>
-            </div>
-          </div>
-
-          <p className="text-xs text-neutral-500">{t("lp.removeNote")}</p>
-          {err && <div className="banner-error">{err}</div>}
-
-          <div className="flex gap-3">
-            <button
-              type="button"
-              className="btn-secondary flex-1"
-              disabled={busy}
-              onClick={() => {
-                setStep("overview");
-                setErr(null);
-              }}
-            >
-              {t("lp.back")}
-            </button>
-            <button type="button" className="btn flex-1" disabled={busy} onClick={confirmWithdraw}>
-              {busy ? t("lp.working") : withdrawPct >= 100 ? t("lp.removeConfirm") : t("lp.removeConfirmPct", { pct: String(withdrawPct) })}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── overview ──
-  const posValueUsd = pos?.has_position ? Number(pos.value_exfer ?? 0) * exferUsd * 2 : 0;
-  const others = positions.filter((p) => p.address.toLowerCase() !== exferAddr.toLowerCase());
-  const poolUsd = exferReserve * exferUsd * 2;
-  return (
-    <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-      <Header />
-
-      {/* Pool stats */}
-      <div className="card-padded space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">{t("lp.poolTitle")}</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <Stat label={t("lp.poolValue")} value={`≈ ${usdNumber(poolUsd)}`} />
-          <Stat label={t("lp.providers")} value={String(pool.lp_count)} />
-          <Stat label={t("lp.reserveExfer")} value={`${sig(exferReserve)} EXFER`} />
-          <Stat label={t("lp.reserveBnb")} value={`${sig(bnbReserve, 6)} BNB`} />
-        </div>
-        <div className="flex items-baseline justify-between border-t border-neutral-800 pt-3 text-sm">
-          <span className="text-neutral-500">{t("lp.totalShares")}</span>
-          <span className="font-mono tabular-nums text-neutral-300">{pool.total_shares}</span>
-        </div>
-      </div>
-
-      {/* Your position */}
-      {pos?.has_position ? (
-        <div className="card-padded space-y-4">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">{t("lp.yourPosition")}</h2>
-            <code className="addr-xs text-neutral-500">{shortAddress(exferAddr)}</code>
-          </div>
-          <div className="font-mono text-3xl font-semibold tabular-nums text-neutral-100">
-            ≈ {usdNumber(posValueUsd)}
-          </div>
-          <div className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
-            <PairRow unit="EXFER" amount={sig(Number(pos.value_exfer ?? 0))} />
-            <div className="h-px bg-neutral-800" />
-            <PairRow unit="BNB" amount={sig(Number(pos.value_bnb ?? 0), 4)} />
-          </div>
-          <div className="flex items-baseline justify-between text-sm">
-            <span className="text-neutral-500">{t("lp.poolShare")}</span>
-            <span className="font-mono tabular-nums text-neutral-300">{sig(pos.pool_share_pct ?? 0, 3)}% {t("lp.ofPool")}</span>
-          </div>
-        </div>
-      ) : !posScanned || !posLoaded ? (
-        <div className="card-padded text-sm text-neutral-500">{t("lp.loading")}</div>
-      ) : positions.length > 0 ? (
-        <div className="card-padded space-y-1">
-          <div className="text-sm font-semibold text-neutral-100">{t("lp.posElsewhereHeading")}</div>
-          <div className="text-xs text-neutral-500">{t("lp.posElsewhereSub")}</div>
-        </div>
-      ) : (
-        <div className="card-padded space-y-1">
-          <div className="text-sm font-semibold text-neutral-100">{t("lp.emptyHeading")}</div>
-          <div className="text-xs text-neutral-500">{t("lp.emptySub")}</div>
-        </div>
-      )}
-
-      {/* Positions on other addresses */}
-      {others.length > 0 && (
-        <div className="card-padded space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">{t("lp.otherPositions")}</h2>
-          <div className="space-y-2">
-            {others.map((p) => (
-              <button
-                key={p.address}
-                type="button"
-                onClick={() => {
-                  setFromAddr(p.address);
-                  setPos(p.pos);
-                  setPosLoaded(true);
-                }}
-                className="flex w-full items-center justify-between gap-3 rounded-lg border border-neutral-700 bg-neutral-950 px-3.5 py-2.5 text-left transition hover:border-neutral-600"
-              >
-                <div className="min-w-0">
-                  <code className="addr-xs text-neutral-300">{shortAddress(p.address)}</code>
-                  <div className="text-xs text-neutral-500">
-                    {sig(p.pos.pool_share_pct ?? 0, 3)}% {t("lp.ofPool")}
-                  </div>
-                </div>
-                <span className="font-mono text-sm font-medium tabular-nums text-neutral-100">
-                  ≈ {usdNumber(Number(p.pos.value_exfer ?? 0) * exferUsd * 2)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex gap-3">
-        <button
-          type="button"
-          className="btn flex-1"
-          onClick={() => {
-            setErr(null);
-            setAmount("");
-            setStep("add");
-          }}
-        >
-          {t("lp.add")}
-        </button>
-        {pos?.has_position && (
-          <button
-            type="button"
-            className="btn-secondary flex-1"
-            onClick={() => {
-              setErr(null);
-              setWithdrawPct(100);
-              setStep("withdraw");
-            }}
-          >
-            {t("lp.remove")}
-          </button>
-        )}
-      </div>
-
-      {/* Fee explainer */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setFeeOpen((o) => !o)}
-          className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300"
-        >
-          {t("lp.feeChip")}
-          <span className="inline-grid h-3.5 w-3.5 place-items-center rounded-full border border-neutral-600 text-[9px] font-bold leading-none">
-            ?
-          </span>
-        </button>
-        {feeOpen && <p className="mt-2 text-xs text-neutral-400">{t("lp.feeInfo")}</p>}
       </div>
     </div>
   );
@@ -826,13 +632,40 @@ function parseExferAmountSafe(s: string): number {
   }
 }
 
-function Header() {
+function Header({ mid, exferUsd, ready }: { mid: number; exferUsd: number; ready: boolean }) {
   const { t } = useT();
   return (
-    <header className="space-y-1">
-      <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">{t("lp.title")}</h1>
-      <p className="text-base text-neutral-400">{t("lp.headerDesc")}</p>
+    <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <h1 className="text-xl font-semibold tracking-tight text-neutral-100">{t("lp.title")}</h1>
+      {ready && (
+        <span className="font-mono text-xs tabular-nums text-neutral-500">
+          {t("lp.midPrice", { mid: sig(mid, 6), usd: sig(exferUsd, 4) })}
+        </span>
+      )}
     </header>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "rounded-md px-4 py-1.5 font-medium transition " +
+        (active ? "bg-cyan-500/15 text-cyan-200" : "text-neutral-400 hover:text-neutral-200")
+      }
+    >
+      {children}
+    </button>
   );
 }
 
@@ -845,27 +678,156 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** One row of a token pair: unit name · right-aligned amount. */
-function PairRow({ unit, amount }: { unit: string; amount: string }) {
+/** Thin inline status strip while the add deposit is in flight: 3 dots in a row. */
+function ProgressStrip({ stage, labels }: { stage: number; labels: string[] }) {
   return (
-    <div className="flex items-baseline justify-between">
-      <span className="text-sm font-medium text-neutral-300">{unit}</span>
-      <span className="font-mono text-sm font-medium tabular-nums text-neutral-100">{amount}</span>
+    <div className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
+      {labels.map((label, i) => {
+        const done = stage > i;
+        const current = stage === i;
+        return (
+          <div key={label} className="flex flex-1 items-center gap-2">
+            <span
+              className={
+                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold " +
+                (done
+                  ? "bg-emerald-500/15 text-emerald-300"
+                  : current
+                    ? "bg-cyan-500/15 text-cyan-300"
+                    : "bg-neutral-800 text-neutral-500")
+              }
+            >
+              {done ? "✓" : current ? "…" : ""}
+            </span>
+            <span className={"text-xs " + (done || current ? "text-neutral-200" : "text-neutral-500")}>
+              {label}
+            </span>
+            {i < labels.length - 1 && <span className="h-px flex-1 bg-neutral-800" />}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function ResultBanner({ tone, title, body }: { tone: "success" | "info" | "error"; title: string; body: string }) {
+/** One-line success / return / failed banner with the amount inline + a Done. */
+function DoneStrip({
+  result,
+  err,
+  onDone,
+}: {
+  result: { kind: ResultKind; bnb?: string; exfer?: string };
+  err: string | null;
+  onDone: () => void;
+}) {
+  const { t } = useT();
+  const k = result.kind;
+  const tone =
+    k === "added" || k === "removed" ? "success" : k === "refunded" ? "info" : "error";
   const cls =
     tone === "success"
       ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
       : tone === "error"
         ? "border-red-500/25 bg-red-500/10 text-red-200"
         : "border-cyan-500/25 bg-cyan-500/10 text-cyan-200";
+  const heading =
+    k === "added"
+      ? t("lp.addedHeading")
+      : k === "removed"
+        ? t("lp.removedHeading")
+        : k === "refunded"
+          ? t("lp.refundedTitle")
+          : t("lp.failedHeading");
+  const showAmt = (k === "added" || k === "removed") && result.exfer;
   return (
-    <div className={"rounded-lg border px-4 py-3 " + cls}>
-      <div className="text-sm font-semibold">{title}</div>
-      <div className="mt-0.5 text-xs opacity-90">{body}</div>
+    <div className="space-y-3">
+      <div className={"rounded-lg border px-4 py-3 " + cls}>
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-sm font-semibold">{heading}</span>
+          {showAmt && (
+            <span className="font-mono text-xs tabular-nums opacity-90">
+              {sig(Number(result.exfer))} EXFER + {sig(Number(result.bnb), 4)} BNB
+            </span>
+          )}
+        </div>
+        {k === "failed" && err && <div className="mt-0.5 text-xs opacity-90">{err}</div>}
+      </div>
+      <button type="button" className="btn w-full" onClick={onDone}>
+        {t("lp.done")}
+      </button>
+    </div>
+  );
+}
+
+function RemoveForm({
+  pos,
+  withdrawPct,
+  setWithdrawPct,
+  exferAddr,
+  bscAddr,
+  busy,
+  err,
+  onConfirm,
+}: {
+  pos: Position;
+  withdrawPct: number;
+  setWithdrawPct: (n: number) => void;
+  exferAddr: string;
+  bscAddr: string;
+  busy: boolean;
+  err: string | null;
+  onConfirm: () => void;
+}) {
+  const { t } = useT();
+  const outExfer = (Number(pos.value_exfer ?? 0) * withdrawPct) / 100;
+  const outBnb = (Number(pos.value_bnb ?? 0) * withdrawPct) / 100;
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="label">{t("lp.removeAmount")}</label>
+        <div className="grid grid-cols-4 gap-2">
+          {[25, 50, 75, 100].map((p) => {
+            const active = withdrawPct === p;
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setWithdrawPct(p)}
+                disabled={busy}
+                className={
+                  "rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50 " +
+                  (active
+                    ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
+                    : "border-neutral-700 bg-neutral-950 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200")
+                }
+              >
+                {`${p}%`}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* You receive back: amount line + payout addresses, one dense block. */}
+      <div className="space-y-1.5 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
+        <div className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.youReceiveBack")}</div>
+        <div className="font-mono text-sm tabular-nums text-neutral-100">
+          {sig(outExfer)} EXFER + {sig(outBnb, 4)} BNB
+        </div>
+        <div className="font-mono text-xs text-neutral-500">
+          → {shortAddress(exferAddr)} / {bscAddr ? shortAddress(bscAddr) : "—"}
+        </div>
+      </div>
+
+      {err && <div className="banner-error">{err}</div>}
+
+      <button type="button" className="btn w-full" disabled={busy} onClick={onConfirm}>
+        {busy
+          ? t("lp.working")
+          : withdrawPct >= 100
+            ? t("lp.removeConfirm")
+            : t("lp.removeConfirmPct", { pct: String(withdrawPct) })}
+      </button>
     </div>
   );
 }

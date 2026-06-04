@@ -37,7 +37,7 @@ function HashLine({
   const { t } = useT();
   return (
     <div className="flex items-center gap-2">
-      <span className="w-12 shrink-0 text-xs text-neutral-500">{label}</span>
+      <span className="w-14 shrink-0 text-xs text-neutral-500">{label}</span>
       <code className="addr-xs flex-1 truncate">{shortAddress(value, 10, 8)}</code>
       <CopyButton text={value} className="btn-ghost text-xs" />
       <a
@@ -115,6 +115,31 @@ function swapPill(status: string): { key: AnyKey; cls: string } {
   }
 }
 
+/** Transfer status → pill text + class. Pulled out so both the row and the
+ *  detail panel share one vocabulary. */
+function transferPill(
+  t: (k: MsgKey, vars?: Record<string, string | number>) => string,
+  status: TxStatus | "error" | undefined,
+): { text: string; cls: string } {
+  if (status === "error") return { text: t("act.pillError"), cls: "pill-warn" };
+  if (!status) return { text: t("act.pillChecking"), cls: "pill-info" };
+  if (status.block_height != null)
+    return { text: t("act.pillConfirmed", { h: status.block_height }), cls: "pill-success" };
+  if (status.in_mempool) return { text: t("act.pillMempool"), cls: "pill-info" };
+  return { text: t("act.pillNotFound"), cls: "pill-warn" };
+}
+
+/** mm-dd HH:MM in Geist Mono — the dense row timestamp. */
+function fmtStamp(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// A unified, time-sorted row: a swap or a transfer. The table renders both.
+type Item =
+  | { kind: "swap"; id: string; ts: number; swap: SwapRow }
+  | { kind: "transfer"; id: string; ts: number; entry: HistoryEntry };
+
 export function Activity({
   onResumeSwap,
 }: {
@@ -124,9 +149,6 @@ export function Activity({
   onResumeSwap?: (swapId: string) => void;
 } = {}) {
   const { t } = useT();
-  // Cast helper so the not-yet-in-dictionary act.* keys still interpolate.
-  const tx = (key: AnyKey, vars?: Record<string, string | number>) =>
-    t(key as MsgKey, vars);
   const [version, bump] = useState(0); // bump to force reload
   const rawHistory = useMemo(listHistory, [version]);
   // Seed from the confirmed-tx cache so already-mined transfers render as
@@ -181,11 +203,6 @@ export function Activity({
   const history = useMemo(
     () => rawHistory.filter((h) => !swapTxIds.has(h.tx_id)),
     [rawHistory, swapTxIds],
-  );
-
-  const inflight = useMemo(
-    () => swaps.filter((s) => !SWAP_TERMINAL.has(s.status)),
-    [swaps],
   );
 
   async function refreshOne(tx_id: string) {
@@ -249,43 +266,100 @@ export function Activity({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history, statuses]);
 
+  // Filter segments: all / swaps only / transfers only.
+  const [filter, setFilter] = useState<"all" | "swap" | "transfer">("all");
+  const [selected, setSelected] = useState<string | null>(null);
+
+  // One unified, in-flight-first then time-sorted list.
+  const items = useMemo<Item[]>(() => {
+    const list: Item[] = [];
+    for (const s of swaps)
+      list.push({ kind: "swap", id: `swap:${s.swap_id}`, ts: s.created_at * 1000, swap: s });
+    for (const h of history)
+      list.push({
+        kind: "transfer",
+        id: `tx:${h.tx_id}`,
+        ts: new Date(h.broadcast_at).getTime(),
+        entry: h,
+      });
+    const inFlight = (it: Item) =>
+      it.kind === "swap" && !SWAP_TERMINAL.has(it.swap.status);
+    list.sort((a, b) => {
+      const fa = inFlight(a) ? 1 : 0;
+      const fb = inFlight(b) ? 1 : 0;
+      if (fa !== fb) return fb - fa; // in-flight pinned to the top
+      return b.ts - a.ts; // then newest first
+    });
+    return list;
+  }, [swaps, history]);
+
+  const shown = useMemo(
+    () => (filter === "all" ? items : items.filter((it) => it.kind === filter)),
+    [items, filter],
+  );
+
+  // Default selection = newest visible row; keep selection valid as data shifts.
+  useEffect(() => {
+    if (shown.length === 0) {
+      if (selected !== null) setSelected(null);
+      return;
+    }
+    if (!selected || !shown.some((it) => it.id === selected)) {
+      setSelected(shown[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown]);
+
+  const n = history.length + swaps.length; // swaps + transfers on record
+  const selItem = items.find((it) => it.id === selected) ?? null;
+
   if (history.length === 0 && swaps.length === 0) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4 p-8">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
-            {t("act.title")}
-          </h1>
-          <p className="text-base text-neutral-400">{t("act.emptyDesc")}</p>
-        </header>
-        <div className="card-padded text-center text-sm text-neutral-400">
-          {t("act.emptyState")}
-        </div>
+      <div className="mx-auto max-w-6xl space-y-4 p-6">
+        <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
+          {t("act.title")}
+        </h1>
+        <div className="card-padded text-sm text-neutral-500">{t("act.emptyState")}</div>
       </div>
     );
   }
 
-  const n = history.length + swaps.length; // swaps + transfers on record
+  const seg = (key: "all" | "swap" | "transfer", label: string) => (
+    <button
+      type="button"
+      onClick={() => setFilter(key)}
+      className={`rounded-md px-2.5 py-1 text-xs transition ${
+        filter === key
+          ? "bg-neutral-700 text-neutral-100"
+          : "text-neutral-400 hover:text-neutral-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-8 fade-in">
-      <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
-            {t("act.title")}
-          </h1>
-          <p className="text-base text-neutral-400">
-            {n === 1 ? tx("act.itemsOne", { n }) : tx("act.itemsMany", { n })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="mx-auto max-w-6xl space-y-3 p-6 fade-in">
+      {/* Compact one-row header: title + count, segmented filter, icon actions. */}
+      <header className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
+          {t("act.title")}
+          <span className="ml-2 text-sm font-normal text-neutral-500">· {n}</span>
+        </h1>
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-0.5 rounded-lg bg-neutral-900 p-0.5">
+            {seg("all", t("act.filterAll"))}
+            {seg("swap", t("act.swaps"))}
+            {seg("transfer", t("act.transfers"))}
+          </div>
           <button
             type="button"
             onClick={() => refreshAll(true)}
             disabled={polling}
-            className="btn-ghost"
+            title={t("act.refresh")}
+            className="btn-ghost rounded-md p-1.5 text-neutral-300"
           >
-            {polling ? t("act.refreshing") : t("act.refresh")}
+            <span className={`block text-base leading-none ${polling ? "animate-spin" : ""}`}>↻</span>
           </button>
           <button
             type="button"
@@ -295,115 +369,191 @@ export function Activity({
                 bump((v) => v + 1);
               }
             }}
-            className="btn-ghost text-red-600 hover:bg-red-500/10"
+            title={t("act.clearLog")}
+            className="btn-ghost rounded-md p-1.5 text-red-500 hover:bg-red-500/10"
           >
-            {t("act.clearLog")}
+            <span className="block text-base leading-none">🗑</span>
           </button>
         </div>
       </header>
 
-      {/* In-flight swaps — a compact strip at the very top so an active swap is
-          impossible to miss while it settles. */}
-      {inflight.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            {tx("act.swapInProgress")}
-          </h2>
-          <div className="space-y-2">
-            {inflight.map((s) => (
-              <InflightSwapCard
-                key={s.swap_id}
-                s={s}
-                onResume={onResumeSwap ? () => onResumeSwap(s.swap_id) : undefined}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Two-pane terminal: dense unified table | sticky detail panel. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <div className="card overflow-hidden">
+          {shown.length === 0 ? (
+            <div className="px-5 py-8 text-center text-sm text-neutral-500">
+              {t("act.emptyState")}
+            </div>
+          ) : (
+            <table className="w-full table-fixed">
+              <tbody>
+                {shown.map((it) =>
+                  it.kind === "swap" ? (
+                    <SwapRowItem
+                      key={it.id}
+                      s={it.swap}
+                      selected={selected === it.id}
+                      onSelect={() => setSelected(it.id)}
+                    />
+                  ) : (
+                    <TransferRowItem
+                      key={it.id}
+                      entry={it.entry}
+                      status={statuses[it.entry.tx_id]}
+                      selected={selected === it.id}
+                      onSelect={() => setSelected(it.id)}
+                    />
+                  ),
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
 
-      {/* Settled swaps — the cross-chain analogue of the transfer log. */}
-      {swaps.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            {tx("act.swaps")}
-          </h2>
-          <div className="space-y-3">
-            {swaps.map((s) => (
-              <SwapCard key={s.swap_id} swap={s} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {history.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            {tx("act.transfers")}
-          </h2>
-          <div className="space-y-3">
-            {history.map((h) => (
-              <ActivityCard key={h.tx_id} entry={h} status={statuses[h.tx_id]} />
-            ))}
-          </div>
-        </section>
-      )}
+        <div className="lg:sticky lg:top-6 lg:self-start">
+          {selItem == null ? (
+            <p className="px-1 py-2 text-sm text-neutral-500">{t("act.emptyState")}</p>
+          ) : selItem.kind === "swap" ? (
+            <SwapDetail s={selItem.swap} onResume={onResumeSwap} />
+          ) : (
+            <TransferDetail
+              entry={selItem.entry}
+              status={statuses[selItem.entry.tx_id]}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-/** Compact in-flight swap line — spinner + "X EXFER → Y BNB" + a status word.
- *  Clickable when an onResume handler is given: routes to Swap to resume this
- *  swap. Status word uses the shared swapStatusText() vocabulary. */
-function InflightSwapCard({ s, onResume }: { s: SwapRow; onResume?: () => void }) {
-  const { t } = useT();
-  const sell = s.direction === "exfer_to_bnb";
-  const inUnit = sell ? "EXFER" : "BNB";
-  const outUnit = sell ? "BNB" : "EXFER";
+// ---------------------------------------------------------------------------
+// Table rows
+// ---------------------------------------------------------------------------
 
-  const inner = (
-    <>
-      <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-neutral-600 border-t-cyan-400" />
-      <div className="flex-1 text-sm text-neutral-200">
-        <span className="amount">{fmtAmt(s.amount_in)}</span> {inUnit}
-        {" → "}
-        <span className="amount">{fmtAmt(s.amount_out)}</span> {outUnit}
-      </div>
-      <span className="text-xs text-neutral-400">{swapStatusText(t, s.status)}</span>
-    </>
-  );
-
-  if (onResume) {
-    return (
-      <button
-        type="button"
-        onClick={onResume}
-        title={t("act.swapResume")}
-        className="card flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-neutral-800/40"
-      >
-        {inner}
-        <span className="text-xs text-neutral-500">›</span>
-      </button>
-    );
-  }
-  return <div className="card flex items-center gap-3 px-5 py-3">{inner}</div>;
+function rowCls(selected: boolean, accent: boolean): string {
+  const base =
+    "cursor-pointer border-l-2 transition border-b border-neutral-800/70 last:border-b-0";
+  const sel = selected ? "bg-neutral-800/60" : "hover:bg-neutral-800/30";
+  const left = selected
+    ? "border-l-cyan-400"
+    : accent
+      ? "border-l-cyan-500/60"
+      : "border-l-transparent";
+  return `${base} ${sel} ${left}`;
 }
 
-/** A settled swap as one record: direction + amounts + status pill, expandable
- *  to the executed rate, price-then, fee, times and on-chain references. */
-function SwapCard({ swap: s }: { swap: SwapRow }) {
+function SwapRowItem({
+  s,
+  selected,
+  onSelect,
+}: {
+  s: SwapRow;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const { t } = useT();
-  const tx = (key: AnyKey, vars?: Record<string, string | number>) =>
-    t(key as MsgKey, vars);
-  const [open, setOpen] = useState(false);
-
+  const inflight = !SWAP_TERMINAL.has(s.status);
   const sell = s.direction === "exfer_to_bnb";
-  const inUnit = sell ? "EXFER" : "BNB";
   const outUnit = sell ? "BNB" : "EXFER";
   const pill = swapPill(s.status);
   const created = new Date(s.created_at * 1000);
 
-  // Executed rate is exact (on-chain amounts); the USD anchor is the EXFER/USD
-  // spot snapshotted at execute time (per-device, may be absent for old swaps).
+  return (
+    <tr className={rowCls(selected, inflight)} onClick={onSelect}>
+      <td className="w-7 py-2 pl-3 pr-1 text-center align-middle text-neutral-400">⇄</td>
+      <td className="w-[5.5rem] py-2 pr-2 align-middle">
+        <span className="addr-xs whitespace-nowrap text-neutral-500">{fmtStamp(created)}</span>
+      </td>
+      <td className="py-2 pr-2 align-middle">
+        <span className="block truncate text-sm text-neutral-200">
+          {sell ? t("act.soldExfer") : t("act.boughtExfer")}
+        </span>
+      </td>
+      <td className="w-28 py-2 pr-2 text-right align-middle">
+        <span className="amount text-sm text-emerald-400">
+          +{fmtAmt(s.amount_out)}
+          <span className="ml-0.5 text-xs font-medium text-neutral-500">{outUnit}</span>
+        </span>
+      </td>
+      <td className="w-24 py-2 pr-3 text-right align-middle">
+        {inflight ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-neutral-600 border-t-cyan-400" />
+            <span className="text-xs text-neutral-400">{t("act.swapInProgress")}</span>
+          </span>
+        ) : (
+          <span className={`pill ${pill.cls}`}>{t(pill.key as MsgKey)}</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function TransferRowItem({
+  entry,
+  status,
+  selected,
+  onSelect,
+}: {
+  entry: HistoryEntry;
+  status: TxStatus | "error" | undefined;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const { t } = useT();
+  const dt = new Date(entry.broadcast_at);
+  const recipients = entry.outputs.filter((o) => !o.is_change);
+  const first = recipients[0];
+  const label = first ? getLabel(first.to) : undefined;
+  const desc =
+    recipients.length > 1
+      ? t("act.recipientsMany", { n: recipients.length })
+      : label ?? t("act.externalAddress");
+  const total = recipients.reduce((sum, o) => sum + o.amount, 0);
+  const pill = transferPill(t, status);
+
+  return (
+    <tr className={rowCls(selected, false)} onClick={onSelect}>
+      <td className="w-7 py-2 pl-3 pr-1 text-center align-middle text-neutral-400">↑</td>
+      <td className="w-[5.5rem] py-2 pr-2 align-middle">
+        <span className="addr-xs whitespace-nowrap text-neutral-500">{fmtStamp(dt)}</span>
+      </td>
+      <td className="py-2 pr-2 align-middle">
+        <span className="block truncate text-sm text-neutral-200">{desc}</span>
+      </td>
+      <td className="w-28 py-2 pr-2 text-right align-middle">
+        <span className="amount text-sm text-neutral-200">{formatExfer(total)}</span>
+      </td>
+      <td className="w-24 py-2 pr-3 text-right align-middle">
+        <span className={`pill ${pill.cls}`}>{pill.text}</span>
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Detail panel
+// ---------------------------------------------------------------------------
+
+function SwapDetail({
+  s,
+  onResume,
+}: {
+  s: SwapRow;
+  onResume?: (swapId: string) => void;
+}) {
+  const { t } = useT();
+  const tx = (key: AnyKey, vars?: Record<string, string | number>) =>
+    t(key as MsgKey, vars);
+
+  const sell = s.direction === "exfer_to_bnb";
+  const inUnit = sell ? "EXFER" : "BNB";
+  const outUnit = sell ? "BNB" : "EXFER";
+  const inflight = !SWAP_TERMINAL.has(s.status);
+  const pill = swapPill(s.status);
+  const created = new Date(s.created_at * 1000);
+
   const exferAmt = sell ? Number(s.amount_in) : Number(s.amount_out);
   const bnbAmt = sell ? Number(s.amount_out) : Number(s.amount_in);
   const rate = exferAmt > 0 && isFinite(bnbAmt) ? bnbAmt / exferAmt : null;
@@ -423,82 +573,74 @@ function SwapCard({ swap: s }: { swap: SwapRow }) {
   if (s.refund_tx) refs.push({ key: "act.refRefund", value: s.refund_tx });
 
   return (
-    <article className="card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left hover:bg-neutral-800/40"
-      >
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-neutral-100">
-            {sell ? tx("act.soldExfer") : tx("act.boughtExfer")}
-          </div>
-          <div className="text-xs text-neutral-500">
-            {created.toLocaleDateString()} · {created.toLocaleTimeString()}
-          </div>
+    <div className="card-padded space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-neutral-100">
+          {sell ? tx("act.soldExfer") : tx("act.boughtExfer")}
         </div>
-        <div className="flex items-center gap-3">
-          <span className="amount text-sm text-emerald-400">
-            +{fmtAmt(s.amount_out)}
-            <span className="font-medium text-neutral-500"> {outUnit}</span>
+        {inflight ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-neutral-600 border-t-cyan-400" />
+            <span className="text-xs text-neutral-400">{swapStatusText(t, s.status)}</span>
           </span>
+        ) : (
           <span className={`pill ${pill.cls}`}>{tx(pill.key)}</span>
-          <span className="text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
-        </div>
-      </button>
+        )}
+      </div>
 
-      {open && (
-        <div className="space-y-4 border-t border-neutral-800 p-5">
-          <div className="text-center text-base text-neutral-100">
-            <span className="amount">{fmtAmt(s.amount_in)}</span>
-            <span className="text-sm text-neutral-500"> {inUnit}</span>
-            {" → "}
-            <span className="amount">{fmtAmt(s.amount_out)}</span>
-            <span className="text-sm text-neutral-500"> {outUnit}</span>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <Row label={tx("act.youSent") } value={`${fmtAmt(s.amount_in)} ${inUnit}`} />
+        <Row label={tx("act.youReceived")} value={`${fmtAmt(s.amount_out)} ${outUnit}`} />
+        {rate != null && (
+          <Row label={tx("act.swapRate")} value={`1 EXFER ≈ ${sig(rate)} BNB`} />
+        )}
+        {usdThen != null && (
+          <Row label={tx("act.swapPriceThen")} value={`≈ $${usd(usdThen)}`} />
+        )}
+        {valueThen != null && (
+          <Row label={tx("act.swapValueThen")} value={`≈ $${usd(valueThen)}`} />
+        )}
+        {typeof s.fee_bps === "number" && (
+          <Row label={t("act.fee")} value={`${s.fee_bps / 100}%`} />
+        )}
+        <Row
+          label={tx("act.swapCreated")}
+          value={`${created.toLocaleDateString()} · ${created.toLocaleTimeString()}`}
+        />
+      </div>
+
+      {inflight && onResume && (
+        <button
+          type="button"
+          onClick={() => onResume(s.swap_id)}
+          className="btn-secondary w-full"
+        >
+          {t("act.swapResume")} ›
+        </button>
+      )}
+
+      {refs.length > 0 && (
+        <div className="space-y-2 border-t border-neutral-800 pt-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            {t("act.onChain")}
           </div>
-
-          <div className="space-y-1.5">
-            {rate != null && (
-              <Row label={tx("act.swapRate")} value={`1 EXFER ≈ ${sig(rate)} BNB`} />
-            )}
-            {usdThen != null && (
-              <Row label={tx("act.swapPriceThen")} value={`≈ $${usd(usdThen)}`} />
-            )}
-            {valueThen != null && (
-              <Row label={tx("act.swapValueThen")} value={`≈ $${usd(valueThen)}`} />
-            )}
-            {typeof s.fee_bps === "number" && (
-              <Row label={t("act.fee")} value={`${s.fee_bps / 100}%`} />
-            )}
-            <Row
-              label={tx("act.swapCreated")}
-              value={`${created.toLocaleDateString()} · ${created.toLocaleTimeString()}`}
+          {refs.map((r) => (
+            <HashLine
+              key={r.value}
+              label={tx(r.key)}
+              value={r.value}
+              href={txExplorerUrl(r.value)}
             />
-          </div>
-
-          {refs.length > 0 && (
-            <div className="space-y-2 border-t border-neutral-800 pt-4">
-              {refs.map((r) => (
-                <HashLine
-                  key={r.value}
-                  label={tx(r.key)}
-                  value={r.value}
-                  href={txExplorerUrl(r.value)}
-                />
-              ))}
-            </div>
-          )}
-
-          {s.error && (
-            <div className="text-sm text-red-400">{s.error}</div>
-          )}
+          ))}
         </div>
       )}
-    </article>
+
+      {s.error && <div className="text-sm text-red-400">{s.error}</div>}
+    </div>
   );
 }
 
-function ActivityCard({
+function TransferDetail({
   entry,
   status,
 }: {
@@ -509,86 +651,60 @@ function ActivityCard({
   const dt = new Date(entry.broadcast_at);
   const recipients = entry.outputs.filter((o) => !o.is_change);
   const change = entry.outputs.find((o) => o.is_change);
-
-  let statusPill: { text: string; className: string };
-  if (status === "error") {
-    statusPill = { text: t("act.pillError"), className: "pill-warn" };
-  } else if (!status) {
-    statusPill = { text: t("act.pillChecking"), className: "pill-info" };
-  } else if (status.block_height != null) {
-    statusPill = {
-      text: t("act.pillConfirmed", { h: status.block_height }),
-      className: "pill-success",
-    };
-  } else if (status.in_mempool) {
-    statusPill = { text: t("act.pillMempool"), className: "pill-info" };
-  } else {
-    statusPill = { text: t("act.pillNotFound"), className: "pill-warn" };
-  }
+  const total = recipients.reduce((sum, o) => sum + o.amount, 0);
+  const pill = transferPill(t, status);
+  const first = recipients[0];
+  const label = first ? getLabel(first.to) : undefined;
+  const title =
+    recipients.length > 1
+      ? t("act.recipientsMany", { n: recipients.length })
+      : label ?? t("act.externalAddress");
 
   return (
-    <article className="card overflow-hidden">
-      <div className="flex items-start justify-between gap-4 border-b border-neutral-800 px-5 py-3">
-        <div className="text-sm text-neutral-400">
-          {dt.toLocaleDateString()} · {dt.toLocaleTimeString()}
-        </div>
-        <span className={`pill ${statusPill.className}`}>
-          {statusPill.text}
-        </span>
+    <div className="card-padded space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="truncate text-sm font-semibold text-neutral-100">{title}</div>
+        <span className={`pill ${pill.cls}`}>{pill.text}</span>
       </div>
 
-      <div className="grid gap-4 p-5 md:grid-cols-2">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            {t("act.sentTo")}
-          </div>
-          <ul className="mt-2 space-y-3">
-            {recipients.map((o, i) => {
-              const label = getLabel(o.to);
-              return (
-                <li key={i} className="space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-neutral-200">
-                      {label ?? t("act.externalAddress")}
-                    </span>
-                    <span className="amount text-sm">
-                      {formatExfer(o.amount)}
-                    </span>
-                  </div>
-                  <HashLine label={t("act.addrLabel")} value={o.to} href={addrUrl(o.to)} />
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-        <div className="space-y-1.5">
-          <Row label={t("act.fee")} value={formatExfer(entry.fee)} />
-          <Row
-            label={t("act.io")}
-            value={t("act.ioValue", {
-              in: entry.inputs.length,
-              out: entry.outputs.length,
-            })}
-          />
-          {change && (
-            <Row label={t("act.change")} value={formatExfer(change.amount)} />
-          )}
-          <Row label={t("act.size")} value={`${entry.size} B`} />
-        </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <Row label={t("act.amount")} value={formatExfer(total)} />
+        <Row label={t("act.fee")} value={formatExfer(entry.fee)} />
+        {change && <Row label={t("act.change")} value={formatExfer(change.amount)} />}
+        <Row
+          label={t("act.swapCreated")}
+          value={`${dt.toLocaleDateString()} · ${dt.toLocaleTimeString()}`}
+        />
       </div>
 
-      <div className="border-t border-neutral-800 bg-neutral-900 px-5 py-3">
+      <div className="space-y-2 border-t border-neutral-800 pt-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          {t("act.onChain")}
+        </div>
         <HashLine label={t("act.txId")} value={entry.tx_id} href={txUrl(entry.tx_id)} />
+        {recipients.map((o, i) => (
+          <HashLine
+            key={i}
+            label={t("act.sentTo")}
+            value={o.to}
+            href={addrUrl(o.to)}
+          />
+        ))}
       </div>
-    </article>
+
+      <div className="addr-xs text-neutral-600">
+        {t("act.ioValue", { in: entry.inputs.length, out: entry.outputs.length })} ·{" "}
+        {t("act.sizeBytes", { size: entry.size })}
+      </div>
+    </div>
   );
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-2 text-sm">
-      <span className="text-neutral-400">{label}</span>
-      <span className="amount">{value}</span>
+    <div className="space-y-0.5">
+      <div className="text-xs text-neutral-500">{label}</div>
+      <div className="amount text-sm text-neutral-100">{value}</div>
     </div>
   );
 }

@@ -105,8 +105,19 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
     rpc<StatusInfo>("get_status").then(setStatus, () => {});
   }, []);
 
-  async function saveSwap(e: FormEvent) {
-    e.preventDefault();
+  // ---- change flags (drive the per-row "changed" dot + the shared footer) ----
+  const nodeChanged = value.trim() !== current.trim();
+  const indexerChanged = indexerUrl.trim() !== indexerCurUrl.trim();
+  const swapChanged =
+    swapPool.trim() !== swapCur.pool.trim() ||
+    swapBscRpc.trim() !== swapCur.rpc.trim() ||
+    swapChain.trim() !== swapCur.chain.trim();
+  const anyChanged = nodeChanged || indexerChanged || swapChanged;
+  const savingAny = savingNode || savingIndexer || savingSwap;
+  const connError = nodeError ?? indexerError ?? swapError;
+  const connInfo = nodeInfo ?? indexerInfo ?? swapInfo;
+
+  async function saveSwap() {
     setSwapError(null);
     setSwapInfo(null);
     const chainNum = swapChain.trim() === "" ? 0 : Number(swapChain.trim());
@@ -137,8 +148,7 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
     }
   }
 
-  async function saveIndexer(e: FormEvent) {
-    e.preventDefault();
+  async function saveIndexer() {
     setIndexerError(null);
     setIndexerInfo(null);
     setSavingIndexer(true);
@@ -160,8 +170,7 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
     }
   }
 
-  async function saveNode(e: FormEvent) {
-    e.preventDefault();
+  async function saveNode() {
     setNodeError(null);
     setNodeInfo(null);
     setSavingNode(true);
@@ -177,6 +186,30 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
     } finally {
       setSavingNode(false);
     }
+  }
+
+  // One shared footer Save governs all three connection rows. Each save calls
+  // setNodeRpc / setIndexerConfig / setSwapConfig (each onRestart-s) for the
+  // rows that actually changed — behaviour identical to the old per-card Saves.
+  async function saveConnections(e: FormEvent) {
+    e.preventDefault();
+    if (nodeChanged) await saveNode();
+    if (indexerChanged) await saveIndexer();
+    if (swapChanged) await saveSwap();
+  }
+
+  function revertConnections() {
+    setValue(current);
+    setIndexerUrl(indexerCurUrl);
+    setSwapPool(swapCur.pool);
+    setSwapBscRpc(swapCur.rpc);
+    setSwapChain(swapCur.chain);
+    setNodeError(null);
+    setIndexerError(null);
+    setSwapError(null);
+    setNodeInfo(null);
+    setIndexerInfo(null);
+    setSwapInfo(null);
   }
 
   async function doCheckUpdate() {
@@ -275,383 +308,287 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
     URL.revokeObjectURL(url);
   }
 
+  const swapOn = swapPool.trim() !== "";
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
-          {t("set.title")}
-        </h1>
-        <p className="text-base text-neutral-400">
-          {t("set.subtitle")}
-        </p>
-      </header>
-
-      {/* Display / language */}
-      <section className="card-padded space-y-4">
-        <header>
-          <h2 className="text-lg font-semibold text-neutral-100">
-            {t("set.langTitle")}
-          </h2>
-          <p className="text-sm text-neutral-400">{t("set.langDesc")}</p>
-        </header>
-        <div>
-          <label className="label">{t("set.langLabel")}</label>
-          <div className="flex gap-2">
-            {LANGS.map((l) => (
-              <button
-                key={l.key}
-                type="button"
-                className={l.key === lang ? "btn" : "btn-secondary"}
-                onClick={() => setLang(l.key)}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
+    <div className="mx-auto max-w-6xl space-y-5 p-8 fade-in">
+      {/* Header: title + walletd version chip, language toggle top-right */}
+      <header className="flex items-end justify-between gap-4">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
+            {t("set.title")}
+          </h1>
+          {status && (
+            <span className="addr-xs text-neutral-500">walletd v{status.version}</span>
+          )}
         </div>
-      </section>
-
-      {/* Upstream node */}
-      <section className="card-padded space-y-4">
-        <header>
-          <h2 className="text-lg font-semibold text-neutral-100">
-            {t("set.nodeTitle")}
-          </h2>
-          <p className="text-sm text-neutral-400">
-            {t("set.nodeDesc")}
-          </p>
-        </header>
-        <form onSubmit={saveNode} className="space-y-3">
-          <input
-            className="input font-mono text-sm"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            disabled={savingNode}
-            placeholder="http://80.78.31.82:9334"
-          />
-          <p className="help">
-            {t("set.currentlyInUse")}{" "}
-            <code className="addr-xs">{current || t("set.loading")}</code>
-          </p>
-          {nodeError && <div className="banner-error">{nodeError}</div>}
-          {nodeInfo && <div className="banner-success">{nodeInfo}</div>}
-          <div className="flex gap-2">
+        <div className="inline-flex overflow-hidden rounded-lg border border-neutral-700">
+          {LANGS.map((l) => (
             <button
-              type="submit"
-              className="btn"
-              disabled={savingNode || value.trim() === current.trim()}
-            >
-              {savingNode ? t("set.restarting") : t("set.saveReconnect")}
-            </button>
-            <button
+              key={l.key}
               type="button"
-              className="btn-secondary"
-              onClick={() => setValue(current)}
-              disabled={savingNode}
-            >
-              {t("set.revert")}
-            </button>
-          </div>
-        </form>
-      </section>
-
-      {/* Indexer */}
-      <section className="card-padded space-y-4">
-        <header>
-          <h2 className="text-lg font-semibold text-neutral-100">{t("set.indexerTitle")}</h2>
-          <p className="text-sm text-neutral-400">
-            {t("set.indexerDesc")}
-          </p>
-        </header>
-        <form onSubmit={saveIndexer} className="space-y-3">
-          <input
-            className="input font-mono text-sm"
-            value={indexerUrl}
-            onChange={(e) => setIndexerUrl(e.target.value)}
-            disabled={savingIndexer}
-            placeholder={t("set.indexerPlaceholder")}
-          />
-          <p className="help">
-            {t("set.currentlyInUse")}{" "}
-            <code className="addr-xs">{indexerCurUrl || t("set.indexerDefault")}</code>
-          </p>
-          {indexerError && <div className="banner-error">{indexerError}</div>}
-          {indexerInfo && <div className="banner-success">{indexerInfo}</div>}
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="btn"
-              disabled={
-                savingIndexer || indexerUrl.trim() === indexerCurUrl.trim()
+              onClick={() => setLang(l.key)}
+              className={
+                "px-3 py-1.5 text-sm transition " +
+                (l.key === lang
+                  ? "bg-neutral-800 text-neutral-100"
+                  : "text-neutral-400 hover:text-neutral-200")
               }
             >
-              {savingIndexer ? t("set.restarting") : t("set.saveReconnect")}
+              {l.label}
             </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setIndexerUrl(indexerCurUrl)}
-              disabled={savingIndexer}
-            >
-              {t("set.revert")}
-            </button>
-          </div>
-        </form>
-      </section>
+          ))}
+        </div>
+      </header>
 
-      {/* Swap */}
-      <section className="card-padded space-y-4">
-        <header>
-          <h2 className="text-lg font-semibold text-neutral-100">{t("set.swapTitle")}</h2>
-          <p className="text-sm text-neutral-400">
-            {t("set.swapDesc")}
-          </p>
-        </header>
-        <form onSubmit={saveSwap} className="space-y-3">
-          <div>
-            <label className="label">{t("set.swapPoolLabel")}</label>
+      <div className="grid grid-cols-12 gap-5">
+        {/* LEFT — Connections: the routine config, one card, one shared Save */}
+        <form onSubmit={saveConnections} className="card-padded col-span-12 space-y-3 lg:col-span-7">
+          <Eyebrow>{t("set.connectionsTitle")}</Eyebrow>
+
+          <ConnRow
+            label={t("set.nodeTitle")}
+            changed={nodeChanged}
+            chip={current || t("set.loading")}
+          >
+            <input
+              className="input font-mono text-sm"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={savingAny}
+              placeholder="http://80.78.31.82:9334"
+            />
+          </ConnRow>
+
+          <ConnRow
+            label={t("set.indexerTitle")}
+            changed={indexerChanged}
+            chip={indexerCurUrl || t("set.indexerDefault")}
+          >
+            <input
+              className="input font-mono text-sm"
+              value={indexerUrl}
+              onChange={(e) => setIndexerUrl(e.target.value)}
+              disabled={savingAny}
+              placeholder={t("set.indexerPlaceholder")}
+            />
+          </ConnRow>
+
+          <ConnRow
+            label={t("set.swapTitle")}
+            changed={swapChanged}
+            chip={swapCur.pool ? t("set.swapOn", { pool: swapCur.pool }) : t("set.swapOff")}
+          >
             <input
               className="input font-mono text-sm"
               value={swapPool}
               onChange={(e) => setSwapPool(e.target.value)}
-              disabled={savingSwap}
+              disabled={savingAny}
               placeholder={t("set.swapPoolPlaceholder")}
             />
-          </div>
-          <div className="grid grid-cols-[1.6fr_1fr] gap-3">
-            <div>
-              <label className="label">{t("set.swapRpcLabel")}</label>
-              <input
-                className="input font-mono text-sm"
-                value={swapBscRpc}
-                onChange={(e) => setSwapBscRpc(e.target.value)}
-                disabled={savingSwap}
-                placeholder={t("set.swapRpcPlaceholder")}
-              />
-            </div>
-            <div>
-              <label className="label">{t("set.swapChainLabel")}</label>
-              <input
-                className="input font-mono text-sm"
-                value={swapChain}
-                onChange={(e) => setSwapChain(e.target.value)}
-                disabled={savingSwap}
-                inputMode="numeric"
-                placeholder="56 / 97"
-              />
-            </div>
-          </div>
-          <p className="help">
-            {t("set.swapStatus")}{" "}
-            <code className="addr-xs">
-              {swapCur.pool ? t("set.swapOn", { pool: swapCur.pool }) : t("set.swapOff")}
-            </code>
-          </p>
-          {swapError && <div className="banner-error">{swapError}</div>}
-          {swapInfo && <div className="banner-success">{swapInfo}</div>}
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="btn"
-              disabled={
-                savingSwap ||
-                (swapPool.trim() === swapCur.pool.trim() &&
-                  swapBscRpc.trim() === swapCur.rpc.trim() &&
-                  swapChain.trim() === swapCur.chain.trim())
-              }
-            >
-              {savingSwap ? t("set.restarting") : t("set.saveReconnect")}
+            {/* RPC + chain id only matter once a pool is set */}
+            {swapOn && (
+              <div className="mt-2 grid grid-cols-[1.6fr_1fr] gap-3">
+                <input
+                  className="input font-mono text-sm"
+                  value={swapBscRpc}
+                  onChange={(e) => setSwapBscRpc(e.target.value)}
+                  disabled={savingAny}
+                  placeholder={t("set.swapRpcPlaceholder")}
+                  aria-label={t("set.swapRpcLabel")}
+                />
+                <input
+                  className="input font-mono text-sm"
+                  value={swapChain}
+                  onChange={(e) => setSwapChain(e.target.value)}
+                  disabled={savingAny}
+                  inputMode="numeric"
+                  placeholder="56 / 97"
+                  aria-label={t("set.swapChainLabel")}
+                />
+              </div>
+            )}
+          </ConnRow>
+
+          <div className="flex items-center gap-2 pt-1">
+            <button type="submit" className="btn" disabled={savingAny || !anyChanged}>
+              {savingAny ? t("set.restarting") : t("set.saveReconnect")}
             </button>
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => {
-                setSwapPool(swapCur.pool);
-                setSwapBscRpc(swapCur.rpc);
-                setSwapChain(swapCur.chain);
-              }}
-              disabled={savingSwap}
+              onClick={revertConnections}
+              disabled={savingAny || !anyChanged}
             >
               {t("set.revert")}
             </button>
+            {connError ? (
+              <span className="text-sm text-red-400">{connError}</span>
+            ) : connInfo ? (
+              <span className="text-sm text-cyan-400">{connInfo}</span>
+            ) : null}
           </div>
         </form>
-      </section>
 
-      {/* Updates */}
-      <section className="card-padded space-y-4">
-        <header>
-          <h2 className="text-lg font-semibold text-neutral-100">{t("set.updTitle")}</h2>
-          <p className="text-sm text-neutral-400">
-            {t("set.updDesc")}
-          </p>
-        </header>
-
-        {updCheck === "available" ? (
-          <div className="banner-success flex items-center justify-between gap-3">
-            <span>
-              {t("set.updAvailablePre")}{" "}
-              <span className="font-mono">v{updVersion}</span>{" "}
-              {t("set.updAvailablePost")}
-            </span>
-            <button
-              type="button"
-              className="btn"
-              onClick={doInstallUpdate}
-            >
-              {t("set.updInstall")}
-            </button>
-          </div>
-        ) : updCheck === "installing" ? (
-          <div className="banner-info space-y-2">
-            <div>{t("set.updDownloading", { pct: updProgress })}</div>
-            <div className="h-1.5 w-full overflow-hidden rounded bg-neutral-800">
-              <div
-                className="h-full bg-cyan-400 transition-all"
-                style={{ width: `${updProgress}%` }}
-              />
+        {/* RIGHT — stacked action / state panels */}
+        <div className="col-span-12 space-y-5 lg:col-span-5">
+          {/* Backup & data */}
+          <section className="card-padded space-y-3">
+            <Eyebrow>{t("set.backupDataTitle")}</Eyebrow>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowBackup(true)}
+                title={t("set.backupTip")}
+              >
+                {t("set.backupBtn")}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowRestore(true)}
+              >
+                {t("set.restoreBtn")}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowImport(true)}
+              >
+                {t("set.importKey")}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowImportPhrase(true)}
+              >
+                {t("set.importPhrase")}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={exportCsv}
+                disabled={exporting}
+              >
+                {exporting ? t("set.exporting") : t("set.exportCsv")}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={exportLabels}
+              >
+                {t("set.exportLabels")}
+              </button>
             </div>
+            <p className="help">{t("set.backupTip")}</p>
+          </section>
+
+          {/* Sensitive export — single danger button + warning tooltip */}
+          <section className="card-padded space-y-3">
+            <Eyebrow>{t("set.sensitiveTitle")}</Eyebrow>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() => setShowPrivateKey(true)}
+              >
+                {t("set.sensitiveExportKey")}
+              </button>
+              <span
+                className="cursor-help text-amber-400"
+                title={t("set.sensitiveTip")}
+                aria-label={t("set.sensitiveTip")}
+              >
+                ⚠
+              </span>
+            </div>
+          </section>
+
+          {/* Daemon — machine state; Updates folds in via the header button */}
+          <section className="card-padded space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <Eyebrow>{t("set.daemonTitle")}</Eyebrow>
+              {updCheck === "available" ? (
+                <button type="button" className="btn-ghost text-cyan-400" onClick={doInstallUpdate}>
+                  {t("set.updInstall")} v{updVersion}
+                </button>
+              ) : updCheck === "installing" ? (
+                <span className="addr-xs text-neutral-400">
+                  {t("set.updDownloading", { pct: updProgress })}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={doCheckUpdate}
+                  disabled={updCheck === "checking"}
+                >
+                  {updCheck === "checking"
+                    ? t("set.updChecking")
+                    : updCheck === "none"
+                      ? t("set.updLatest")
+                      : t("set.updCheck")}
+                </button>
+              )}
+            </div>
+            <dl className="grid grid-cols-[max-content_1fr] items-center gap-x-6 gap-y-2 text-sm">
+              <dt className="text-neutral-400">{t("set.daemonBind")}</dt>
+              <dd className="min-w-0">
+                <CopyValue value={localAddr} />
+              </dd>
+              <dt className="self-start pt-1 text-neutral-400">{t("set.daemonTls")}</dt>
+              <dd className="min-w-0">
+                <CopyValue value={fingerprint} wrap />
+              </dd>
+              {status && (
+                <>
+                  <dt className="text-neutral-400">{t("set.daemonVersion")}</dt>
+                  <dd className="addr-xs">{status.version}</dd>
+                  <dt className="text-neutral-400">{t("set.daemonWalletCount")}</dt>
+                  <dd className="addr-xs">{status.wallet_count}</dd>
+                  <dt className="text-neutral-400">{t("set.daemonInflightTransfers")}</dt>
+                  <dd className="addr-xs">{status.in_flight_transfers}</dd>
+                  <dt className="text-neutral-400">{t("set.daemonInflightUtxos")}</dt>
+                  <dd className="addr-xs">{status.in_flight_utxos}</dd>
+                </>
+              )}
+            </dl>
+          </section>
+        </div>
+
+        {/* BOTTOM — Danger zone, one compact red row */}
+        <section className="col-span-12 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-red-500/40 bg-red-500/5 px-6 py-4">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-red-300">
+              {t("set.dangerTitle")}
+            </h2>
+            <p className="text-sm text-red-400/80">{t("set.dangerOneLiner")}</p>
           </div>
-        ) : (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="sr-only" htmlFor="reset-confirm">
+              {t("set.resetTypePre")} WIPE {t("set.resetTypePost")}
+            </label>
+            <input
+              id="reset-confirm"
+              className="input max-w-[140px]"
+              value={resetConfirm}
+              onChange={(e) => setResetConfirm(e.target.value)}
+              disabled={resetting}
+              placeholder="WIPE"
+              autoComplete="off"
+            />
             <button
               type="button"
-              className="btn-secondary"
-              onClick={doCheckUpdate}
-              disabled={updCheck === "checking"}
+              className="btn-danger"
+              disabled={resetConfirm !== "WIPE" || resetting}
+              onClick={doReset}
             >
-              {updCheck === "checking" ? t("set.updChecking") : t("set.updCheck")}
+              {resetting ? t("set.resetting") : t("set.resetBtn")}
             </button>
-            {updCheck === "none" && (
-              <span className="text-sm text-neutral-400">
-                {t("set.updLatest")}
-              </span>
-            )}
           </div>
-        )}
-      </section>
-
-      {/* Data export / import utilities */}
-      <section className="card-padded space-y-4">
-        <header>
-          <h2 className="text-lg font-semibold text-neutral-100">
-            {t("set.exportTitle")}
-          </h2>
-          <p className="text-sm text-neutral-400">
-            {t("set.exportDesc")}
-          </p>
-        </header>
-
-        <div className="banner-info space-y-1 text-sm">
-          <div className="font-semibold">{t("set.pwReminderTitle")}</div>
-          <p>
-            {t("set.pwReminderBody")}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={exportCsv}
-            disabled={exporting}
-            className="btn-secondary"
-          >
-            {exporting ? t("set.exporting") : t("set.exportCsv")}
-          </button>
-          <button
-            type="button"
-            onClick={exportLabels}
-            className="btn-secondary"
-          >
-            {t("set.exportLabels")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowImport(true)}
-            className="btn-secondary"
-          >
-            {t("set.importKey")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowImportPhrase(true)}
-            className="btn-secondary"
-          >
-            {t("set.importPhrase")}
-          </button>
-        </div>
-        <p className="help">
-          {t("set.importHelp")}
-        </p>
-      </section>
-
-      {/* Whole-wallet encrypted backup — the recommended way to back up */}
-      <section className="card-padded space-y-4">
-        <header>
-          <h2 className="text-lg font-semibold text-neutral-100">
-            {t("set.backupTitle")}
-          </h2>
-          <p className="text-sm text-neutral-400">
-            {t("set.backupDesc")}
-          </p>
-        </header>
-
-        <div className="banner-info text-sm">
-          {t("set.backupWarn")}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setShowBackup(true)}
-          >
-            {t("set.backupBtn")}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setShowRestore(true)}
-          >
-            {t("set.restoreBtn")}
-          </button>
-        </div>
-        <p className="help">
-          {t("set.backupHelp")}
-        </p>
-      </section>
-
-      {/* Sensitive data export — gated by password re-entry */}
-      <section className="card-padded space-y-4">
-        <header>
-          <h2 className="text-lg font-semibold text-neutral-100">
-            {t("set.sensitiveTitle")}
-          </h2>
-          <p className="text-sm text-neutral-400">
-            {t("set.sensitiveDesc")}
-          </p>
-        </header>
-
-        <div className="banner-error space-y-1 text-sm">
-          <div className="font-semibold">{t("set.sensitiveWarnTitle")}</div>
-          <p>
-            {t("set.sensitiveWarnBody")}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="btn-danger"
-            onClick={() => setShowPrivateKey(true)}
-          >
-            {t("set.sensitiveExportKey")}
-          </button>
-        </div>
-        <p className="help">
-          {t("set.sensitiveHelp")}
-        </p>
-      </section>
+        </section>
+      </div>
 
       {showPrivateKey && (
         <RevealPrivateKeyModal onClose={() => setShowPrivateKey(false)} />
@@ -687,81 +624,45 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
           }}
         />
       )}
+    </div>
+  );
+}
 
-      {/* Daemon status */}
-      <section className="card-padded space-y-3">
-        <header>
-          <h2 className="text-lg font-semibold text-neutral-100">
-            {t("set.daemonTitle")}
-          </h2>
-        </header>
-        <dl className="grid grid-cols-[max-content_1fr] items-center gap-x-6 gap-y-2 text-sm">
-          <dt className="text-neutral-400">{t("set.daemonBind")}</dt>
-          <dd className="min-w-0">
-            <CopyValue value={localAddr} />
-          </dd>
-          <dt className="self-start pt-1 text-neutral-400">{t("set.daemonTls")}</dt>
-          <dd className="min-w-0">
-            <CopyValue value={fingerprint} wrap />
-          </dd>
-          {status && (
-            <>
-              <dt className="text-neutral-400">{t("set.daemonVersion")}</dt>
-              <dd className="addr-xs">{status.version}</dd>
-              <dt className="text-neutral-400">{t("set.daemonWalletCount")}</dt>
-              <dd className="addr-xs">{status.wallet_count}</dd>
-              <dt className="text-neutral-400">{t("set.daemonInflightTransfers")}</dt>
-              <dd className="addr-xs">{status.in_flight_transfers}</dd>
-              <dt className="text-neutral-400">{t("set.daemonInflightUtxos")}</dt>
-              <dd className="addr-xs">{status.in_flight_utxos}</dd>
-            </>
-          )}
-        </dl>
-      </section>
+/** Compact uppercase card eyebrow — demotes the old text-lg h2s so the inputs
+ *  and daemon numbers are the visual focus. */
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+      {children}
+    </h2>
+  );
+}
 
-      {/* Danger zone — wipe everything on this device */}
-      <section className="rounded-xl border border-red-500/40 bg-red-500/5 p-6 space-y-4">
-        <header>
-          <h2 className="text-lg font-semibold text-red-300">{t("set.dangerTitle")}</h2>
-          <p className="text-sm text-neutral-400">
-            {t("set.dangerDesc")}
-          </p>
-        </header>
-
-        <div className="banner-error space-y-1 text-sm">
-          <div className="font-semibold">{t("set.resetWarnTitle")}</div>
-          <p>
-            {t("set.resetWarnBody")}
-          </p>
-        </div>
-
-        <div>
-          <label className="label" htmlFor="reset-confirm">
-            {t("set.resetTypePre")}{" "}
-            <span className="font-mono text-red-300">WIPE</span>{" "}
-            {t("set.resetTypePost")}
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="reset-confirm"
-              className="input max-w-[200px]"
-              value={resetConfirm}
-              onChange={(e) => setResetConfirm(e.target.value)}
-              disabled={resetting}
-              placeholder="WIPE"
-              autoComplete="off"
-            />
-            <button
-              type="button"
-              className="btn-danger"
-              disabled={resetConfirm !== "WIPE" || resetting}
-              onClick={doReset}
-            >
-              {resetting ? t("set.resetting") : t("set.resetBtn")}
-            </button>
-          </div>
-        </div>
-      </section>
+/** One connection field: label + inline "currently in use" chip + a "changed"
+ *  dot on one baseline, with the input(s) below. */
+function ConnRow({
+  label,
+  chip,
+  changed,
+  children,
+}: {
+  label: string;
+  chip: string;
+  changed: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline gap-2">
+        <span className="label mb-0 flex items-center gap-1.5">
+          {changed && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" aria-hidden />}
+          {label}
+        </span>
+        <code className="addr-xs min-w-0 flex-1 truncate text-right text-neutral-500">
+          {chip}
+        </code>
+      </div>
+      {children}
     </div>
   );
 }

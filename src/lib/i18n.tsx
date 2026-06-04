@@ -623,6 +623,35 @@ const EN = {
   "act.itemsOne": "{n} item on record · history is local to this device.",
   "act.itemsMany": "{n} items on record · history is local to this device.",
   "act.swapResume": "Open this swap",
+  "dash.addrCount": "{n} addr",
+  "dash.bnbTileTitle": "BNB · BSC",
+  "dash.bnbManage": "Deposit · Withdraw",
+  "dash.bnbClose": "Close",
+  "snd.totalShort": "Total",
+  "snd.feeShort": "fee",
+  "snd.recipientSingle": "Recipient",
+  "snd.recipientsCount": "Recipients ({n}/16)",
+  "snd.add": "Add",
+  "snd.addrCol": "Address",
+  "snd.amountCol": "Amount",
+  "snd.sendAnother": "Send another",
+  "swap.lockedTag": "locked",
+  "swap.settlingHint": "Settling on-chain — safe to leave; we'll notify you.",
+  "lp.midPrice": "1 EXFER ≈ {mid} BNB ≈ ${usd}",
+  "lp.emptyOneLine": "Provide liquidity — earn 0.3% of every swap.",
+  "lp.bnbSource": "from {addr} · {bnb} BNB",
+  "act.filterAll": "All",
+  "act.amount": "Amount",
+  "act.youSent": "You sent",
+  "act.youReceived": "You received",
+  "act.onChain": "On-chain",
+  "act.recipientsMany": "{n} recipients",
+  "act.sizeBytes": "{size} B",
+  "set.connectionsTitle": "Connections",
+  "set.backupDataTitle": "Backup & data",
+  "set.backupTip": "Encrypted with your wallet password — keep both.",
+  "set.sensitiveTip": "Shows plaintext key material on screen — anyone watching or capturing your screen can steal it.",
+  "set.dangerOneLiner": "Erases local keys + saved password. On-chain coins are safe only if you have a backup.",
 };
 
 export type MsgKey = keyof typeof EN;
@@ -1216,12 +1245,44 @@ const ZH: Record<MsgKey, string> = {
   "act.itemsOne": "记录到 {n} 项 · 历史仅保存在本设备。",
   "act.itemsMany": "记录到 {n} 项 · 历史仅保存在本设备。",
   "act.swapResume": "查看此次兑换",
+  "dash.addrCount": "{n} 个地址",
+  "dash.bnbTileTitle": "BNB · BSC",
+  "dash.bnbManage": "充值 · 提现",
+  "dash.bnbClose": "关闭",
+  "snd.totalShort": "总额",
+  "snd.feeShort": "手续费",
+  "snd.recipientSingle": "收款方",
+  "snd.recipientsCount": "收款方（{n}/16）",
+  "snd.add": "添加",
+  "snd.addrCol": "地址",
+  "snd.amountCol": "金额",
+  "snd.sendAnother": "再发一笔",
+  "swap.lockedTag": "已锁定",
+  "swap.settlingHint": "正在链上结算——可离开此页面，完成后会通知你。",
+  "lp.midPrice": "1 EXFER ≈ {mid} BNB ≈ ${usd}",
+  "lp.emptyOneLine": "提供流动性 —— 赚取每笔兑换 0.3% 手续费。",
+  "lp.bnbSource": "来自 {addr} · {bnb} BNB",
+  "act.filterAll": "全部",
+  "act.amount": "金额",
+  "act.youSent": "你支付",
+  "act.youReceived": "你收到",
+  "act.onChain": "链上",
+  "act.recipientsMany": "{n} 个收款人",
+  "act.sizeBytes": "{size} 字节",
+  "set.connectionsTitle": "连接",
+  "set.backupDataTitle": "备份与数据",
+  "set.backupTip": "用钱包密码加密——文件和密码都要保管好。",
+  "set.sensitiveTip": "会在屏幕上显示明文私钥——任何能看到或录制你屏幕的人都能窃取。",
+  "set.dangerOneLiner": "清除本机密钥和已保存的密码。只有提前备份，链上资产才安全。",
 };
 
 const DICT: Record<Lang, Record<MsgKey, string>> = { en: EN, zh: ZH };
 
 type Vars = Record<string, string | number>;
 function interpolate(s: string, vars?: Vars): string {
+  // Guard against a missing string (a key absent from both tables, e.g. a
+  // runtime-cast key) so a lookup miss degrades to "" instead of throwing.
+  if (s == null) return "";
   return vars ? s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? "")) : s;
 }
 

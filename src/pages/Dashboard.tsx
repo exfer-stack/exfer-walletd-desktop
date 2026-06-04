@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import {
   rpc,
   formatExfer,
@@ -8,9 +8,9 @@ import {
 import type { GeneratedAddress } from "../lib/types";
 import { AddressRow } from "../components/AddressRow";
 import { BnbAccount } from "../components/BnbAccount";
-import { useWallet, pollIntervalMs } from "../lib/wallet";
-import { useBnbAsset } from "../lib/bnb";
-import { usePrice, usdValue } from "../lib/market";
+import { useWallet } from "../lib/wallet";
+import { useBnbAsset, fmtUnits } from "../lib/bnb";
+import { usePrice, usdValue, useBnbUsd, usdNumber } from "../lib/market";
 import { useToast } from "../lib/toast";
 import { isHidden, unhide } from "../lib/hidden";
 import { useT } from "../lib/i18n";
@@ -45,11 +45,15 @@ export function Dashboard() {
   // Live EXFER/USD for the hero ≈$, the 24h pill, and per-address ≈$. Null until
   // the first fetch (or if the pool is unreachable) — every $ readout hides then.
   const price = usePrice();
-  // The wallet's BNB (BSC) holding, shown as a passive overview card. Polls on
+  // The wallet's BNB (BSC) holding, shown as a passive overview tile. Polls on
   // its own; announceDeposits:false so it never double-toasts with Swap.
   const bnbAsset = useBnbAsset({ announceDeposits: false });
+  const bnbUsd = useBnbUsd();
   const [generating, setGenerating] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
+  // The BNB deposit/withdraw/export console lives one click away in a modal so
+  // the dashboard tile stays a glanceable summary.
+  const [bnbOpen, setBnbOpen] = useState(false);
 
   async function refreshAll() {
     await refresh();
@@ -75,9 +79,17 @@ export function Dashboard() {
   // funds only).
   const visibleProjected = visibleTotal + visiblePendingIn - visiblePendingOut;
   const hasPending = visiblePendingIn > 0 || visiblePendingOut > 0;
-  // Live auto-refresh interval. Only *visible* addresses cost a scan, so this
-  // tracks the visible count and drops as you hide/remove addresses.
-  const pollSecs = Math.round(pollIntervalMs(visibleEntries.length) / 1000);
+
+  // BNB tile: human balance + its ≈$ (best-effort; hidden when BNB/USD absent).
+  const bnbHuman = (() => {
+    if (!bnbAsset.bnbWei) return 0;
+    try {
+      return Number(BigInt(bnbAsset.bnbWei)) / 1e18;
+    } catch {
+      return 0;
+    }
+  })();
+  const bnbUsdValue = bnbUsd != null && bnbHuman > 0 ? bnbHuman * bnbUsd : null;
 
   async function generateAddress() {
     setGenerating(true);
@@ -98,96 +110,84 @@ export function Dashboard() {
   const isEmpty = !loading && data !== null && data.entries.length === 0;
   const atCap = (data?.entries.length ?? 0) >= MAX_ADDRESSES;
 
+  const split = data ? splitBalanceCompact(visibleProjected) : null;
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-8 fade-in">
-      {/* Hero — total balance */}
-      <section className="card-padded">
-        <div className="flex items-start justify-between gap-3">
-          <div className="text-sm font-medium uppercase tracking-wide text-neutral-400">
+    <div className="mx-auto max-w-7xl space-y-6 p-8 fade-in">
+      {/* Summary bar — total balance + ≈$ + addr count on one band, with the
+          live EXFER price + 24h pill on the right. */}
+      <section className="card flex flex-wrap items-center justify-between gap-4 px-6 py-4">
+        <div className="flex items-baseline gap-4">
+          <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
             {t("dash.totalBalance")}
-          </div>
-          {/* Live EXFER/USD context: spot price + 24h change. Best-effort —
-              hidden entirely until a price is available. */}
-          {price && (
-            <div className="flex items-center gap-2 text-right">
-              <span className="font-mono text-sm tabular-nums text-neutral-300">
-                <span className="text-neutral-500">EXFER</span>{" "}
-                {usdValue(100_000_000, price.usd)}
-              </span>
-              <ChangePill pct={price.change24h} />
-            </div>
-          )}
-        </div>
-        <div
-          className="amount-lg mt-2 flex items-baseline tracking-normal"
-          title={
-            data
-              ? t("dash.exact", { amt: formatExfer(visibleProjected) }) +
-                (hasPending
-                  ? ` · ` +
-                    t("dash.confirmed", { amt: formatExfer(visibleTotal) }) +
-                    (visiblePendingIn > 0
-                      ? ` · ` +
-                        t("dash.awaiting", {
-                          amt: formatExfer(visiblePendingIn),
-                        })
-                      : "") +
-                    (visiblePendingOut > 0
-                      ? ` · ` +
-                        t("dash.leaving", {
-                          amt: formatExfer(visiblePendingOut),
-                        })
-                      : "")
-                  : "")
-              : undefined
-          }
-        >
-          {data ? (
-            <>
-              <span>{splitBalanceCompact(visibleProjected).whole}</span>
-              {splitBalanceCompact(visibleProjected).frac && (
-                <span className="text-neutral-500">
-                  .{splitBalanceCompact(visibleProjected).frac}
+          </span>
+          <span
+            className="amount-lg flex items-baseline tracking-normal"
+            title={
+              data
+                ? t("dash.exact", { amt: formatExfer(visibleProjected) }) +
+                  (hasPending
+                    ? ` · ` +
+                      t("dash.confirmed", { amt: formatExfer(visibleTotal) }) +
+                      (visiblePendingIn > 0
+                        ? ` · ` +
+                          t("dash.awaiting", {
+                            amt: formatExfer(visiblePendingIn),
+                          })
+                        : "") +
+                      (visiblePendingOut > 0
+                        ? ` · ` +
+                          t("dash.leaving", {
+                            amt: formatExfer(visiblePendingOut),
+                          })
+                        : "")
+                    : "")
+                : undefined
+            }
+          >
+            {split ? (
+              <>
+                <span>{split.whole}</span>
+                {split.frac && (
+                  <span className="text-neutral-500">.{split.frac}</span>
+                )}
+                <span className="ml-2 font-sans text-base font-medium text-neutral-400">
+                  EXFER
                 </span>
-              )}
-              <span className="ml-2.5 font-sans text-xl font-medium text-neutral-400">
-                EXFER
-              </span>
-              {/* Quiet tell that part of this isn't confirmed yet — a small
-                  dot, not a badge. The tooltip above carries the breakdown. */}
-              {hasPending && (
-                <span
-                  className="ml-2 h-1.5 w-1.5 self-center rounded-full bg-neutral-600"
-                  aria-label={t("dash.pendingDot")}
-                />
-              )}
-            </>
-          ) : (
-            "—"
+                {/* Quiet tell that part of this isn't confirmed yet — a small
+                    dot, not a badge. The tooltip carries the breakdown. */}
+                {hasPending && (
+                  <span
+                    className="ml-2 h-1.5 w-1.5 self-center rounded-full bg-neutral-600"
+                    aria-label={t("dash.pendingDot")}
+                  />
+                )}
+              </>
+            ) : (
+              "—"
+            )}
+          </span>
+          {/* ≈$ inline, muted — tracks the projected total above. */}
+          {data && price && (
+            <span className="font-mono text-sm tabular-nums text-neutral-400">
+              ≈ {usdValue(visibleProjected, price.usd)}
+            </span>
           )}
+          {/* The table enumerates the addresses; this is just the count chip. */}
+          <span className="rounded-md bg-neutral-800/60 px-2 py-0.5 font-mono text-xs tabular-nums text-neutral-400">
+            {t("dash.addrCount", { n: visibleEntries.length })}
+          </span>
         </div>
-        {/* The headline balance in USD (best-effort; hidden when price is
-            null). Uses the projected total so it tracks the number above. */}
-        {data && price && (
-          <div className="mt-1 font-mono text-base tabular-nums text-neutral-400">
-            ≈ {usdValue(visibleProjected, price.usd)}
+        {price && (
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm tabular-nums text-neutral-300">
+              <span className="text-neutral-500">EXFER</span>{" "}
+              {usdValue(100_000_000, price.usd)}
+            </span>
+            <ChangePill pct={price.change24h} />
           </div>
         )}
-        <div className="mt-1 text-sm text-neutral-400">
-          {t("dash.acrossPre")}{" "}
-          <span className="font-medium text-neutral-300">
-            {visibleEntries.length}
-          </span>{" "}
-          {visibleEntries.length === 1
-            ? t("dash.addrUnit1")
-            : t("dash.addrUnitN")}
-        </div>
       </section>
-
-      {/* BNB holding — shown on the overview so the user sees their BSC asset
-          without opening Swap. Renders nothing until walletd hands us a derived
-          address (engine-off / no HD seed just hides it). */}
-      <BnbAccount asset={bnbAsset} variant="compact" />
 
       {error && !data && (
         <div className="banner-error flex items-center justify-between gap-3">
@@ -198,101 +198,91 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Address list */}
-      <section className="card overflow-hidden">
-        <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
-          <h2 className="text-base font-semibold tracking-tight text-neutral-100">
-            {t("dash.addresses")}
-          </h2>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={refreshAll}
-              disabled={loading}
-              className="btn-ghost"
-            >
-              {loading ? t("dash.refreshing") : t("dash.refresh")}
-            </button>
-            <button
-              type="button"
-              onClick={generateAddress}
-              disabled={generating || atCap}
-              className="btn-secondary"
-              title={
-                atCap
-                  ? t("dash.cappedTitle", { n: MAX_ADDRESSES })
-                  : t("dash.newAddrTitle")
-              }
-            >
-              {generating ? t("dash.generating") : t("dash.newAddr")}
-            </button>
-          </div>
-        </header>
-
-        {/* Only surface the speed tradeoff once it's actually noticeable, so
-            it reads as a tip, not a nag. Hidden addresses don't count. */}
-        {!atCap && visibleEntries.length >= 3 && (
-          <div className="border-b border-neutral-800/60 px-5 py-2 text-xs text-neutral-600">
-            {t("dash.autoRefreshTip", { secs: pollSecs })}
-          </div>
-        )}
-
-        {atCap && (
-          <div className="border-b border-neutral-800 bg-neutral-900/60 px-5 py-2.5 text-xs text-neutral-400">
-            {t("dash.atCapNote", { n: MAX_ADDRESSES })}
-          </div>
-        )}
-
-        {loading && !data ? (
-          <SkeletonRows />
-        ) : isEmpty ? (
-          <div className="px-5 py-12 text-center">
-            <div className="mx-auto max-w-md space-y-2">
-              <div className="text-lg font-medium text-neutral-300">
-                {t("dash.emptyTitle")}
-              </div>
-              <p className="text-sm text-neutral-400">
-                {t("dash.emptyBody")}
-              </p>
+      {/* Two-pane: the address list gets the width; the BNB asset + side bits
+          ride a narrow rail. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
+        {/* Address list (the hero object) */}
+        <section className="card overflow-hidden">
+          <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-2.5">
+            <h2 className="text-base font-semibold tracking-tight text-neutral-100">
+              {t("dash.addresses")}
+            </h2>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={refreshAll}
+                disabled={loading}
+                className="rounded-md px-2 py-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50"
+                title={t("dash.refresh")}
+                aria-label={t("dash.refresh")}
+              >
+                <span
+                  className={
+                    "inline-block " + (loading ? "animate-spin" : "")
+                  }
+                >
+                  ↻
+                </span>
+              </button>
               <button
                 type="button"
                 onClick={generateAddress}
-                disabled={generating}
-                className="btn mt-3"
+                disabled={generating || atCap}
+                className="rounded-md px-2 py-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50"
+                title={
+                  atCap
+                    ? t("dash.cappedTitle", { n: MAX_ADDRESSES })
+                    : t("dash.newAddr")
+                }
+                aria-label={t("dash.newAddr")}
               >
-                {generating ? t("dash.generating") : t("dash.genFirst")}
+                <span className={generating ? "inline-block animate-spin" : ""}>
+                  {generating ? "↻" : "+"}
+                </span>
               </button>
             </div>
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead className="bg-neutral-900 text-xs uppercase tracking-wide text-neutral-400">
-              <tr>
-                <th className="px-5 py-2.5 text-left">{t("dash.colLabel")}</th>
-                <th className="px-5 py-2.5 text-left">{t("dash.colAddress")}</th>
-                <th className="px-5 py-2.5 text-right">{t("dash.colBalance")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-800">
-              {visibleEntries.map((e) => {
-                // Projected balance: confirmed + unconfirmed credit −
-                // unconfirmed debit, so the row reads as instant too.
-                const projected =
-                  e.balance +
-                  (e.pending_received ?? 0) -
-                  (e.pending_spent ?? 0);
-                const hidden = isHidden(e.address);
-                // Per-address ≈$ rides on a borderless caption row right under
-                // the address row, right-aligned beneath the balance column.
-                // Best-effort: only when a live price is available and the row
-                // actually holds something.
-                const usd =
-                  price && projected > 0
-                    ? usdValue(projected, price.usd)
-                    : null;
-                return (
-                  <Fragment key={e.address}>
+          </header>
+
+          {loading && !data ? (
+            <SkeletonRows />
+          ) : isEmpty ? (
+            <div className="px-5 py-12 text-center">
+              <div className="mx-auto max-w-md space-y-2">
+                <div className="text-lg font-medium text-neutral-300">
+                  {t("dash.emptyTitle")}
+                </div>
+                <p className="text-sm text-neutral-400">{t("dash.emptyBody")}</p>
+                <button
+                  type="button"
+                  onClick={generateAddress}
+                  disabled={generating}
+                  className="btn mt-3"
+                >
+                  {generating ? t("dash.generating") : t("dash.genFirst")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-neutral-900 text-xs uppercase tracking-wide text-neutral-400">
+                <tr>
+                  <th className="px-5 py-2 text-left">{t("dash.colLabel")}</th>
+                  <th className="px-5 py-2 text-left">{t("dash.colAddress")}</th>
+                  <th className="px-5 py-2 text-right">{t("dash.colBalance")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800">
+                {visibleEntries.map((e) => {
+                  // Projected balance: confirmed + unconfirmed credit −
+                  // unconfirmed debit, so the row reads as instant too.
+                  const projected =
+                    e.balance +
+                    (e.pending_received ?? 0) -
+                    (e.pending_spent ?? 0);
+                  const hidden = isHidden(e.address);
+                  return (
                     <AddressRow
+                      key={e.address}
                       address={e.address}
                       index={e.index}
                       imported={e.imported}
@@ -305,45 +295,84 @@ export function Dashboard() {
                         refresh();
                       }}
                     />
-                    {usd && (
-                      <tr
-                        className={
-                          "!border-t-transparent " +
-                          (hidden ? "opacity-50" : "")
-                        }
-                        aria-hidden
-                      >
-                        <td className="px-5 pb-3 pt-0" colSpan={2} />
-                        <td className="px-5 pb-3 pt-0 text-right">
-                          <span className="font-mono text-xs tabular-nums text-neutral-500">
-                            ≈ {usd}
-                          </span>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
 
-        {hiddenEntries.length > 0 && (
-          <div className="border-t border-neutral-800 px-5 py-2.5 text-xs text-neutral-400">
-            {hiddenEntries.length === 1
-              ? t("dash.hidden1", { n: hiddenEntries.length })
-              : t("dash.hiddenN", { n: hiddenEntries.length })}{" "}
-            ·{" "}
-            <button
-              type="button"
-              onClick={() => setShowHidden((v) => !v)}
-              className="font-medium text-cyan-400 hover:underline"
-            >
-              {showHidden ? t("dash.hideThem") : t("dash.show")}
-            </button>
+          {hiddenEntries.length > 0 && (
+            <div className="border-t border-neutral-800 px-5 py-2.5 text-xs text-neutral-400">
+              {hiddenEntries.length === 1
+                ? t("dash.hidden1", { n: hiddenEntries.length })
+                : t("dash.hiddenN", { n: hiddenEntries.length })}{" "}
+              ·{" "}
+              <button
+                type="button"
+                onClick={() => setShowHidden((v) => !v)}
+                className="font-medium text-cyan-400 hover:underline"
+              >
+                {showHidden ? t("dash.hideThem") : t("dash.show")}
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* Right rail: the BNB asset as a compact summary tile. The full
+            deposit/withdraw/export console opens in a modal. */}
+        <aside className="space-y-6">
+          {bnbAsset.address && (
+            <section className="card-padded space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                  {t("dash.bnbTileTitle")}
+                </div>
+                <div className="text-right">
+                  <div className="font-mono text-sm tabular-nums text-neutral-100">
+                    {fmtUnits(bnbAsset.bnbWei ?? undefined, 18, 5)} BNB
+                  </div>
+                  {bnbUsdValue != null && (
+                    <div className="font-mono text-xs tabular-nums text-neutral-500">
+                      ≈ {usdNumber(bnbUsdValue)}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary w-full"
+                onClick={() => setBnbOpen(true)}
+              >
+                {t("dash.bnbManage")}
+              </button>
+            </section>
+          )}
+        </aside>
+      </div>
+
+      {/* The full BNB console (deposit QR, withdraw, key export), one click
+          away in a modal so the dashboard stays glanceable. */}
+      {bnbOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-neutral-900/40 p-6 fade-in"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setBnbOpen(false);
+          }}
+        >
+          <div className="w-full max-w-md space-y-3">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setBnbOpen(false)}
+              >
+                {t("dash.bnbClose")}
+              </button>
+            </div>
+            <BnbAccount asset={bnbAsset} variant="full" lead />
           </div>
-        )}
-      </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -352,7 +381,7 @@ function SkeletonRows() {
   return (
     <div className="divide-y divide-neutral-800">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="flex items-center gap-4 px-5 py-4">
+        <div key={i} className="flex items-center gap-4 px-5 py-2.5">
           <div className="h-4 w-6 animate-pulse rounded bg-neutral-800" />
           <div className="h-4 w-24 animate-pulse rounded bg-neutral-800" />
           <div className="h-4 flex-1 animate-pulse rounded bg-neutral-800" />
