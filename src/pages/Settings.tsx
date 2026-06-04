@@ -19,11 +19,15 @@ import { VaultBackupModal, VaultRestoreModal } from "../components/KeyringModals
 import { useToast } from "../lib/toast";
 import { useWallet } from "../lib/wallet";
 import { checkForUpdate, downloadAndApply } from "../lib/updater";
+import { useT, LANGS, type Lang } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 
 interface Props {
   onRestart: (status: BootstrapStatus) => void;
   fingerprint: string;
   localAddr: string;
+  lang: Lang;
+  setLang: (l: Lang) => void;
 }
 
 interface StatusInfo {
@@ -35,8 +39,9 @@ interface StatusInfo {
   upstream?: { url: string; mode?: string };
 }
 
-export function Settings({ onRestart, fingerprint, localAddr }: Props) {
+export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: Props) {
   const toast = useToast();
+  const { t } = useT();
   const [current, setCurrent] = useState<string>("");
   const [value, setValue] = useState("");
   const [savingNode, setSavingNode] = useState(false);
@@ -106,7 +111,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
     setSwapInfo(null);
     const chainNum = swapChain.trim() === "" ? 0 : Number(swapChain.trim());
     if (!Number.isInteger(chainNum) || chainNum < 0) {
-      setSwapError("Chain id must be a whole number (e.g. 56 mainnet, 97 testnet).");
+      setSwapError(t("set.swapChainErr"));
       return;
     }
     setSavingSwap(true);
@@ -119,14 +124,14 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       setSwapCur({ pool: swapPool.trim(), rpc: swapBscRpc.trim(), chain: swapChain.trim() });
       setSwapInfo(
         swapPool.trim()
-          ? "Saved — swap enabled, walletd reconnected."
-          : "Saved — swap disabled.",
+          ? t("set.swapSavedOn")
+          : t("set.swapSavedOff"),
       );
-      toast.success("Swap config updated", "walletd reconnected.");
+      toast.success(t("set.swapToastOkTitle"), t("set.swapToastOkBody"));
       onRestart(s);
     } catch (err) {
-      setSwapError(String(err));
-      toast.error("Couldn't update swap config", String(err));
+      setSwapError(humanizeError(err));
+      toast.error(t("set.swapToastErrTitle"), humanizeError(err));
     } finally {
       setSavingSwap(false);
     }
@@ -142,14 +147,14 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       setIndexerCurUrl(indexerUrl.trim());
       setIndexerInfo(
         indexerUrl.trim()
-          ? "Saved — walletd reconnected to the new indexer."
-          : "Saved — using the bundled default indexer.",
+          ? t("set.indexerSavedCustom")
+          : t("set.indexerSavedDefault"),
       );
-      toast.success("Indexer updated", "walletd reconnected.");
+      toast.success(t("set.indexerToastOkTitle"), t("set.indexerToastOkBody"));
       onRestart(s);
     } catch (err) {
-      setIndexerError(String(err));
-      toast.error("Couldn't update indexer", String(err));
+      setIndexerError(humanizeError(err));
+      toast.error(t("set.indexerToastErrTitle"), humanizeError(err));
     } finally {
       setSavingIndexer(false);
     }
@@ -163,12 +168,12 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
     try {
       const s = await setNodeRpc(value);
       setCurrent(value);
-      setNodeInfo("Saved — walletd reconnected to the new node.");
-      toast.success("Node updated", "Reconnected to the new endpoint.");
+      setNodeInfo(t("set.nodeSavedOk"));
+      toast.success(t("set.nodeToastOkTitle"), t("set.nodeToastOkBody"));
       onRestart(s);
     } catch (err) {
-      setNodeError(String(err));
-      toast.error("Couldn't switch node", String(err));
+      setNodeError(humanizeError(err));
+      toast.error(t("set.nodeToastErrTitle"), humanizeError(err));
     } finally {
       setSavingNode(false);
     }
@@ -185,7 +190,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
         setUpdCheck("none");
       }
     } catch (e) {
-      toast.error("Update check failed", String(e));
+      toast.error(t("set.updCheckErrTitle"), humanizeError(e));
       setUpdCheck("idle");
     }
   }
@@ -199,7 +204,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       });
       // On success the app relaunches; this line typically isn't reached.
     } catch (e) {
-      toast.error("Update failed", String(e));
+      toast.error(t("set.updFailedTitle"), humanizeError(e));
       setUpdCheck("available");
     }
   }
@@ -212,7 +217,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       // App re-renders the password prompt.
       onRestart({ status: "needs_password" } as BootstrapStatus);
     } catch (err) {
-      toast.error("Reset failed", String(err));
+      toast.error(t("set.resetFailedTitle"), humanizeError(err));
       setResetting(false);
     }
   }
@@ -274,22 +279,46 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
     <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
-          Settings
+          {t("set.title")}
         </h1>
         <p className="text-base text-neutral-400">
-          Configure the upstream Exfer node and manage local data.
+          {t("set.subtitle")}
         </p>
       </header>
+
+      {/* Display / language */}
+      <section className="card-padded space-y-4">
+        <header>
+          <h2 className="text-lg font-semibold text-neutral-100">
+            {t("set.langTitle")}
+          </h2>
+          <p className="text-sm text-neutral-400">{t("set.langDesc")}</p>
+        </header>
+        <div>
+          <label className="label">{t("set.langLabel")}</label>
+          <div className="flex gap-2">
+            {LANGS.map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                className={l.key === lang ? "btn" : "btn-secondary"}
+                onClick={() => setLang(l.key)}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* Upstream node */}
       <section className="card-padded space-y-4">
         <header>
           <h2 className="text-lg font-semibold text-neutral-100">
-            Upstream node
+            {t("set.nodeTitle")}
           </h2>
           <p className="text-sm text-neutral-400">
-            The Exfer JSON-RPC endpoint walletd talks to for chain reads and
-            broadcast. Comma-separated for round-robin + failover.
+            {t("set.nodeDesc")}
           </p>
         </header>
         <form onSubmit={saveNode} className="space-y-3">
@@ -301,8 +330,8 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             placeholder="http://80.78.31.82:9334"
           />
           <p className="help">
-            Currently in use:{" "}
-            <code className="addr-xs">{current || "(loading)"}</code>
+            {t("set.currentlyInUse")}{" "}
+            <code className="addr-xs">{current || t("set.loading")}</code>
           </p>
           {nodeError && <div className="banner-error">{nodeError}</div>}
           {nodeInfo && <div className="banner-success">{nodeInfo}</div>}
@@ -312,7 +341,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
               className="btn"
               disabled={savingNode || value.trim() === current.trim()}
             >
-              {savingNode ? "Restarting walletd…" : "Save & reconnect"}
+              {savingNode ? t("set.restarting") : t("set.saveReconnect")}
             </button>
             <button
               type="button"
@@ -320,7 +349,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
               onClick={() => setValue(current)}
               disabled={savingNode}
             >
-              Revert
+              {t("set.revert")}
             </button>
           </div>
         </form>
@@ -329,12 +358,9 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       {/* Indexer */}
       <section className="card-padded space-y-4">
         <header>
-          <h2 className="text-lg font-semibold text-neutral-100">Indexer</h2>
+          <h2 className="text-lg font-semibold text-neutral-100">{t("set.indexerTitle")}</h2>
           <p className="text-sm text-neutral-400">
-            The exfer-indexer walletd delegates address-history queries to —
-            it powers the Activity feed and the From/To on each transfer. Leave
-            blank to use the bundled default. The indexer serves public
-            read-only chain data, so no token is needed.
+            {t("set.indexerDesc")}
           </p>
         </header>
         <form onSubmit={saveIndexer} className="space-y-3">
@@ -343,11 +369,11 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             value={indexerUrl}
             onChange={(e) => setIndexerUrl(e.target.value)}
             disabled={savingIndexer}
-            placeholder="http://198.13.38.245:9335 (default)"
+            placeholder={t("set.indexerPlaceholder")}
           />
           <p className="help">
-            Currently in use:{" "}
-            <code className="addr-xs">{indexerCurUrl || "Default (bundled)"}</code>
+            {t("set.currentlyInUse")}{" "}
+            <code className="addr-xs">{indexerCurUrl || t("set.indexerDefault")}</code>
           </p>
           {indexerError && <div className="banner-error">{indexerError}</div>}
           {indexerInfo && <div className="banner-success">{indexerInfo}</div>}
@@ -359,7 +385,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
                 savingIndexer || indexerUrl.trim() === indexerCurUrl.trim()
               }
             >
-              {savingIndexer ? "Restarting walletd…" : "Save & reconnect"}
+              {savingIndexer ? t("set.restarting") : t("set.saveReconnect")}
             </button>
             <button
               type="button"
@@ -367,7 +393,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
               onClick={() => setIndexerUrl(indexerCurUrl)}
               disabled={savingIndexer}
             >
-              Revert
+              {t("set.revert")}
             </button>
           </div>
         </form>
@@ -376,38 +402,35 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       {/* Swap */}
       <section className="card-padded space-y-4">
         <header>
-          <h2 className="text-lg font-semibold text-neutral-100">Swap</h2>
+          <h2 className="text-lg font-semibold text-neutral-100">{t("set.swapTitle")}</h2>
           <p className="text-sm text-neutral-400">
-            Cross-chain EXFER ↔ BNB swaps run through a swap pool. Leave the pool
-            URL blank to keep swap off. The current public pool is on BSC
-            <span className="text-neutral-300"> testnet (Chapel)</span> — to use
-            it, set the BSC RPC to a testnet endpoint and chain id to 97.
+            {t("set.swapDesc")}
           </p>
         </header>
         <form onSubmit={saveSwap} className="space-y-3">
           <div>
-            <label className="label">Pool URL</label>
+            <label className="label">{t("set.swapPoolLabel")}</label>
             <input
               className="input font-mono text-sm"
               value={swapPool}
               onChange={(e) => setSwapPool(e.target.value)}
               disabled={savingSwap}
-              placeholder="blank = swap off · e.g. http://64.176.231.198:8080"
+              placeholder={t("set.swapPoolPlaceholder")}
             />
           </div>
           <div className="grid grid-cols-[1.6fr_1fr] gap-3">
             <div>
-              <label className="label">BSC RPC URL</label>
+              <label className="label">{t("set.swapRpcLabel")}</label>
               <input
                 className="input font-mono text-sm"
                 value={swapBscRpc}
                 onChange={(e) => setSwapBscRpc(e.target.value)}
                 disabled={savingSwap}
-                placeholder="blank = mainnet default"
+                placeholder={t("set.swapRpcPlaceholder")}
               />
             </div>
             <div>
-              <label className="label">BSC chain id</label>
+              <label className="label">{t("set.swapChainLabel")}</label>
               <input
                 className="input font-mono text-sm"
                 value={swapChain}
@@ -419,9 +442,9 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             </div>
           </div>
           <p className="help">
-            Swap is currently{" "}
+            {t("set.swapStatus")}{" "}
             <code className="addr-xs">
-              {swapCur.pool ? `ON — ${swapCur.pool}` : "OFF"}
+              {swapCur.pool ? t("set.swapOn", { pool: swapCur.pool }) : t("set.swapOff")}
             </code>
           </p>
           {swapError && <div className="banner-error">{swapError}</div>}
@@ -437,7 +460,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
                   swapChain.trim() === swapCur.chain.trim())
               }
             >
-              {savingSwap ? "Restarting walletd…" : "Save & reconnect"}
+              {savingSwap ? t("set.restarting") : t("set.saveReconnect")}
             </button>
             <button
               type="button"
@@ -449,7 +472,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
               }}
               disabled={savingSwap}
             >
-              Revert
+              {t("set.revert")}
             </button>
           </div>
         </form>
@@ -458,30 +481,30 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       {/* Updates */}
       <section className="card-padded space-y-4">
         <header>
-          <h2 className="text-lg font-semibold text-neutral-100">Updates</h2>
+          <h2 className="text-lg font-semibold text-neutral-100">{t("set.updTitle")}</h2>
           <p className="text-sm text-neutral-400">
-            New versions are downloaded, signature-verified, and installed
-            in place — no manual reinstall.
+            {t("set.updDesc")}
           </p>
         </header>
 
         {updCheck === "available" ? (
           <div className="banner-success flex items-center justify-between gap-3">
             <span>
-              Version <span className="font-mono">v{updVersion}</span> is
-              available.
+              {t("set.updAvailablePre")}{" "}
+              <span className="font-mono">v{updVersion}</span>{" "}
+              {t("set.updAvailablePost")}
             </span>
             <button
               type="button"
               className="btn"
               onClick={doInstallUpdate}
             >
-              Install & restart
+              {t("set.updInstall")}
             </button>
           </div>
         ) : updCheck === "installing" ? (
           <div className="banner-info space-y-2">
-            <div>Downloading update… {updProgress}%</div>
+            <div>{t("set.updDownloading", { pct: updProgress })}</div>
             <div className="h-1.5 w-full overflow-hidden rounded bg-neutral-800">
               <div
                 className="h-full bg-cyan-400 transition-all"
@@ -497,11 +520,11 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
               onClick={doCheckUpdate}
               disabled={updCheck === "checking"}
             >
-              {updCheck === "checking" ? "Checking…" : "Check for updates"}
+              {updCheck === "checking" ? t("set.updChecking") : t("set.updCheck")}
             </button>
             {updCheck === "none" && (
               <span className="text-sm text-neutral-400">
-                You're on the latest version.
+                {t("set.updLatest")}
               </span>
             )}
           </div>
@@ -512,21 +535,17 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       <section className="card-padded space-y-4">
         <header>
           <h2 className="text-lg font-semibold text-neutral-100">
-            Export &amp; import data
+            {t("set.exportTitle")}
           </h2>
           <p className="text-sm text-neutral-400">
-            Address lists, labels, and single-key files. To back up the keys
-            themselves, use <span className="font-medium text-neutral-300">Back up wallet</span>{" "}
-            above.
+            {t("set.exportDesc")}
           </p>
         </header>
 
         <div className="banner-info space-y-1 text-sm">
-          <div className="font-semibold">Don't forget your password</div>
+          <div className="font-semibold">{t("set.pwReminderTitle")}</div>
           <p>
-            Your wallet password unlocks every key and encrypts the backup
-            file. It's saved in this machine's OS keychain — write it down
-            somewhere else too, since losing it locks every address.
+            {t("set.pwReminderBody")}
           </p>
         </div>
 
@@ -537,42 +556,32 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             disabled={exporting}
             className="btn-secondary"
           >
-            {exporting ? "Exporting…" : "Export addresses (CSV)"}
+            {exporting ? t("set.exporting") : t("set.exportCsv")}
           </button>
           <button
             type="button"
             onClick={exportLabels}
             className="btn-secondary"
           >
-            Export labels (JSON)
+            {t("set.exportLabels")}
           </button>
           <button
             type="button"
             onClick={() => setShowImport(true)}
             className="btn-secondary"
           >
-            Import wallet.key…
+            {t("set.importKey")}
           </button>
           <button
             type="button"
             onClick={() => setShowImportPhrase(true)}
             className="btn-secondary"
           >
-            Import recovery phrase…
+            {t("set.importPhrase")}
           </button>
         </div>
         <p className="help">
-          <span className="font-medium text-neutral-300">Import wallet.key</span>{" "}
-          adds an externally-held address (e.g. one exported from
-          exfer.dev or another machine) to this wallet. Old{" "}
-          <span className="font-mono">.key</span> files still import — the
-          format is unchanged.{" "}
-          <span className="font-medium text-neutral-300">
-            Import recovery phrase
-          </span>{" "}
-          brings in an address from its 24 words; the standard scheme matches
-          exfer.dev and the Exfer mobile wallet, so the same phrase lands on the
-          same address.
+          {t("set.importHelp")}
         </p>
       </section>
 
@@ -580,20 +589,15 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       <section className="card-padded space-y-4">
         <header>
           <h2 className="text-lg font-semibold text-neutral-100">
-            Back up &amp; restore
+            {t("set.backupTitle")}
           </h2>
           <p className="text-sm text-neutral-400">
-            Every address in this wallet is its own key. One encrypted{" "}
-            <span className="font-mono">.vault</span> file backs up all of
-            them at once — no seed phrase to copy down.
+            {t("set.backupDesc")}
           </p>
         </header>
 
         <div className="banner-info text-sm">
-          The backup file is encrypted with{" "}
-          <strong>your wallet password</strong>. Keep the file and the
-          password somewhere safe; you need both to restore. New addresses you
-          create later aren't in an old backup — re-export after adding keys.
+          {t("set.backupWarn")}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -602,20 +606,18 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             className="btn"
             onClick={() => setShowBackup(true)}
           >
-            Back up wallet…
+            {t("set.backupBtn")}
           </button>
           <button
             type="button"
             className="btn-secondary"
             onClick={() => setShowRestore(true)}
           >
-            Restore from backup…
+            {t("set.restoreBtn")}
           </button>
         </div>
         <p className="help">
-          Prefer this over single-key exports for routine backup. To move{" "}
-          <em>one</em> address elsewhere, use its row menu (Recovery phrase,
-          Export wallet.key) instead.
+          {t("set.backupHelp")}
         </p>
       </section>
 
@@ -623,21 +625,17 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       <section className="card-padded space-y-4">
         <header>
           <h2 className="text-lg font-semibold text-neutral-100">
-            Sensitive recovery export
+            {t("set.sensitiveTitle")}
           </h2>
           <p className="text-sm text-neutral-400">
-            Reveal the master secrets directly. Both actions ask for
-            your password again before showing anything.
+            {t("set.sensitiveDesc")}
           </p>
         </header>
 
         <div className="banner-error space-y-1 text-sm">
-          <div className="font-semibold">Read first</div>
+          <div className="font-semibold">{t("set.sensitiveWarnTitle")}</div>
           <p>
-            These flows show plaintext key material on screen. Anyone
-            looking at your screen, screenshot apps, or screen-share
-            sessions can capture it. Only proceed if you actually need
-            paper / off-app backup.
+            {t("set.sensitiveWarnBody")}
           </p>
         </div>
 
@@ -647,15 +645,11 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
             className="btn-danger"
             onClick={() => setShowPrivateKey(true)}
           >
-            Export private key for an address
+            {t("set.sensitiveExportKey")}
           </button>
         </div>
         <p className="help">
-          To move an address to exfer.dev or the Exfer CLI, prefer{" "}
-          <span className="font-medium text-neutral-300">
-            Export wallet.key
-          </span>{" "}
-          from the address's row menu — it's encrypted and imports directly.
+          {t("set.sensitiveHelp")}
         </p>
       </section>
 
@@ -698,27 +692,27 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       <section className="card-padded space-y-3">
         <header>
           <h2 className="text-lg font-semibold text-neutral-100">
-            Daemon status
+            {t("set.daemonTitle")}
           </h2>
         </header>
         <dl className="grid grid-cols-[max-content_1fr] items-center gap-x-6 gap-y-2 text-sm">
-          <dt className="text-neutral-400">Bind</dt>
+          <dt className="text-neutral-400">{t("set.daemonBind")}</dt>
           <dd className="min-w-0">
             <CopyValue value={localAddr} />
           </dd>
-          <dt className="self-start pt-1 text-neutral-400">TLS fingerprint</dt>
+          <dt className="self-start pt-1 text-neutral-400">{t("set.daemonTls")}</dt>
           <dd className="min-w-0">
             <CopyValue value={fingerprint} wrap />
           </dd>
           {status && (
             <>
-              <dt className="text-neutral-400">Version</dt>
+              <dt className="text-neutral-400">{t("set.daemonVersion")}</dt>
               <dd className="addr-xs">{status.version}</dd>
-              <dt className="text-neutral-400">Wallet count</dt>
+              <dt className="text-neutral-400">{t("set.daemonWalletCount")}</dt>
               <dd className="addr-xs">{status.wallet_count}</dd>
-              <dt className="text-neutral-400">In-flight transfers</dt>
+              <dt className="text-neutral-400">{t("set.daemonInflightTransfers")}</dt>
               <dd className="addr-xs">{status.in_flight_transfers}</dd>
-              <dt className="text-neutral-400">In-flight UTXOs</dt>
+              <dt className="text-neutral-400">{t("set.daemonInflightUtxos")}</dt>
               <dd className="addr-xs">{status.in_flight_utxos}</dd>
             </>
           )}
@@ -728,30 +722,24 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       {/* Danger zone — wipe everything on this device */}
       <section className="rounded-xl border border-red-500/40 bg-red-500/5 p-6 space-y-4">
         <header>
-          <h2 className="text-lg font-semibold text-red-300">Danger zone</h2>
+          <h2 className="text-lg font-semibold text-red-300">{t("set.dangerTitle")}</h2>
           <p className="text-sm text-neutral-400">
-            Permanently erase this wallet from this computer.
+            {t("set.dangerDesc")}
           </p>
         </header>
 
         <div className="banner-error space-y-1 text-sm">
-          <div className="font-semibold">Reset wipes everything locally</div>
+          <div className="font-semibold">{t("set.resetWarnTitle")}</div>
           <p>
-            Deletes the encrypted keys, tokens, and TLS cert from this
-            machine's app-data directory and clears the saved password from
-            your OS keychain. Coins on-chain are untouched, but{" "}
-            <strong>
-              without a backup (vault file, or each address's recovery
-              phrase / private key) you will not be able to get back in
-            </strong>
-            . Back up first if you might need this wallet again.
+            {t("set.resetWarnBody")}
           </p>
         </div>
 
         <div>
           <label className="label" htmlFor="reset-confirm">
-            Type <span className="font-mono text-red-300">WIPE</span> to
-            confirm
+            {t("set.resetTypePre")}{" "}
+            <span className="font-mono text-red-300">WIPE</span>{" "}
+            {t("set.resetTypePost")}
           </label>
           <div className="flex gap-2">
             <input
@@ -769,7 +757,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
               disabled={resetConfirm !== "WIPE" || resetting}
               onClick={doReset}
             >
-              {resetting ? "Wiping…" : "Reset wallet"}
+              {resetting ? t("set.resetting") : t("set.resetBtn")}
             </button>
           </div>
         </div>
@@ -782,6 +770,7 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
  *  onto multiple lines so they stay inside the card instead of spilling
  *  past the right edge. */
 function CopyValue({ value, wrap }: { value: string; wrap?: boolean }) {
+  const { t } = useT();
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -798,7 +787,7 @@ function CopyValue({ value, wrap }: { value: string; wrap?: boolean }) {
     <button
       type="button"
       onClick={copy}
-      title="Click to copy"
+      title={t("set.clickToCopy")}
       className="group flex w-full items-start gap-1.5 rounded-md px-1.5 py-0.5 text-left -mx-1.5 hover:bg-neutral-800/60"
     >
       <code
@@ -818,7 +807,7 @@ function CopyValue({ value, wrap }: { value: string; wrap?: boolean }) {
         }
         aria-hidden
       >
-        {copied ? "✓ copied" : "⧉"}
+        {copied ? t("set.copied") : "⧉"}
       </span>
     </button>
   );

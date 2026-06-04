@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useT } from "./i18n";
 
 export type ToastKind = "success" | "error" | "info" | "incoming";
 
@@ -117,6 +118,7 @@ const KIND_STYLE: Record<
 };
 
 function ToastCard({ toast, onClose }: { toast: Toast; onClose: () => void }) {
+  const { t } = useT();
   const s = KIND_STYLE[toast.kind];
   return (
     <div
@@ -146,7 +148,7 @@ function ToastCard({ toast, onClose }: { toast: Toast; onClose: () => void }) {
         type="button"
         onClick={onClose}
         className="shrink-0 rounded-md px-1 text-neutral-500 hover:text-neutral-200"
-        aria-label="Dismiss"
+        aria-label={t("tst.dismiss")}
       >
         ✕
       </button>

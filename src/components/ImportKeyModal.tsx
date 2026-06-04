@@ -3,6 +3,8 @@ import { importWalletKey } from "../lib/rpc";
 import { devmock } from "../lib/devmock";
 import { useToast } from "../lib/toast";
 import { shortAddress } from "../lib/labels";
+import { useT } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 
 interface Props {
   onClose: () => void;
@@ -11,6 +13,7 @@ interface Props {
 
 export function ImportKeyModal({ onClose, onImported }: Props) {
   const toast = useToast();
+  const { t } = useT();
   const [path, setPath] = useState<string | null>(null);
   const [filePassword, setFilePassword] = useState("");
   const [label, setLabel] = useState("");
@@ -35,7 +38,7 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
       if (!picked) return; // cancelled
       setPath(typeof picked === "string" ? picked : picked[0]);
     } catch (err) {
-      setError(`Couldn't open file dialog: ${String(err)}`);
+      setError(t("imp.dialogError", { err: humanizeError(err) }));
     }
   }
 
@@ -43,11 +46,11 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
     e.preventDefault();
     setError(null);
     if (!path) {
-      setError("Choose a wallet.key file first.");
+      setError(t("imp.errNoFile"));
       return;
     }
     if (!filePassword) {
-      setError("Enter the wallet.key passphrase (the one you set on export).");
+      setError(t("imp.errNoPass"));
       return;
     }
     setPending(true);
@@ -58,13 +61,13 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
         label: label.trim() || undefined,
       });
       toast.success(
-        "Address imported",
-        `Added ${shortAddress(address)} — appears in Receive and Dashboard.`,
+        t("imp.toastTitle"),
+        t("imp.toastBody", { addr: shortAddress(address) }),
       );
       onImported?.(address);
       onClose();
     } catch (err) {
-      setError(String(err).replace(/^Error: /, ""));
+      setError(humanizeError(err));
     } finally {
       setPending(false);
     }
@@ -75,25 +78,15 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
       <form onSubmit={onSubmit} className="card-padded w-full max-w-lg space-y-5">
         <header className="space-y-1">
           <h2 className="text-xl font-semibold text-neutral-100">
-            Import wallet.key
+            {t("imp.title")}
           </h2>
-          <p className="text-sm text-neutral-400">
-            Add an externally-held address to this wallet by importing its
-            password-encrypted <span className="font-mono">.key</span> file.
-            The address is sealed at rest the same way as HD addresses
-            and appears alongside them as "Imported".
-          </p>
+          <p className="text-sm text-neutral-400">{t("imp.desc")}</p>
         </header>
 
-        <div className="banner-info text-sm">
-          The 24-word recovery phrase will not back this address up —
-          imported keys live outside the HD tree. Keep the original{" "}
-          <span className="font-mono">.key</span> file and its passphrase
-          if you ever need to restore on a fresh machine.
-        </div>
+        <div className="banner-info text-sm">{t("imp.banner")}</div>
 
         <div className="space-y-2">
-          <label className="label">Wallet key file</label>
+          <label className="label">{t("imp.fileLabel")}</label>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -101,17 +94,17 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
               onClick={pickFile}
               disabled={pending}
             >
-              Choose file…
+              {t("imp.chooseFile")}
             </button>
             <span className="addr-xs flex-1 truncate text-neutral-400">
-              {path ?? "no file selected"}
+              {path ?? t("imp.noFile")}
             </span>
           </div>
         </div>
 
         <div>
           <label className="label" htmlFor="imp-file-pw">
-            wallet.key passphrase
+            {t("imp.passLabel")}
           </label>
           <input
             id="imp-file-pw"
@@ -122,15 +115,12 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
             disabled={pending}
             autoComplete="off"
           />
-          <p className="help">
-            The passphrase the file was encrypted with. If this file came
-            from this app, that's the wallet password you used at export.
-          </p>
+          <p className="help">{t("imp.passHelp")}</p>
         </div>
 
         <div>
           <label className="label" htmlFor="imp-label">
-            Label (optional)
+            {t("imp.labelLabel")}
           </label>
           <input
             id="imp-label"
@@ -139,7 +129,7 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             disabled={pending}
-            placeholder="e.g. cold-savings"
+            placeholder={t("imp.labelPlaceholder")}
             maxLength={64}
           />
         </div>
@@ -153,14 +143,14 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
             onClick={onClose}
             disabled={pending}
           >
-            Cancel
+            {t("imp.cancel")}
           </button>
           <button
             type="submit"
             className="btn"
             disabled={pending || !path || !filePassword}
           >
-            {pending ? "Importing…" : "Import"}
+            {pending ? t("imp.importing") : t("imp.import")}
           </button>
         </div>
       </form>

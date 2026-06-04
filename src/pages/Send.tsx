@@ -16,6 +16,8 @@ import { CopyButton } from "../components/CopyButton";
 import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
 import { isHidden } from "../lib/hidden";
+import { useT } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 
 interface OutputRow {
   to: string;
@@ -27,6 +29,7 @@ const HEX64 = /^[0-9a-fA-F]{64}$/;
 export function Send() {
   const { balance, refresh, utxos, refreshUtxos, suspendPolling } = useWallet();
   const toast = useToast();
+  const { t } = useT();
 
   // Suspend the background balance poll + SSE-triggered refreshes for as long
   // as the Send screen is open, so the per-IP scan-rate budget is reserved for
@@ -127,7 +130,7 @@ export function Send() {
     setReceipt(null);
 
     if (!from) {
-      setError("Pick a sending address.");
+      setError(t("snd.pickFrom"));
       return;
     }
     const feeRateInt = feeRate;
@@ -136,14 +139,14 @@ export function Send() {
     for (let i = 0; i < outputs.length; i++) {
       const o = outputs[i];
       if (!HEX64.test(o.to.trim())) {
-        setError(`Recipient #${i + 1}: address must be 64 hex characters.`);
+        setError(t("snd.recipBadAddr", { n: i + 1 }));
         return;
       }
       try {
         const amt = parseExferAmount(o.amount);
         parsedOutputs.push({ to: o.to.trim().toLowerCase(), amount: amt });
       } catch (err) {
-        setError(`Recipient #${i + 1}: ${String(err)}`);
+        setError(t("snd.recipPrefix", { n: i + 1 }) + humanizeError(err));
         return;
       }
     }
@@ -159,7 +162,10 @@ export function Send() {
       appendHistory(result);
       for (const o of parsedOutputs) rememberRecipient(o.to);
       const sent = parsedOutputs.reduce((a, o) => a + o.amount, 0);
-      toast.success("Transfer broadcast", `Sent ${formatExfer(sent)}.`);
+      toast.success(
+        t("snd.broadcastTitle"),
+        t("snd.broadcastBody", { amt: formatExfer(sent) }),
+      );
       // Pull fresh balances so the Dashboard/From dropdown reflect the
       // spend immediately instead of waiting for the next poll.
       refresh();
@@ -167,8 +173,8 @@ export function Send() {
       // Reset the recipient rows for the next send; keep `from`.
       setOutputs([{ to: "", amount: "" }]);
     } catch (e) {
-      setError(String(e));
-      toast.error("Transfer failed", String(e));
+      setError(humanizeError(e));
+      toast.error(t("snd.failedTitle"), humanizeError(e));
     } finally {
       setPending(false);
     }
@@ -189,28 +195,29 @@ export function Send() {
     <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
-          Send EXFER
+          {t("snd.title")}
         </h1>
         <p className="text-base text-neutral-400">
-          One transaction, up to 16 recipients. The network fee is automatic.
+          {t("snd.subtitle")}
         </p>
       </header>
 
       <form onSubmit={onSubmit} className="card-padded space-y-6">
         {/* From */}
         <div>
-          <label className="label">From</label>
+          <label className="label">{t("snd.from")}</label>
           {sendable.length === 0 ? (
-            <p className="help">No addresses — generate one first.</p>
+            <p className="help">{t("snd.noAddresses")}</p>
           ) : (
             // Selectable list rather than a bare <select>: every address and
             // its (spendable) balance is visible at once, with the chosen one
             // highlighted. Max 6 addresses, so the list never gets long.
-            <div className="space-y-2" role="radiogroup" aria-label="From address">
+            <div className="space-y-2" role="radiogroup" aria-label={t("snd.fromAria")}>
               {sendable.map((e) => {
                 const label = getLabel(e.address);
                 const name =
-                  label ?? (e.imported ? "Imported" : `Address ${e.index}`);
+                  label ??
+                  (e.imported ? t("snd.imported") : t("snd.addressN", { n: e.index ?? "" }));
                 const selected = from === e.address;
                 const hasPending = (e.pending_received ?? 0) > 0;
                 return (
@@ -240,7 +247,7 @@ export function Send() {
                       {hasPending && (
                         <span
                           className="h-1.5 w-1.5 rounded-full bg-neutral-600"
-                          title="has an incoming deposit still confirming"
+                          title={t("snd.pendingDotTitle")}
                         />
                       )}
                       <span
@@ -257,14 +264,17 @@ export function Send() {
           )}
           {fromEntry && (
             <p className="help mt-2">
-              Spendable:{" "}
+              {t("snd.spendableLabel")}{" "}
               <span className="font-medium text-neutral-300">
                 {formatExfer(fromEntry.balance)}
               </span>
               {fromUtxoCount != null && (
                 <>
                   {" "}
-                  · {fromUtxoCount} {fromUtxoCount === 1 ? "UTXO" : "UTXOs"}
+                  ·{" "}
+                  {fromUtxoCount === 1
+                    ? t("snd.utxo1", { n: fromUtxoCount })
+                    : t("snd.utxoN", { n: fromUtxoCount })}
                 </>
               )}
               {/* An incoming deposit shows in the balance instantly, but it
@@ -274,8 +284,9 @@ export function Send() {
                   {" "}
                   ·{" "}
                   <span className="text-neutral-500">
-                    {formatExfer(fromEntry.pending_received ?? 0)} still
-                    confirming, not yet spendable
+                    {t("snd.stillConfirming", {
+                      amt: formatExfer(fromEntry.pending_received ?? 0),
+                    })}
                   </span>
                 </>
               )}
@@ -287,7 +298,7 @@ export function Send() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="label mb-0">
-              Recipients ({outputs.length}/16)
+              {t("snd.recipients", { n: outputs.length })}
             </span>
             <button
               type="button"
@@ -295,7 +306,7 @@ export function Send() {
               onClick={addRow}
               disabled={outputs.length >= 16 || pending}
             >
-              + Add recipient
+              {t("snd.addRecipient")}
             </button>
           </div>
           {outputs.map((o, i) => (
@@ -316,13 +327,15 @@ export function Send() {
             network minimum, computed for this exact transaction. */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
           <div className="flex items-baseline justify-between">
-            <span className="text-sm text-neutral-400">Total to send</span>
+            <span className="text-sm text-neutral-400">{t("snd.totalToSend")}</span>
             <span className="amount-md">{formatExfer(totalExfers)}</span>
           </div>
           <div className="mt-1.5 flex items-baseline justify-between text-xs text-neutral-500">
-            <span>Network fee (auto)</span>
+            <span>{t("snd.networkFee")}</span>
             <span className="font-mono tabular-nums">
-              {baseFee != null ? "≈ " + formatExfer(baseFee) : "network minimum"}
+              {baseFee != null
+                ? "≈ " + formatExfer(baseFee)
+                : t("snd.networkMinimum")}
             </span>
           </div>
         </div>
@@ -334,7 +347,7 @@ export function Send() {
           className="btn w-full text-base"
           disabled={pending || sendable.length === 0}
         >
-          {pending ? "Broadcasting…" : "Review & broadcast"}
+          {pending ? t("snd.broadcasting") : t("snd.reviewBroadcast")}
         </button>
       </form>
 
@@ -360,11 +373,12 @@ function RecipientRow({
   onChange: (patch: Partial<OutputRow>) => void;
   onRemove: () => void;
 }) {
+  const { t } = useT();
   return (
     <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-          Recipient {index + 1}
+          {t("snd.recipientN", { n: index + 1 })}
         </span>
         {canRemove && (
           <button
@@ -373,16 +387,16 @@ function RecipientRow({
             className="btn-ghost text-xs"
             disabled={disabled}
           >
-            Remove
+            {t("snd.remove")}
           </button>
         )}
       </div>
       <div className="grid grid-cols-[1.5fr_1fr] gap-3">
         <div>
-          <label className="label">Address (64 hex)</label>
+          <label className="label">{t("snd.addrField")}</label>
           <input
             className="input font-mono text-xs"
-            placeholder="e.g. 4dce3ee577…"
+            placeholder={t("snd.addrPlaceholder")}
             value={value.to}
             onChange={(e) => onChange({ to: e.target.value })}
             disabled={disabled}
@@ -396,7 +410,7 @@ function RecipientRow({
           </datalist>
         </div>
         <div>
-          <label className="label">Amount (EXFER)</label>
+          <label className="label">{t("snd.amountField")}</label>
           <input
             className="input"
             placeholder="0.01"
@@ -412,17 +426,18 @@ function RecipientRow({
 }
 
 function ReceiptCard({ receipt }: { receipt: TransferReceipt }) {
+  const { t } = useT();
   return (
     <section className="card-padded space-y-4 fade-in">
       <div className="flex items-center gap-2">
-        <span className="pill pill-success text-sm">✓ Broadcast</span>
+        <span className="pill pill-success text-sm">{t("snd.broadcastPill")}</span>
         <span className="text-sm text-neutral-400">
-          built at height {receipt.built_at_height}
+          {t("snd.builtAtHeight", { h: receipt.built_at_height })}
         </span>
       </div>
 
       <div>
-        <div className="label">Transaction ID</div>
+        <div className="label">{t("snd.txId")}</div>
         <div className="flex gap-2">
           <code className="addr flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
             {receipt.tx_id}
@@ -432,18 +447,26 @@ function ReceiptCard({ receipt }: { receipt: TransferReceipt }) {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <Stat label="Fee" value={formatExfer(receipt.fee)} />
-        <Stat label="Size" value={`${receipt.size} bytes`} />
+        <Stat label={t("snd.statFee")} value={formatExfer(receipt.fee)} />
         <Stat
-          label="I/O"
-          value={`${receipt.inputs.length} in · ${receipt.outputs.length} out`}
+          label={t("snd.statSize")}
+          value={t("snd.bytes", { n: receipt.size })}
+        />
+        <Stat
+          label={t("snd.statIO")}
+          value={t("snd.ioValue", {
+            in: receipt.inputs.length,
+            out: receipt.outputs.length,
+          })}
         />
       </div>
 
       <p className="text-sm text-neutral-400">
-        Tracking the confirmation? Head to the{" "}
-        <span className="font-medium text-neutral-300">Activity</span> tab —
-        we logged this transfer there.
+        {t("snd.activityNotePre")}{" "}
+        <span className="font-medium text-neutral-300">
+          {t("snd.activityTab")}
+        </span>{" "}
+        {t("snd.activityNotePost")}
       </p>
     </section>
   );

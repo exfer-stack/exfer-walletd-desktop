@@ -30,20 +30,13 @@ import { getLabel, shortAddress } from "../lib/labels";
 import { isHidden } from "../lib/hidden";
 import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
+import { useT } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 import { CopyButton } from "../components/CopyButton";
 
 // Permissive decimal: BNB carries up to 18 fractional digits, EXFER up to 8.
 const AMOUNT_RE = /^\d*\.?\d*$/;
 const HEX40 = /^0x[0-9a-fA-F]{40}$/;
-
-/** Surface a thrown RPC error as a short human string. Tauri's invoke rejects
- *  with the AppError Display text; browser dev rejects with an Error. */
-function errMessage(e: unknown): string {
-  if (e == null) return "Something went wrong.";
-  if (typeof e === "string") return e;
-  const m = (e as { message?: unknown }).message;
-  return typeof m === "string" ? m : String(e);
-}
 
 /** Trim a human decimal string to at most `dp` fractional digits (drops
  *  trailing zeros), falling back to significant digits for values that would
@@ -82,6 +75,7 @@ function fmtUnits(raw: string | undefined, decimals: number, frac = 4): string {
 
 /** Small QR that renders an address to a data URL (same palette as Receive). */
 function MiniQr({ value, size = 160 }: { value: string; size?: number }) {
+  const { t } = useT();
   const [src, setSrc] = useState("");
   useEffect(() => {
     let alive = true;
@@ -110,7 +104,7 @@ function MiniQr({ value, size = 160 }: { value: string; size?: number }) {
       style={{ width: size, height: size }}
       className="flex items-center justify-center rounded-lg bg-neutral-800 text-xs text-neutral-500"
     >
-      Rendering…
+      {t("swap.qrRendering")}
     </div>
   );
 }
@@ -128,6 +122,7 @@ const STATUS_RANK: Record<string, number> = {
 export function Swap() {
   const { balance, refresh, suspendPolling } = useWallet();
   const toast = useToast();
+  const { t } = useT();
 
   // Reserve the per-IP scan-rate budget while swapping, exactly like Send.
   useEffect(() => suspendPolling(), [suspendPolling]);
@@ -224,11 +219,11 @@ export function Swap() {
 
   async function getQuote() {
     if (!amountValid) {
-      setErr("Enter an amount greater than zero.");
+      setErr(t("swap.errEnterAmount"));
       return;
     }
     if (!fromAddr) {
-      setErr(sell ? "No funded address to swap from." : "No address to receive into.");
+      setErr(sell ? t("swap.noFundedAddr") : t("swap.errNoReceiveAddr"));
       return;
     }
     setErr(null);
@@ -242,7 +237,7 @@ export function Swap() {
       setQuote(q);
       setStep(2);
     } catch (e) {
-      setErr(errMessage(e));
+      setErr(humanizeError(e));
     } finally {
       setBusy(false);
     }
@@ -256,15 +251,15 @@ export function Swap() {
       const r = await rpc<SwapRec>("swap_execute", { swap_id: quote.swap_id });
       setLive(r);
       setStep(3);
-      toast.success("Swap started", "Locking funds — this can take a minute.");
+      toast.success(t("swap.toastStartedTitle"), t("swap.toastStartedBody"));
     } catch (e) {
       // An expired quote is recoverable: bounce back to step 1 to re-quote.
-      if (/expired/i.test(errMessage(e))) {
+      if (/expired/i.test(String((e as { message?: unknown })?.message ?? e))) {
         setQuote(null);
         setStep(1);
-        toast.error("Quote expired", "Prices moved — please review again.");
+        toast.error(t("swap.toastQuoteExpiredTitle"), t("swap.toastQuoteExpiredBody"));
       } else {
-        setErr(errMessage(e));
+        setErr(humanizeError(e));
       }
     } finally {
       setBusy(false);
@@ -278,9 +273,9 @@ export function Swap() {
     try {
       const r = await rpc<SwapRec>("swap_refund", { swap_id: id });
       setLive(r);
-      toast.success("Refund requested", "Your funds are being returned.");
+      toast.success(t("swap.toastRefundTitle"), t("swap.toastRefundBody"));
     } catch (e) {
-      toast.error("Refund failed", errMessage(e));
+      toast.error(t("swap.toastRefundFailedTitle"), humanizeError(e));
     } finally {
       setBusy(false);
     }
@@ -332,9 +327,9 @@ export function Swap() {
       <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
         <Header />
         <div className="card-padded text-sm text-neutral-400">
-          Swap is unavailable — this wallet isn't connected to a swap pool. Set a
-          pool URL in <span className="text-neutral-200">Settings</span> to enable
-          EXFER ↔ BNB swaps.
+          {t("swap.unavailablePre")}
+          <span className="text-neutral-200">{t("swap.unavailableSettings")}</span>
+          {t("swap.unavailablePost")}
         </div>
       </div>
     );
@@ -351,11 +346,11 @@ export function Swap() {
 
             {poolInfo && poolInfo.mid > 0 && (
               <div className="flex items-baseline justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-2.5 text-sm">
-                <span className="text-neutral-400">Pool rate</span>
+                <span className="text-neutral-400">{t("swap.poolRate")}</span>
                 <span className="font-mono tabular-nums text-neutral-200">
-                  1 EXFER ≈ {fmtAmt(String(poolInfo.mid), 8)} BNB
+                  {t("swap.poolRateValue", { rate: fmtAmt(String(poolInfo.mid), 8) })}
                   <span className="ml-2 text-neutral-500">
-                    fee {(poolInfo.feeBps / 100).toFixed(2)}%
+                    {t("swap.poolFeeShort", { pct: (poolInfo.feeBps / 100).toFixed(2) })}
                   </span>
                 </span>
               </div>
@@ -363,19 +358,22 @@ export function Swap() {
 
             {/* From / receive-to address */}
             <div>
-              <label className="label">{sell ? "Swap from" : "Receive EXFER to"}</label>
+              <label className="label">{sell ? t("swap.swapFrom") : t("swap.receiveTo")}</label>
               {pickList.length === 0 ? (
                 <p className="help">
                   {sell
-                    ? "No funded address to swap from."
-                    : "No address — generate one in Receive first."}
+                    ? t("swap.noFundedAddr")
+                    : t("swap.noAddrGenerate")}
                 </p>
               ) : (
-                <div className="space-y-2" role="radiogroup" aria-label="Swap address">
+                <div className="space-y-2" role="radiogroup" aria-label={t("swap.addressGroupLabel")}>
                   {pickList.map((e) => {
                     const label = getLabel(e.address);
                     const name =
-                      label ?? (e.imported ? "Imported" : `Address ${e.index}`);
+                      label ??
+                      (e.imported
+                        ? t("swap.imported")
+                        : t("swap.addressN", { n: e.index ?? "" }));
                     const selected = fromAddr === e.address;
                     return (
                       <button
@@ -416,7 +414,7 @@ export function Swap() {
             {/* Amount */}
             <div>
               <div className="flex items-center justify-between">
-                <label className="label mb-0">You send ({sendUnit})</label>
+                <label className="label mb-0">{t("swap.youSendUnit", { unit: sendUnit })}</label>
                 {maxIn > 0 && (
                   <button
                     type="button"
@@ -424,7 +422,7 @@ export function Swap() {
                     onClick={() => setAmount(String(maxIn))}
                     disabled={busy}
                   >
-                    Max {fmtAmt(String(maxIn), 6)}
+                    {t("swap.max", { amt: fmtAmt(String(maxIn), 6) })}
                   </button>
                 )}
               </div>
@@ -440,15 +438,14 @@ export function Swap() {
                 inputMode="decimal"
               />
               <div className="mt-2 flex items-baseline justify-between text-sm">
-                <span className="text-neutral-500">You receive (est.)</span>
+                <span className="text-neutral-500">{t("swap.youReceiveEst")}</span>
                 <span className="font-mono tabular-nums text-neutral-200">
                   {estOut != null ? `≈ ${fmtAmt(String(estOut), 6)} ${recvUnit}` : `— ${recvUnit}`}
                 </span>
               </div>
               {overLimit && (
                 <p className="mt-2 text-xs text-amber-300">
-                  Amount exceeds what the pool can fill right now (max ≈{" "}
-                  {fmtAmt(String(maxIn), 6)} {sendUnit}).
+                  {t("swap.overLimit", { max: fmtAmt(String(maxIn), 6), unit: sendUnit })}
                 </p>
               )}
             </div>
@@ -461,7 +458,7 @@ export function Swap() {
               disabled={busy || !amountValid || overLimit || !fromAddr}
               onClick={getQuote}
             >
-              {busy ? "Getting quote…" : "Review"}
+              {busy ? t("swap.gettingQuote") : t("swap.review")}
             </button>
           </div>
 
@@ -502,14 +499,14 @@ export function Swap() {
 }
 
 function Header() {
+  const { t } = useT();
   return (
     <header className="space-y-1">
       <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
-        Swap
+        {t("swap.title")}
       </h1>
       <p className="text-base text-neutral-400">
-        Trade EXFER for BNB and back, on-chain. Funds are locked in an atomic
-        swap — they either complete or refund, never disappear.
+        {t("swap.headerDesc")}
       </p>
     </header>
   );
@@ -522,9 +519,10 @@ function DirectionToggle({
   direction: SwapDirection;
   onChange: (d: SwapDirection) => void;
 }) {
+  const { t } = useT();
   const opts: { id: SwapDirection; label: string }[] = [
-    { id: "exfer_to_bnb", label: "Sell EXFER → BNB" },
-    { id: "bnb_to_exfer", label: "Buy EXFER ← BNB" },
+    { id: "exfer_to_bnb", label: t("swap.sellDirection") },
+    { id: "bnb_to_exfer", label: t("swap.buyDirection") },
   ];
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -567,6 +565,7 @@ function ReviewCard({
   onBack: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useT();
   const rate =
     Number(quote.amount_in) > 0
       ? Number(quote.amount_out) / Number(quote.amount_in)
@@ -574,37 +573,36 @@ function ReviewCard({
   return (
     <div className="card-padded space-y-5">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-        Review swap
+        {t("swap.reviewTitle")}
       </h2>
 
       <div className="space-y-3">
-        <Row label="You send" value={`${fmtAmt(quote.amount_in, 8)} ${sendUnit}`} />
-        <Row label="You receive" value={`${fmtAmt(quote.amount_out, 8)} ${recvUnit}`} strong />
+        <Row label={t("swap.youSend")} value={`${fmtAmt(quote.amount_in, 8)} ${sendUnit}`} />
+        <Row label={t("swap.youReceive")} value={`${fmtAmt(quote.amount_out, 8)} ${recvUnit}`} strong />
         <Row
-          label="Rate"
+          label={t("swap.rate")}
           value={`1 ${sendUnit} ≈ ${fmtAmt(String(rate), 8)} ${recvUnit}`}
         />
         {quote.fee_bps != null && (
-          <Row label="Pool fee" value={`${(quote.fee_bps / 100).toFixed(2)}%`} />
+          <Row label={t("swap.poolFee")} value={`${(quote.fee_bps / 100).toFixed(2)}%`} />
         )}
         {quote.our_bsc_address && (
-          <Row label="BNB account" value={shortAddress(quote.our_bsc_address, 10, 8)} mono />
+          <Row label={t("swap.bnbAccount")} value={shortAddress(quote.our_bsc_address, 10, 8)} mono />
         )}
       </div>
 
       <p className="text-xs text-neutral-500">
-        Confirming locks your funds in an on-chain HTLC. If the counterparty
-        doesn't complete, the lock refunds automatically after the timeout.
+        {t("swap.htlcExplain")}
       </p>
 
       {err && <div className="banner-error">{err}</div>}
 
       <div className="flex gap-3">
         <button type="button" className="btn-secondary flex-1" disabled={busy} onClick={onBack}>
-          Back
+          {t("swap.back")}
         </button>
         <button type="button" className="btn flex-1" disabled={busy} onClick={onConfirm}>
-          {busy ? "Confirming…" : "Confirm swap"}
+          {busy ? t("swap.confirming") : t("swap.confirmSwap")}
         </button>
       </div>
     </div>
@@ -626,27 +624,28 @@ function ProgressCard({
   onRefund: () => void;
   onDone: () => void;
 }) {
+  const { t } = useT();
   const status = live?.status ?? "user_locked";
   const rank = STATUS_RANK[status] ?? 1;
   const terminal = ["completed", "refunded", "failed"].includes(status);
   const nodes = [
-    { key: "locked", label: "Funds locked", at: 1 },
-    { key: "matched", label: "Pool matched", at: 2 },
-    { key: "settling", label: "Settling", at: 3 },
+    { key: "locked", label: t("swap.stepLocked"), at: 1 },
+    { key: "matched", label: t("swap.stepMatched"), at: 2 },
+    { key: "settling", label: t("swap.stepSettling"), at: 3 },
   ];
 
   return (
     <div className="card-padded space-y-6">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-        Swap in progress
+        {t("swap.inProgressTitle")}
       </h2>
 
       {status === "completed" ? (
-        <Banner kind="success" title="Swap complete" body={`You received ${fmtAmt(live?.amount_out, 8)} ${recvUnit}.`} />
+        <Banner kind="success" title={t("swap.completeTitle")} body={t("swap.completeBody", { amt: fmtAmt(live?.amount_out, 8), unit: recvUnit })} />
       ) : status === "refunded" ? (
-        <Banner kind="info" title="Refunded" body="Your funds were returned." />
+        <Banner kind="info" title={t("swap.refundedTitle")} body={t("swap.refundedBody")} />
       ) : status === "failed" ? (
-        <Banner kind="error" title="Swap failed" body={live?.error ?? "The swap couldn't complete."} />
+        <Banner kind="error" title={t("swap.failedTitle")} body={live?.error ?? t("swap.failedBody")} />
       ) : (
         <ol className="space-y-3">
           {nodes.map((n) => {
@@ -679,14 +678,13 @@ function ProgressCard({
 
       {!terminal && elapsed > 20 && (
         <p className="text-xs text-neutral-500">
-          On-chain settlement can take a minute or two. You can leave this screen
-          — we'll notify you when it's done.
+          {t("swap.takingLonger")}
         </p>
       )}
 
       {terminal ? (
         <button type="button" className="btn w-full" onClick={onDone}>
-          Done
+          {t("swap.done")}
         </button>
       ) : (
         elapsed > 90 && (
@@ -696,7 +694,7 @@ function ProgressCard({
             disabled={busy}
             onClick={onRefund}
           >
-            {busy ? "Requesting refund…" : "Taking too long — refund now"}
+            {busy ? t("swap.requestingRefund") : t("swap.takingTooLong")}
           </button>
         )
       )}
@@ -708,6 +706,7 @@ function ProgressCard({
  *  This is the "manage your BSC address" surface — funds the buy direction. */
 function BnbAccount({ lead }: { lead: boolean }) {
   const toast = useToast();
+  const { t } = useT();
   const [addr, setAddr] = useState<string | null>(null);
   const [bnbWei, setBnbWei] = useState<string | null>(null);
   const [open, setOpen] = useState(lead);
@@ -727,13 +726,13 @@ function BnbAccount({ lead }: { lead: boolean }) {
       const prev = lastWei.current;
       if (prev != null && now > prev) {
         const delta = fmtUnits((now - prev).toString(), 18, 5);
-        toast.incoming(`+${delta} BNB`, "Deposit received");
+        toast.incoming(`+${delta} BNB`, t("swap.depositReceived"));
       }
       lastWei.current = now;
     } catch {
       /* engine off / no HD seed — section stays hidden */
     }
-  }, [toast]);
+  }, [toast, t]);
 
   // Poll the balance so a fresh deposit is never silent.
   useEffect(() => {
@@ -745,11 +744,11 @@ function BnbAccount({ lead }: { lead: boolean }) {
   async function withdraw() {
     setWErr(null);
     if (!HEX40.test(to.trim())) {
-      setWErr("Enter a valid BSC address (0x + 40 hex).");
+      setWErr(t("swap.errBscAddress"));
       return;
     }
     if (!(Number(amt) > 0) && amt.trim().toLowerCase() !== "max") {
-      setWErr('Enter an amount, or "max".');
+      setWErr(t("swap.errEnterAmountMax"));
       return;
     }
     setWithdrawing(true);
@@ -758,12 +757,12 @@ function BnbAccount({ lead }: { lead: boolean }) {
         to: to.trim(),
         amount: amt.trim(),
       });
-      toast.success("BNB sent", `tx ${shortAddress(r.txhash, 10, 8)}`);
+      toast.success(t("swap.toastBnbSentTitle"), t("swap.toastBnbSentBody", { tx: shortAddress(r.txhash, 10, 8) }));
       setTo("");
       setAmt("");
       load();
     } catch (e) {
-      setWErr(errMessage(e));
+      setWErr(humanizeError(e));
     } finally {
       setWithdrawing(false);
     }
@@ -780,9 +779,9 @@ function BnbAccount({ lead }: { lead: boolean }) {
         className="flex w-full items-center justify-between px-5 py-3 text-left"
       >
         <div>
-          <div className="text-sm font-semibold text-neutral-100">Your BNB account</div>
+          <div className="text-sm font-semibold text-neutral-100">{t("swap.bnbAccountTitle")}</div>
           <div className="text-xs text-neutral-500">
-            On BSC — fund this to buy EXFER, or withdraw to any wallet.
+            {t("swap.bnbAccountSubtitle")}
           </div>
         </div>
         <span className="font-mono text-sm tabular-nums text-neutral-200">
@@ -801,18 +800,17 @@ function BnbAccount({ lead }: { lead: boolean }) {
               <CopyButton text={addr} className="btn-secondary" />
             </div>
             <p className="text-xs text-neutral-500">
-              Send BNB (BEP-20 / BNB Smart Chain) to this address. Derived from
-              your wallet seed — recoverable in MetaMask with the same phrase.
+              {t("swap.depositHint")}
             </p>
           </div>
 
           {/* Withdraw */}
           <div className="space-y-2 border-t border-neutral-800 pt-4">
-            <div className="label">Withdraw BNB</div>
+            <div className="label">{t("swap.withdrawBnb")}</div>
             <div className="grid grid-cols-[1.5fr_1fr] gap-2">
               <input
                 className="input font-mono text-xs"
-                placeholder="0x… destination"
+                placeholder={t("swap.withdrawToPlaceholder")}
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
                 disabled={withdrawing}
@@ -820,7 +818,7 @@ function BnbAccount({ lead }: { lead: boolean }) {
               />
               <input
                 className="input"
-                placeholder='amount or "max"'
+                placeholder={t("swap.withdrawAmtPlaceholder")}
                 value={amt}
                 onChange={(e) => setAmt(e.target.value)}
                 disabled={withdrawing}
@@ -834,7 +832,7 @@ function BnbAccount({ lead }: { lead: boolean }) {
               disabled={withdrawing}
               onClick={withdraw}
             >
-              {withdrawing ? "Sending…" : "Withdraw"}
+              {withdrawing ? t("swap.sending") : t("swap.withdraw")}
             </button>
           </div>
         </div>

@@ -10,6 +10,8 @@ import { createPortal } from "react-dom";
 import { rpc, exportVaultFile, importVaultFile } from "../lib/rpc";
 import { devmock } from "../lib/devmock";
 import { useToast } from "../lib/toast";
+import { useT } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 import { CopyButton } from "./CopyButton";
 import { shortAddress } from "../lib/labels";
 
@@ -53,6 +55,7 @@ export function RecoveryPhraseModal({
   address: string;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +82,7 @@ export function RecoveryPhraseModal({
       setPassword("");
       timerRef.current = setTimeout(() => setHidden(true), AUTO_HIDE_MS);
     } catch (e) {
-      setError(String(e));
+      setError(humanizeError(e));
     } finally {
       setPending(false);
     }
@@ -90,27 +93,26 @@ export function RecoveryPhraseModal({
       <div className="card-padded w-full max-w-xl space-y-5">
         <header>
           <h2 className="text-xl font-semibold text-neutral-100">
-            Recovery phrase for this address
+            {t("kr.rpHeading")}
           </h2>
           <p className="mt-1 text-sm text-neutral-400">
-            This address's own 24 words (<span className="font-mono">{shortAddress(address)}</span>).
-            They restore <strong>just this one address</strong> — not the
-            whole wallet. Anyone who reads them can spend what it holds.
+            {t("kr.rpDescPre")}(<span className="font-mono">{shortAddress(address)}</span>)
+            {t("kr.rpDescPost")}
           </p>
         </header>
 
         {!words ? (
           <form onSubmit={reveal} className="space-y-4">
             <div className="banner-warn space-y-1 text-sm text-amber-200">
-              <div className="font-semibold">Before you continue</div>
+              <div className="font-semibold">{t("kr.beforeContinue")}</div>
               <ul className="ml-4 list-disc space-y-1">
-                <li>Make sure nobody can see your screen.</li>
-                <li>Write them on paper; never paste them into a website or chat.</li>
+                <li>{t("kr.rpTip1")}</li>
+                <li>{t("kr.rpTip2")}</li>
               </ul>
             </div>
             <div>
               <label className="label" htmlFor="rec-pw">
-                Your wallet password
+                {t("kr.walletPassword")}
               </label>
               <input
                 id="rec-pw"
@@ -125,18 +127,16 @@ export function RecoveryPhraseModal({
             {error && <div className="banner-error">{error}</div>}
             <div className="flex justify-end gap-2">
               <button type="button" className="btn-secondary" onClick={onClose} disabled={pending}>
-                Cancel
+                {t("kr.cancel")}
               </button>
               <button type="submit" className="btn-danger" disabled={pending || password === ""}>
-                {pending ? "Verifying…" : "Show recovery phrase"}
+                {pending ? t("kr.verifying") : t("kr.showPhrase")}
               </button>
             </div>
           </form>
         ) : (
           <div className="space-y-4">
-            <div className="banner-error text-sm">
-              Write these down on paper. Do <strong>not</strong> screenshot them.
-            </div>
+            <div className="banner-error text-sm">{t("kr.writeDown")}</div>
             <ol
               className={
                 "grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-4 sm:grid-cols-3 " +
@@ -161,19 +161,17 @@ export function RecoveryPhraseModal({
                     timerRef.current = setTimeout(() => setHidden(true), AUTO_HIDE_MS);
                   }}
                 >
-                  Show again
+                  {t("kr.showAgain")}
                 </button>
               </div>
             )}
             <div className="flex justify-end gap-2">
               <CopyButton text={words.join(" ")} className="btn-secondary" />
               <button type="button" className="btn" onClick={onClose}>
-                Done
+                {t("kr.done")}
               </button>
             </div>
-            <p className="text-xs text-neutral-400">
-              Auto-hides after 30 seconds. Closing this dialog clears them from memory.
-            </p>
+            <p className="text-xs text-neutral-400">{t("kr.autoHide")}</p>
           </div>
         )}
       </div>
@@ -196,6 +194,7 @@ export function DeleteAddressModal({
   onClose: () => void;
   onDeleted: () => void;
 }) {
+  const { t } = useT();
   const toast = useToast();
   const funded = balance > 0;
   const [password, setPassword] = useState("");
@@ -213,11 +212,11 @@ export function DeleteAddressModal({
         passphrase: password,
         force: funded ? force : false,
       });
-      toast.success("Address deleted", `${shortAddress(address)} was removed from this wallet.`);
+      toast.success(t("kr.delDone"), t("kr.delDoneBody", { addr: shortAddress(address) }));
       onDeleted();
       onClose();
     } catch (e) {
-      setError(String(e));
+      setError(humanizeError(e));
     } finally {
       setPending(false);
     }
@@ -227,21 +226,17 @@ export function DeleteAddressModal({
     <Backdrop onClose={onClose}>
       <form onSubmit={onSubmit} className="card-padded w-full max-w-lg space-y-5">
         <header>
-          <h2 className="text-xl font-semibold text-neutral-100">Delete address</h2>
+          <h2 className="text-xl font-semibold text-neutral-100">{t("kr.delHeading")}</h2>
           <p className="mt-1 text-sm text-neutral-400">
-            Permanently remove <span className="font-mono">{shortAddress(address)}</span> and
-            erase its key from this wallet. This <strong>cannot be undone</strong> unless you
-            have backed the key up (recovery phrase, private key, or vault).
+            {t("kr.delDescPre")}<span className="font-mono">{shortAddress(address)}</span>
+            {t("kr.delDescPost")}
           </p>
         </header>
 
         {funded && (
           <div className="banner-error space-y-2 text-sm">
-            <div className="font-semibold">This address still holds funds.</div>
-            <p>
-              Deleting it strands those funds unless you've backed the key up. Sweep it
-              to another address first if you can.
-            </p>
+            <div className="font-semibold">{t("kr.delFundedTitle")}</div>
+            <p>{t("kr.delFundedBody")}</p>
             <label className="flex items-start gap-2">
               <input
                 type="checkbox"
@@ -249,14 +244,14 @@ export function DeleteAddressModal({
                 checked={force}
                 onChange={(e) => setForce(e.target.checked)}
               />
-              <span>I understand the funds will be unrecoverable. Delete anyway.</span>
+              <span>{t("kr.delForceAck")}</span>
             </label>
           </div>
         )}
 
         <div>
           <label className="label" htmlFor="del-pw">
-            Your wallet password
+            {t("kr.walletPassword")}
           </label>
           <input
             id="del-pw"
@@ -273,14 +268,14 @@ export function DeleteAddressModal({
 
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose} disabled={pending}>
-            Cancel
+            {t("kr.cancel")}
           </button>
           <button
             type="submit"
             className="btn-danger"
             disabled={pending || password === "" || (funded && !force)}
           >
-            {pending ? "Deleting…" : "Delete address"}
+            {pending ? t("kr.deleting") : t("kr.delHeading")}
           </button>
         </div>
       </form>

@@ -4,6 +4,8 @@ import { exportWalletKey } from "../lib/rpc";
 import { devmock } from "../lib/devmock";
 import { useToast } from "../lib/toast";
 import { shortAddress } from "../lib/labels";
+import { useT } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 
 interface Props {
   address: string;
@@ -13,6 +15,7 @@ interface Props {
 
 export function ExportKeyModal({ address, index, onClose }: Props) {
   const toast = useToast();
+  const { t } = useT();
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +24,7 @@ export function ExportKeyModal({ address, index, onClose }: Props) {
     e.preventDefault();
     setError(null);
     if (!password) {
-      setError("Enter your wallet password.");
+      setError(t("exp.errNoPass"));
       return;
     }
 
@@ -38,7 +41,7 @@ export function ExportKeyModal({ address, index, onClose }: Props) {
         if (!picked) return; // user cancelled
         dest = picked;
       } catch (err) {
-        setError(`Couldn't open save dialog: ${String(err)}`);
+        setError(t("exp.dialogError", { err: humanizeError(err) }));
         return;
       }
     }
@@ -54,13 +57,10 @@ export function ExportKeyModal({ address, index, onClose }: Props) {
         exportPassword: password,
         dest,
       });
-      toast.success(
-        "wallet.key exported",
-        "On exfer.dev → Import wallet.key, enter your wallet password as the wallet.key passphrase.",
-      );
+      toast.success(t("exp.toastTitle"), t("exp.toastBody"));
       onClose();
     } catch (err) {
-      setError(String(err));
+      setError(humanizeError(err));
     } finally {
       setPending(false);
     }
@@ -71,28 +71,25 @@ export function ExportKeyModal({ address, index, onClose }: Props) {
       <form onSubmit={onSubmit} className="card-padded w-full max-w-lg space-y-5">
         <header className="space-y-1">
           <h2 className="text-xl font-semibold text-neutral-100">
-            Export wallet.key
+            {t("exp.title")}
           </h2>
           <p className="text-sm text-neutral-400">
-            A password-encrypted key file for{" "}
+            {t("exp.descPrefix")}{" "}
             <span className="font-mono text-neutral-300">
-              {index != null ? `Address ${index}` : "this address"}
+              {index != null
+                ? t("exp.addressN", { n: index })
+                : t("exp.thisAddress")}
             </span>{" "}
-            (<span className="font-mono">{shortAddress(address)}</span>).
-            Importable on exfer.dev and the Exfer CLI.
+            (<span className="font-mono">{shortAddress(address)}</span>).{" "}
+            {t("exp.descSuffix")}
           </p>
         </header>
 
-        <div className="banner-info text-sm">
-          The file is encrypted with{" "}
-          <strong>your wallet password</strong>. When you import it on
-          exfer.dev, enter that same password as the “wallet.key
-          passphrase”.
-        </div>
+        <div className="banner-info text-sm">{t("exp.banner")}</div>
 
         <div>
           <label className="label" htmlFor="exp-wallet-pw">
-            Your wallet password
+            {t("exp.passLabel")}
           </label>
           <input
             id="exp-wallet-pw"
@@ -115,14 +112,14 @@ export function ExportKeyModal({ address, index, onClose }: Props) {
             onClick={onClose}
             disabled={pending}
           >
-            Cancel
+            {t("exp.cancel")}
           </button>
           <button
             type="submit"
             className="btn"
             disabled={pending || !password}
           >
-            {pending ? "Exporting…" : "Choose location & export"}
+            {pending ? t("exp.exporting") : t("exp.export")}
           </button>
         </div>
       </form>

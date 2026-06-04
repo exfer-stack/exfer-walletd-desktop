@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { submitPassword, restoreFromMnemonic } from "../lib/rpc";
+import { useT } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 import wordmarkUrl from "../assets/wordmark.png";
 
 interface Props {
@@ -9,6 +11,7 @@ interface Props {
 type Mode = "create" | "restore";
 
 export function PasswordPrompt({ onReady }: Props) {
+  const { t } = useT();
   const [mode, setMode] = useState<Mode>("create");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -19,24 +22,24 @@ export function PasswordPrompt({ onReady }: Props) {
   function handleStatus(status: Awaited<ReturnType<typeof submitPassword>>) {
     if (status.status === "ready") onReady();
     else if (status.status === "failed") setError(status.message);
-    else setError("Walletd reported an unexpected state after start.");
+    else setError(t("pw.unexpectedState"));
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+      setError(t("pw.errMin"));
       return;
     }
     if (password !== confirm) {
-      setError("Passwords do not match.");
+      setError(t("pw.errMismatch"));
       return;
     }
     if (mode === "restore") {
       const words = phrase.trim().split(/\s+/).filter(Boolean);
       if (words.length !== 24) {
-        setError(`Recovery phrase must be 24 words (you entered ${words.length}).`);
+        setError(t("pw.errWordCount", { n: words.length }));
         return;
       }
     }
@@ -49,7 +52,7 @@ export function PasswordPrompt({ onReady }: Props) {
           : await restoreFromMnemonic(phrase.trim(), password);
       handleStatus(status);
     } catch (err) {
-      setError(String(err));
+      setError(humanizeError(err));
     } finally {
       setPending(false);
     }
@@ -88,26 +91,24 @@ export function PasswordPrompt({ onReady }: Props) {
                   : "text-neutral-400 hover:text-neutral-100")
               }
             >
-              {m === "create" ? "New wallet" : "Restore from phrase"}
+              {m === "create" ? t("pw.newWallet") : t("pw.restoreFromPhrase")}
             </button>
           ))}
         </div>
 
         <header className="space-y-1 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-50">
-            {mode === "create" ? "Welcome to your wallet" : "Restore your wallet"}
+            {mode === "create" ? t("pw.welcomeTitle") : t("pw.restoreTitle")}
           </h1>
           <p className="text-base text-neutral-400 leading-relaxed">
-            {mode === "create"
-              ? "Set a password to encrypt this wallet's keys at rest. It's saved in your OS keychain, so you only enter it once on this machine."
-              : "Restoring a legacy 24-word seed wallet? Enter the phrase and choose a new password. (For a vault backup, create a wallet first, then Settings → Restore from backup.)"}
+            {mode === "create" ? t("pw.welcomeSub") : t("pw.restoreSub")}
           </p>
         </header>
 
         {mode === "restore" && (
           <div>
             <label className="label" htmlFor="phrase">
-              Recovery phrase (24 words)
+              {t("pw.phraseLabel")}
             </label>
             <textarea
               id="phrase"
@@ -115,21 +116,18 @@ export function PasswordPrompt({ onReady }: Props) {
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
               disabled={pending}
-              placeholder="word1 word2 word3 … word24"
+              placeholder={t("pw.phrasePlaceholder")}
               autoComplete="off"
               spellCheck={false}
             />
-            <p className="help">
-              Only restores a wallet created by exfer-wallet (same HD
-              derivation). Words are separated by single spaces.
-            </p>
+            <p className="help">{t("pw.phraseHelp")}</p>
           </div>
         )}
 
         <div className="space-y-4">
           <div>
             <label className="label" htmlFor="pw1">
-              {mode === "create" ? "Password" : "New password for this machine"}
+              {mode === "create" ? t("pw.password") : t("pw.newPasswordMachine")}
             </label>
             <input
               id="pw1"
@@ -141,14 +139,12 @@ export function PasswordPrompt({ onReady }: Props) {
               disabled={pending}
               autoComplete="new-password"
             />
-            <p className="help">
-              At least 8 characters. Mix letters, numbers, and symbols.
-            </p>
+            <p className="help">{t("pw.passwordHelp")}</p>
           </div>
 
           <div>
             <label className="label" htmlFor="pw2">
-              Confirm password
+              {t("pw.confirm")}
             </label>
             <input
               id="pw2"
@@ -167,17 +163,16 @@ export function PasswordPrompt({ onReady }: Props) {
         <button type="submit" className="btn w-full" disabled={pending}>
           {pending
             ? mode === "create"
-              ? "Starting walletd…"
-              : "Restoring…"
+              ? t("pw.starting")
+              : t("pw.restoring")
             : mode === "create"
-              ? "Continue"
-              : "Restore wallet"}
+              ? t("pw.continue")
+              : t("pw.restoreWallet")}
         </button>
 
         <div className="banner-warn text-xs">
-          <span className="font-semibold">Important — back this up.</span>{" "}
-          Forgetting this password means every wallet in this app is gone.
-          We never see it; we can't help you recover it.
+          <span className="font-semibold">{t("pw.warnTitle")}</span>{" "}
+          {t("pw.warnBody")}
         </div>
       </form>
     </div>

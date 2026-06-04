@@ -6,6 +6,7 @@ import { RecoveryPhraseModal, DeleteAddressModal } from "./KeyringModals";
 import { getLabel, setLabel, shortAddress } from "../lib/labels";
 import { hide } from "../lib/hidden";
 import { formatExfer, formatBalanceCompact } from "../lib/rpc";
+import { useT } from "../lib/i18n";
 
 interface Props {
   address: string;
@@ -31,6 +32,7 @@ export function AddressRow({
   onLabelChange,
   onUnhide,
 }: Props) {
+  const { t } = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => getLabel(address) ?? "");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -67,11 +69,11 @@ export function AddressRow({
                   if (e.key === "Enter") commit();
                   if (e.key === "Escape") setEditing(false);
                 }}
-                placeholder="e.g. deposits, savings…"
+                placeholder={t("adr.labelPlaceholder")}
                 autoFocus
               />
               <button type="button" className="btn-ghost" onClick={commit}>
-                Save
+                {t("adr.save")}
               </button>
             </div>
           ) : label ? (
@@ -79,7 +81,7 @@ export function AddressRow({
               type="button"
               onClick={() => setEditing(true)}
               className="text-left text-base font-medium text-neutral-100 hover:text-cyan-300"
-              title="Click to rename"
+              title={t("adr.clickToRename")}
             >
               {label}
             </button>
@@ -88,9 +90,9 @@ export function AddressRow({
               type="button"
               onClick={() => setEditing(true)}
               className="text-left text-sm text-neutral-500 hover:text-cyan-300"
-              title="Click to label"
+              title={t("adr.clickToLabel")}
             >
-              + label
+              {t("adr.addLabelInline")}
             </button>
           )}
         </td>
@@ -108,7 +110,7 @@ export function AddressRow({
             {pendingIn != null && pendingIn > 0 && (
               <span
                 className="h-1.5 w-1.5 rounded-full bg-neutral-600"
-                title={`includes ${formatExfer(pendingIn)} awaiting confirmation`}
+                title={t("adr.pendingDot", { amt: formatExfer(pendingIn) })}
               />
             )}
             <div
@@ -123,8 +125,8 @@ export function AddressRow({
                 setMenu({ x: e.clientX, y: e.clientY })
               }
               className="rounded-md px-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
-              title="Actions"
-              aria-label="Address actions"
+              title={t("adr.actions")}
+              aria-label={t("adr.actionsAria")}
             >
               ⋯
             </button>
@@ -139,28 +141,28 @@ export function AddressRow({
           onClose={() => setMenu(null)}
           items={[
             {
-              label: "Show recovery phrase…",
+              label: t("adr.menuShowPhrase"),
               onClick: () => {
                 setMenu(null);
                 setShowPhrase(true);
               },
             },
             {
-              label: "Export wallet.key…",
+              label: t("adr.menuExportKey"),
               onClick: () => {
                 setMenu(null);
                 setShowExport(true);
               },
             },
             {
-              label: label ? "Rename label" : "Add label",
+              label: label ? t("adr.menuRename") : t("adr.menuAddLabel"),
               onClick: () => {
                 setMenu(null);
                 setEditing(true);
               },
             },
             {
-              label: "Copy address",
+              label: t("adr.menuCopy"),
               onClick: () => {
                 navigator.clipboard.writeText(address).catch(() => {});
                 setMenu(null);
@@ -168,22 +170,20 @@ export function AddressRow({
             },
             hidden
               ? {
-                  label: "Unhide address",
+                  label: t("adr.menuUnhide"),
                   onClick: () => {
                     setMenu(null);
                     onUnhide?.();
                   },
                 }
               : {
-                  label: "Hide address",
+                  label: t("adr.menuHide"),
                   danger: true,
                   onClick: () => {
                     setMenu(null);
                     if (
                       balance > 0 &&
-                      !window.confirm(
-                        "This address still holds funds. Hiding only removes it from the list — the key is kept and you can unhide it later. Hide anyway?",
-                      )
+                      !window.confirm(t("adr.hideConfirm"))
                     ) {
                       return;
                     }
@@ -192,7 +192,7 @@ export function AddressRow({
                   },
                 },
             {
-              label: "Delete address…",
+              label: t("adr.menuDelete"),
               danger: true,
               onClick: () => {
                 setMenu(null);

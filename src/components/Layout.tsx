@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import logoUrl from "../assets/logo.png";
+import { useT } from "../lib/i18n";
 
 export type Tab =
   | "dashboard"
@@ -80,16 +81,17 @@ interface Props {
   children: ReactNode;
 }
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "receive", label: "Receive" },
-  { id: "send", label: "Send" },
-  { id: "swap", label: "Swap" },
-  { id: "activity", label: "Activity" },
-  { id: "settings", label: "Settings" },
+const TABS: { id: Tab }[] = [
+  { id: "dashboard" },
+  { id: "receive" },
+  { id: "send" },
+  { id: "swap" },
+  { id: "activity" },
+  { id: "settings" },
 ];
 
 export function Layout({ activeTab, onTabChange, children }: Props) {
+  const { t: tr } = useT();
   return (
     <div className="flex h-full flex-col">
       <header className="border-b border-neutral-800 bg-black">
@@ -116,7 +118,7 @@ export function Layout({ activeTab, onTabChange, children }: Props) {
                   }
                 >
                   <Icon name={t.id} />
-                  {t.label}
+                  {tr(`nav.${t.id}`)}
                 </button>
               );
             })}

@@ -3,6 +3,8 @@ import { rpc } from "../lib/rpc";
 import type { WalletBalance } from "../lib/types";
 import { CopyButton } from "./CopyButton";
 import { getLabel, shortAddress } from "../lib/labels";
+import { useT } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 
 interface Props {
   onClose: () => void;
@@ -16,6 +18,7 @@ interface RevealedKey {
 }
 
 export function RevealPrivateKeyModal({ onClose }: Props) {
+  const { t } = useT();
   const [addresses, setAddresses] = useState<WalletBalance["entries"]>([]);
   const [address, setAddress] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
@@ -32,7 +35,7 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
         setAddresses(r.entries);
         if (r.entries.length > 0) setAddress(r.entries[0].address);
       },
-      (e) => setError(String(e)),
+      (e) => setError(humanizeError(e)),
     );
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -52,7 +55,7 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
       setPassword("");
       timerRef.current = setTimeout(() => setHidden(true), AUTO_HIDE_MS);
     } catch (e) {
-      setError(String(e));
+      setError(humanizeError(e));
     } finally {
       setPending(false);
     }
@@ -63,18 +66,15 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
       <div className="card-padded w-full max-w-xl space-y-5">
         <header>
           <h2 className="text-xl font-semibold text-neutral-100">
-            Export private key
+            {t("rev.title")}
           </h2>
-          <p className="mt-1 text-sm text-neutral-400">
-            Reveal the raw ed25519 secret for one address. Anyone who
-            sees this hex can spend everything that address holds.
-          </p>
+          <p className="mt-1 text-sm text-neutral-400">{t("rev.desc")}</p>
         </header>
 
         {!key ? (
           <form onSubmit={reveal} className="space-y-4">
             <div>
-              <label className="label">Address to export</label>
+              <label className="label">{t("rev.addressLabel")}</label>
               <select
                 className="input"
                 value={address}
@@ -82,7 +82,7 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
                 disabled={pending || addresses.length === 0}
               >
                 {addresses.length === 0 && (
-                  <option value="">No addresses</option>
+                  <option value="">{t("rev.noAddresses")}</option>
                 )}
                 {addresses.map((e) => {
                   const label = getLabel(e.address);
@@ -100,15 +100,12 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
 
             <div className="banner-warn space-y-2 text-sm">
               <div className="font-semibold text-amber-200">
-                Before you continue
+                {t("rev.warnTitle")}
               </div>
               <ul className="ml-4 list-disc space-y-1 text-amber-200">
-                <li>Make sure nobody is looking at your screen.</li>
-                <li>Never paste this hex into a website or chat.</li>
-                <li>
-                  This is the master key for one address. Exporting it
-                  does not affect the wallet's other addresses.
-                </li>
+                <li>{t("rev.warn1")}</li>
+                <li>{t("rev.warn2")}</li>
+                <li>{t("rev.warn3")}</li>
               </ul>
               <label className="mt-2 flex items-start gap-2 text-amber-200">
                 <input
@@ -117,13 +114,13 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
                   checked={acknowledged}
                   onChange={(e) => setAcknowledged(e.target.checked)}
                 />
-                <span>I understand. Show me the private key.</span>
+                <span>{t("rev.acknowledge")}</span>
               </label>
             </div>
 
             <div>
               <label className="label" htmlFor="reveal-pk-pw">
-                Your wallet password
+                {t("rev.passLabel")}
               </label>
               <input
                 id="reveal-pk-pw"
@@ -145,7 +142,7 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
                 onClick={onClose}
                 disabled={pending}
               >
-                Cancel
+                {t("rev.cancel")}
               </button>
               <button
                 type="submit"
@@ -154,7 +151,7 @@ export function RevealPrivateKeyModal({ onClose }: Props) {
                   !acknowledged || pending || !address || password === ""
                 }
               >
-                {pending ? "Verifying…" : "Reveal key"}
+                {pending ? t("rev.verifying") : t("rev.reveal")}
               </button>
             </div>
           </form>
@@ -189,23 +186,20 @@ function RevealedKey({
   onUnhide: () => void;
   onClose: () => void;
 }) {
+  const { t } = useT();
   return (
     <div className="space-y-4">
-      <div className="banner-error">
-        Anyone with this private key can spend every coin at this
-        address. Write it down on paper or store it in your password
-        manager — do <strong>not</strong> screenshot it.
-      </div>
+      <div className="banner-error">{t("rev.revealedWarn")}</div>
 
       <div>
-        <div className="label">Address</div>
+        <div className="label">{t("rev.addressHeader")}</div>
         <code className="addr block rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
           {address}
         </code>
       </div>
 
       <div>
-        <div className="label">Private key (32 bytes, ed25519)</div>
+        <div className="label">{t("rev.keyHeader")}</div>
         <div
           className={
             "rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 font-mono text-sm break-all text-red-200 " +
@@ -219,7 +213,7 @@ function RevealedKey({
       {hidden && (
         <div className="flex justify-center">
           <button type="button" className="btn-secondary" onClick={onUnhide}>
-            Show again
+            {t("rev.showAgain")}
           </button>
         </div>
       )}
@@ -227,14 +221,11 @@ function RevealedKey({
       <div className="flex justify-end gap-2">
         <CopyButton text={secretHex} className="btn-secondary" />
         <button type="button" className="btn" onClick={onClose}>
-          Done
+          {t("rev.done")}
         </button>
       </div>
 
-      <p className="text-xs text-neutral-400">
-        Auto-hides after 30 seconds. Closing this dialog clears the
-        key from memory.
-      </p>
+      <p className="text-xs text-neutral-400">{t("rev.autoHide")}</p>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { rpc, formatExfer } from "./rpc";
 import type { WalletBalance, WalletEntry } from "./types";
 import { useToast } from "./toast";
 import { osNotify } from "./notify";
+import { tStatic } from "./i18n";
 import { isHidden } from "./hidden";
 
 export interface UtxoInfo {
@@ -165,8 +166,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           // Lead with the amount — it reads as money that just landed, not a
           // status update. The balance already reflects it (feels instant).
           const amount = formatExfer(projected - prev);
-          toast.incoming(`+${amount}`, "Received");
-          osNotify("Deposit received", `+${amount}`);
+          toast.incoming(`+${amount}`, tStatic("wal.received"));
+          osNotify(tStatic("wal.depositTitle"), `+${amount}`);
         }
         lastTotal.current = projected;
       } catch (e) {

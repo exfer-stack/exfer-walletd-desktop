@@ -16,6 +16,7 @@ import type { SwapLite } from "../lib/types";
 import { useToast } from "../lib/toast";
 import { useWallet } from "../lib/wallet";
 import { osNotify } from "../lib/notify";
+import { tStatic } from "../lib/i18n";
 
 const TERMINAL = new Set(["completed", "refunded", "failed"]);
 
@@ -41,20 +42,23 @@ export function SwapWatcher() {
     const announce = (s: SwapLite) => {
       const outUnit = s.direction === "exfer_to_bnb" ? "BNB" : "EXFER";
       if (s.status === "completed") {
-        const title = "Swap complete";
-        const body = `Received ${fmtAmt(s.amount_out)} ${outUnit}.`;
+        const title = tStatic("swap.watcherCompletedTitle");
+        const body = tStatic("swap.watcherCompletedBody", {
+          amt: fmtAmt(s.amount_out),
+          unit: outUnit,
+        });
         toast.success(title, body);
         osNotify(title, body);
         refresh();
       } else if (s.status === "refunded") {
-        const title = "Swap refunded";
-        const body = "Your funds were returned — the swap didn't complete in time.";
+        const title = tStatic("swap.watcherRefundedTitle");
+        const body = tStatic("swap.watcherRefundedBody");
         toast.info(title, body);
         osNotify(title, body);
         refresh();
       } else if (s.status === "failed") {
-        const title = "Swap failed";
-        const body = "The swap couldn't complete. Any locked funds will refund automatically.";
+        const title = tStatic("swap.watcherFailedTitle");
+        const body = tStatic("swap.watcherFailedBody");
         toast.error(title, body);
         osNotify(title, body);
       }

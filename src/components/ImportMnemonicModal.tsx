@@ -8,6 +8,8 @@ import {
 } from "../lib/rpc";
 import { useToast } from "../lib/toast";
 import { shortAddress } from "../lib/labels";
+import { useT } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 
 interface Props {
   onClose: () => void;
@@ -27,6 +29,7 @@ type Preview = { standard: MnemonicCandidate; legacy: MnemonicCandidate };
 /// mobile re-imports here to the very same address.
 export function ImportMnemonicModal({ onClose, onImported }: Props) {
   const toast = useToast();
+  const { t } = useT();
   const [phrase, setPhrase] = useState("");
   const [scheme, setScheme] = useState<MnemonicScheme>("standard");
   const [label, setLabel] = useState("");
@@ -64,7 +67,7 @@ export function ImportMnemonicModal({ onClose, onImported }: Props) {
         .catch((e) => {
           if (cancelled) return;
           setPreview(null);
-          setPreviewErr(String(e).replace(/^Error: /, ""));
+          setPreviewErr(humanizeError(e));
         })
         .finally(() => {
           if (!cancelled) setPreviewing(false);
@@ -90,7 +93,7 @@ export function ImportMnemonicModal({ onClose, onImported }: Props) {
     e.preventDefault();
     setError(null);
     if (!valid) {
-      setError(`Recovery phrase must be 24 words (you entered ${wordCount}).`);
+      setError(t("impm.errWordCount", { n: wordCount }));
       return;
     }
     setPending(true);
@@ -101,13 +104,13 @@ export function ImportMnemonicModal({ onClose, onImported }: Props) {
         label.trim() || undefined,
       );
       toast.success(
-        "Address imported",
-        `Added ${shortAddress(res.address)} — appears in Receive and Dashboard.`,
+        t("impm.toastTitle"),
+        t("impm.toastBody", { addr: shortAddress(res.address) }),
       );
       onImported?.(res.address);
       onClose();
     } catch (err) {
-      setError(String(err).replace(/^Error: /, ""));
+      setError(humanizeError(err));
     } finally {
       setPending(false);
     }
@@ -118,18 +121,14 @@ export function ImportMnemonicModal({ onClose, onImported }: Props) {
       <form onSubmit={onSubmit} className="card-padded w-full max-w-lg space-y-5">
         <header className="space-y-1">
           <h2 className="text-xl font-semibold text-neutral-100">
-            Import recovery phrase
+            {t("impm.title")}
           </h2>
-          <p className="text-sm text-neutral-400">
-            Add one address from its 24-word phrase. The standard scheme matches
-            exfer.dev and the Exfer mobile wallet, so a phrase exported there
-            recovers the same address here.
-          </p>
+          <p className="text-sm text-neutral-400">{t("impm.desc")}</p>
         </header>
 
         <div>
           <label className="label" htmlFor="imp-phrase">
-            Recovery phrase ({wordCount}/24 words)
+            {t("impm.phraseLabel", { n: wordCount })}
           </label>
           <textarea
             id="imp-phrase"
@@ -145,28 +144,27 @@ export function ImportMnemonicModal({ onClose, onImported }: Props) {
         </div>
 
         {previewing && (
-          <p className="help">Deriving addresses…</p>
+          <p className="help">{t("impm.deriving")}</p>
         )}
 
         {previewErr && (
-          <div className="banner-info text-sm">
-            Can't reach the chain to preview balances right now — you can still
-            import. Standard is the default scheme.
-          </div>
+          <div className="banner-info text-sm">{t("impm.previewErr")}</div>
         )}
 
         {/* Exactly one candidate holds coins: show it as the obvious choice. */}
         {preview && fundedScheme && (
           <div className="banner-info space-y-1">
             <div className="text-sm font-medium text-neutral-200">
-              Found your wallet
+              {t("impm.foundWallet")}
             </div>
             <div className="text-lg font-semibold text-neutral-100">
               {formatBalanceCompact(preview[fundedScheme].balance ?? 0)}
             </div>
             <div className="addr-xs text-neutral-400">
               {shortAddress(preview[fundedScheme].address)} ·{" "}
-              {fundedScheme === "standard" ? "Standard (BIP39)" : "Legacy"}
+              {fundedScheme === "standard"
+                ? t("impm.schemeStandard")
+                : t("impm.schemeLegacyShort")}
             </div>
           </div>
         )}
@@ -174,11 +172,11 @@ export function ImportMnemonicModal({ onClose, onImported }: Props) {
         {/* Ambiguous (both funded / both empty / chain down): let them pick. */}
         {preview && !fundedScheme && (
           <div className="space-y-2">
-            <span className="label">Choose your address</span>
+            <span className="label">{t("impm.chooseAddress")}</span>
             {(
               [
-                ["standard", "Standard (BIP39)", preview.standard],
-                ["legacy", "Legacy (private-key phrase)", preview.legacy],
+                ["standard", t("impm.schemeStandard"), preview.standard],
+                ["legacy", t("impm.schemeLegacy"), preview.legacy],
               ] as [MnemonicScheme, string, MnemonicCandidate][]
             ).map(([key, title, cand]) => {
               const active = scheme === key;
@@ -219,7 +217,7 @@ export function ImportMnemonicModal({ onClose, onImported }: Props) {
 
         <div>
           <label className="label" htmlFor="imp-mn-label">
-            Label (optional)
+            {t("impm.labelLabel")}
           </label>
           <input
             id="imp-mn-label"
@@ -228,7 +226,7 @@ export function ImportMnemonicModal({ onClose, onImported }: Props) {
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             disabled={pending}
-            placeholder="e.g. cold-savings"
+            placeholder={t("impm.labelPlaceholder")}
             maxLength={64}
           />
         </div>
@@ -242,10 +240,10 @@ export function ImportMnemonicModal({ onClose, onImported }: Props) {
             onClick={onClose}
             disabled={pending}
           >
-            Cancel
+            {t("impm.cancel")}
           </button>
           <button type="submit" className="btn" disabled={pending || !valid}>
-            {pending ? "Importing…" : "Import"}
+            {pending ? t("impm.importing") : t("impm.import")}
           </button>
         </div>
       </form>

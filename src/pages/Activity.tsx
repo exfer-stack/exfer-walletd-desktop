@@ -9,6 +9,7 @@ import {
 } from "../lib/history";
 import { getLabel, shortAddress } from "../lib/labels";
 import { CopyButton } from "../components/CopyButton";
+import { useT } from "../lib/i18n";
 
 const EXPLORER = "https://explorer.exfer.dev";
 const txUrl = (h: string) => `${EXPLORER}/tx/${h}`;
@@ -25,6 +26,7 @@ function HashLine({
   value: string;
   href: string;
 }) {
+  const { t } = useT();
   return (
     <div className="flex items-center gap-2">
       <span className="w-12 shrink-0 text-xs text-neutral-500">{label}</span>
@@ -35,7 +37,7 @@ function HashLine({
         target="_blank"
         rel="noreferrer"
         className="rounded-md px-1.5 py-0.5 text-xs text-cyan-400 hover:bg-neutral-800"
-        title="View on Exfer Explorer"
+        title={t("act.viewExplorer")}
       >
         ↗
       </a>
@@ -50,6 +52,7 @@ interface TxStatus {
 }
 
 export function Activity() {
+  const { t } = useT();
   const [version, bump] = useState(0); // bump to force reload
   const history = useMemo(listHistory, [version]);
   // Seed from the confirmed-tx cache so already-mined transfers render as
@@ -132,16 +135,12 @@ export function Activity() {
       <div className="mx-auto max-w-3xl space-y-4 p-8">
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
-            Activity
+            {t("act.title")}
           </h1>
-          <p className="text-base text-neutral-400">
-            Every transfer you broadcast from this wallet lands here.
-          </p>
+          <p className="text-base text-neutral-400">{t("act.emptyDesc")}</p>
         </header>
         <div className="card-padded text-center text-sm text-neutral-400">
-          No transfers yet. Head to{" "}
-          <span className="font-medium text-neutral-300">Send</span> to make
-          your first one.
+          {t("act.emptyState")}
         </div>
       </div>
     );
@@ -152,11 +151,12 @@ export function Activity() {
       <header className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
-            Activity
+            {t("act.title")}
           </h1>
           <p className="text-base text-neutral-400">
-            {history.length} {history.length === 1 ? "transfer" : "transfers"}{" "}
-            on record · history is local to this device.
+            {history.length === 1
+              ? t("act.countOne", { n: history.length })
+              : t("act.countMany", { n: history.length })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -166,19 +166,19 @@ export function Activity() {
             disabled={polling}
             className="btn-ghost"
           >
-            {polling ? "Refreshing…" : "Refresh status"}
+            {polling ? t("act.refreshing") : t("act.refresh")}
           </button>
           <button
             type="button"
             onClick={() => {
-              if (confirm("Clear local activity log? Won't affect the chain.")) {
+              if (confirm(t("act.clearConfirm"))) {
                 clearHistory();
                 bump((v) => v + 1);
               }
             }}
             className="btn-ghost text-red-600 hover:bg-red-500/10"
           >
-            Clear log
+            {t("act.clearLog")}
           </button>
         </div>
       </header>
@@ -199,24 +199,25 @@ function ActivityCard({
   entry: HistoryEntry;
   status: TxStatus | "error" | undefined;
 }) {
+  const { t } = useT();
   const dt = new Date(entry.broadcast_at);
   const recipients = entry.outputs.filter((o) => !o.is_change);
   const change = entry.outputs.find((o) => o.is_change);
 
   let statusPill: { text: string; className: string };
   if (status === "error") {
-    statusPill = { text: "lookup failed", className: "pill-warn" };
+    statusPill = { text: t("act.pillError"), className: "pill-warn" };
   } else if (!status) {
-    statusPill = { text: "checking…", className: "pill-info" };
+    statusPill = { text: t("act.pillChecking"), className: "pill-info" };
   } else if (status.block_height != null) {
     statusPill = {
-      text: `confirmed @ ${status.block_height}`,
+      text: t("act.pillConfirmed", { h: status.block_height }),
       className: "pill-success",
     };
   } else if (status.in_mempool) {
-    statusPill = { text: "in mempool", className: "pill-info" };
+    statusPill = { text: t("act.pillMempool"), className: "pill-info" };
   } else {
-    statusPill = { text: "not found", className: "pill-warn" };
+    statusPill = { text: t("act.pillNotFound"), className: "pill-warn" };
   }
 
   return (
@@ -233,7 +234,7 @@ function ActivityCard({
       <div className="grid gap-4 p-5 md:grid-cols-2">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Sent to
+            {t("act.sentTo")}
           </div>
           <ul className="mt-2 space-y-3">
             {recipients.map((o, i) => {
@@ -242,33 +243,36 @@ function ActivityCard({
                 <li key={i} className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm text-neutral-200">
-                      {label ?? "External address"}
+                      {label ?? t("act.externalAddress")}
                     </span>
                     <span className="amount text-sm">
                       {formatExfer(o.amount)}
                     </span>
                   </div>
-                  <HashLine label="addr" value={o.to} href={addrUrl(o.to)} />
+                  <HashLine label={t("act.addrLabel")} value={o.to} href={addrUrl(o.to)} />
                 </li>
               );
             })}
           </ul>
         </div>
         <div className="space-y-1.5">
-          <Row label="Fee" value={formatExfer(entry.fee)} />
+          <Row label={t("act.fee")} value={formatExfer(entry.fee)} />
           <Row
-            label="I/O"
-            value={`${entry.inputs.length} in · ${entry.outputs.length} out`}
+            label={t("act.io")}
+            value={t("act.ioValue", {
+              in: entry.inputs.length,
+              out: entry.outputs.length,
+            })}
           />
           {change && (
-            <Row label="Change" value={formatExfer(change.amount)} />
+            <Row label={t("act.change")} value={formatExfer(change.amount)} />
           )}
-          <Row label="Size" value={`${entry.size} B`} />
+          <Row label={t("act.size")} value={`${entry.size} B`} />
         </div>
       </div>
 
       <div className="border-t border-neutral-800 bg-neutral-900 px-5 py-3">
-        <HashLine label="Tx ID" value={entry.tx_id} href={txUrl(entry.tx_id)} />
+        <HashLine label={t("act.txId")} value={entry.tx_id} href={txUrl(entry.tx_id)} />
       </div>
     </article>
   );

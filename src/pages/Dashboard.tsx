@@ -10,10 +10,13 @@ import { AddressRow } from "../components/AddressRow";
 import { useWallet, pollIntervalMs } from "../lib/wallet";
 import { useToast } from "../lib/toast";
 import { isHidden, unhide } from "../lib/hidden";
+import { useT } from "../lib/i18n";
+import { humanizeError } from "../lib/errors";
 
 export function Dashboard() {
   const { balance: data, loading, error, refresh } = useWallet();
   const toast = useToast();
+  const { t } = useT();
   const [generating, setGenerating] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
 
@@ -51,11 +54,11 @@ export function Dashboard() {
       const a = await rpc<GeneratedAddress>("generate_standard_address");
       await refreshAll();
       toast.success(
-        "Address created",
-        `${a.address.slice(0, 10)}… is ready to receive.`,
+        t("dash.addrCreatedTitle"),
+        t("dash.addrCreatedBody", { addr: a.address.slice(0, 10) }),
       );
     } catch (e) {
-      toast.error("Couldn't create address", String(e));
+      toast.error(t("dash.addrCreateFailTitle"), humanizeError(e));
     } finally {
       setGenerating(false);
     }
@@ -69,20 +72,27 @@ export function Dashboard() {
       {/* Hero — total balance */}
       <section className="card-padded">
         <div className="text-sm font-medium uppercase tracking-wide text-neutral-400">
-          Total balance
+          {t("dash.totalBalance")}
         </div>
         <div
           className="amount-lg mt-2 flex items-baseline tracking-normal"
           title={
             data
-              ? `Exact: ${formatExfer(visibleProjected)}` +
+              ? t("dash.exact", { amt: formatExfer(visibleProjected) }) +
                 (hasPending
-                  ? ` · ${formatExfer(visibleTotal)} confirmed` +
+                  ? ` · ` +
+                    t("dash.confirmed", { amt: formatExfer(visibleTotal) }) +
                     (visiblePendingIn > 0
-                      ? ` · ${formatExfer(visiblePendingIn)} awaiting confirmation`
+                      ? ` · ` +
+                        t("dash.awaiting", {
+                          amt: formatExfer(visiblePendingIn),
+                        })
                       : "") +
                     (visiblePendingOut > 0
-                      ? ` · ${formatExfer(visiblePendingOut)} leaving`
+                      ? ` · ` +
+                        t("dash.leaving", {
+                          amt: formatExfer(visiblePendingOut),
+                        })
                       : "")
                   : "")
               : undefined
@@ -104,7 +114,7 @@ export function Dashboard() {
               {hasPending && (
                 <span
                   className="ml-2 h-1.5 w-1.5 self-center rounded-full bg-neutral-600"
-                  aria-label="part of this balance is awaiting confirmation"
+                  aria-label={t("dash.pendingDot")}
                 />
               )}
             </>
@@ -113,19 +123,21 @@ export function Dashboard() {
           )}
         </div>
         <div className="mt-1 text-sm text-neutral-400">
-          across{" "}
+          {t("dash.acrossPre")}{" "}
           <span className="font-medium text-neutral-300">
             {visibleEntries.length}
           </span>{" "}
-          {visibleEntries.length === 1 ? "address" : "addresses"}
+          {visibleEntries.length === 1
+            ? t("dash.addrUnit1")
+            : t("dash.addrUnitN")}
         </div>
       </section>
 
       {error && !data && (
         <div className="banner-error flex items-center justify-between gap-3">
-          <span>{error}</span>
+          <span>{humanizeError(error)}</span>
           <button type="button" onClick={refresh} className="btn-secondary">
-            Retry
+            {t("dash.retry")}
           </button>
         </div>
       )}
@@ -134,7 +146,7 @@ export function Dashboard() {
       <section className="card overflow-hidden">
         <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
           <h2 className="text-base font-semibold tracking-tight text-neutral-100">
-            Addresses
+            {t("dash.addresses")}
           </h2>
           <div className="flex items-center gap-2">
             <button
@@ -143,7 +155,7 @@ export function Dashboard() {
               disabled={loading}
               className="btn-ghost"
             >
-              {loading ? "Refreshing…" : "Refresh"}
+              {loading ? t("dash.refreshing") : t("dash.refresh")}
             </button>
             <button
               type="button"
@@ -152,11 +164,11 @@ export function Dashboard() {
               className="btn-secondary"
               title={
                 atCap
-                  ? `This wallet is capped at ${MAX_ADDRESSES} addresses`
-                  : "Each visible address adds a poll scan — more addresses refresh a little slower. Hide ones you're not watching to keep it fast."
+                  ? t("dash.cappedTitle", { n: MAX_ADDRESSES })
+                  : t("dash.newAddrTitle")
               }
             >
-              {generating ? "Generating…" : "+ New address"}
+              {generating ? t("dash.generating") : t("dash.newAddr")}
             </button>
           </div>
         </header>
@@ -165,16 +177,13 @@ export function Dashboard() {
             it reads as a tip, not a nag. Hidden addresses don't count. */}
         {!atCap && visibleEntries.length >= 3 && (
           <div className="border-b border-neutral-800/60 px-5 py-2 text-xs text-neutral-600">
-            Auto-refreshing about every {pollSecs}s · hide addresses you're not
-            watching to refresh faster.
+            {t("dash.autoRefreshTip", { secs: pollSecs })}
           </div>
         )}
 
         {atCap && (
           <div className="border-b border-neutral-800 bg-neutral-900/60 px-5 py-2.5 text-xs text-neutral-400">
-            You've reached the {MAX_ADDRESSES}-address limit for this wallet.
-            Reuse an existing address to receive — one address can take any
-            number of deposits.
+            {t("dash.atCapNote", { n: MAX_ADDRESSES })}
           </div>
         )}
 
@@ -184,10 +193,10 @@ export function Dashboard() {
           <div className="px-5 py-12 text-center">
             <div className="mx-auto max-w-md space-y-2">
               <div className="text-lg font-medium text-neutral-300">
-                No addresses yet
+                {t("dash.emptyTitle")}
               </div>
               <p className="text-sm text-neutral-400">
-                Mint your first address and you're ready to receive EXFER.
+                {t("dash.emptyBody")}
               </p>
               <button
                 type="button"
@@ -195,7 +204,7 @@ export function Dashboard() {
                 disabled={generating}
                 className="btn mt-3"
               >
-                {generating ? "Generating…" : "+ Generate first address"}
+                {generating ? t("dash.generating") : t("dash.genFirst")}
               </button>
             </div>
           </div>
@@ -203,9 +212,9 @@ export function Dashboard() {
           <table className="w-full">
             <thead className="bg-neutral-900 text-xs uppercase tracking-wide text-neutral-400">
               <tr>
-                <th className="px-5 py-2.5 text-left">Label</th>
-                <th className="px-5 py-2.5 text-left">Address</th>
-                <th className="px-5 py-2.5 text-right">Balance</th>
+                <th className="px-5 py-2.5 text-left">{t("dash.colLabel")}</th>
+                <th className="px-5 py-2.5 text-left">{t("dash.colAddress")}</th>
+                <th className="px-5 py-2.5 text-right">{t("dash.colBalance")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800">
@@ -237,14 +246,16 @@ export function Dashboard() {
 
         {hiddenEntries.length > 0 && (
           <div className="border-t border-neutral-800 px-5 py-2.5 text-xs text-neutral-400">
-            {hiddenEntries.length} hidden{" "}
-            {hiddenEntries.length === 1 ? "address" : "addresses"} ·{" "}
+            {hiddenEntries.length === 1
+              ? t("dash.hidden1", { n: hiddenEntries.length })
+              : t("dash.hiddenN", { n: hiddenEntries.length })}{" "}
+            ·{" "}
             <button
               type="button"
               onClick={() => setShowHidden((v) => !v)}
               className="font-medium text-cyan-400 hover:underline"
             >
-              {showHidden ? "hide them" : "show"}
+              {showHidden ? t("dash.hideThem") : t("dash.show")}
             </button>
           </div>
         )}

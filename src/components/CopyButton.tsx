@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "../lib/i18n";
 
 interface Props {
   text: string;
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export function CopyButton({ text, className }: Props) {
+  const { t } = useT();
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -24,17 +26,17 @@ export function CopyButton({ text, className }: Props) {
       type="button"
       onClick={copy}
       className={className ?? "btn-ghost"}
-      title="Copy to clipboard"
+      title={t("cpy.title")}
     >
       {copied ? (
         <>
           <span aria-hidden>✓</span>
-          <span>Copied</span>
+          <span>{t("cpy.copied")}</span>
         </>
       ) : (
         <>
           <span aria-hidden>⧉</span>
-          <span>Copy</span>
+          <span>{t("cpy.copy")}</span>
         </>
       )}
     </button>
