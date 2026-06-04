@@ -16,9 +16,8 @@
 // pool-info / bsc calls throw, we catch them, and the page shows a quiet
 // "swap unavailable" notice instead of erroring.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import QRCode from "qrcode";
-import { rpc, formatExfer, formatBalanceCompact, revealEvmPrivateKey } from "../lib/rpc";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { rpc, formatExfer, formatBalanceCompact } from "../lib/rpc";
 import type {
   SwapDirection,
   SwapRec,
@@ -32,13 +31,24 @@ import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
-import { usePrice, useBnbUsd, usdNumber } from "../lib/market";
+import {
+  usePrice,
+  useBnbUsd,
+  usdNumber,
+  getKlines,
+  circulatingSupplyExfer,
+  getBlockHeight,
+  type MarketPrice,
+  type Candle,
+} from "../lib/market";
 import { recordSwapUsd } from "../lib/swapPrice";
-import { CopyButton } from "../components/CopyButton";
+import { useBnbAsset } from "../lib/bnb";
+import { BnbAccount } from "../components/BnbAccount";
+import { PriceChart } from "../components/PriceChart";
+import { useResumeTarget } from "../lib/inflight";
 
 // Permissive decimal: BNB carries up to 18 fractional digits, EXFER up to 8.
 const AMOUNT_RE = /^\d*\.?\d*$/;
-const HEX40 = /^0x[0-9a-fA-F]{40}$/;
 
 /** Trim a human decimal string to at most `dp` fractional digits (drops
  *  trailing zeros), falling back to significant digits for values that would
@@ -58,23 +68,6 @@ function fmtAmt(s: string | undefined, dp = 6): string {
   return frac ? `${w}.${frac}` : w;
 }
 
-/** Format a smallest-unit integer string (e.g. wei) to a short human amount. */
-function fmtUnits(raw: string | undefined, decimals: number, frac = 4): string {
-  if (!raw) return "0";
-  try {
-    const n = BigInt(raw);
-    const base = 10n ** BigInt(decimals);
-    const fracStr = (n % base)
-      .toString()
-      .padStart(decimals, "0")
-      .slice(0, frac)
-      .replace(/0+$/, "");
-    return fracStr ? `${n / base}.${fracStr}` : `${n / base}`;
-  } catch {
-    return "0";
-  }
-}
-
 /** A tiny inline spinner (Tailwind animate-spin) for the refunding/waiting bits. */
 function Spinner({ size = 14 }: { size?: number }) {
   return (
@@ -83,42 +76,6 @@ function Spinner({ size = 14 }: { size?: number }) {
       style={{ width: size, height: size }}
       aria-hidden
     />
-  );
-}
-
-/** Small QR that renders an address to a data URL (same palette as Receive). */
-function MiniQr({ value, size = 160 }: { value: string; size?: number }) {
-  const { t } = useT();
-  const [src, setSrc] = useState("");
-  useEffect(() => {
-    let alive = true;
-    QRCode.toDataURL(value, {
-      errorCorrectionLevel: "M",
-      margin: 2,
-      width: size,
-      color: { dark: "#171717", light: "#ffffff" },
-    })
-      .then((d) => alive && setSrc(d))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [value, size]);
-  return src ? (
-    <img
-      src={src}
-      width={size}
-      height={size}
-      alt="BSC address QR"
-      className="rounded-lg border border-neutral-800"
-    />
-  ) : (
-    <div
-      style={{ width: size, height: size }}
-      className="flex items-center justify-center rounded-lg bg-neutral-800 text-xs text-neutral-500"
-    >
-      {t("swap.qrRendering")}
-    </div>
   );
 }
 
@@ -139,10 +96,23 @@ export function Swap() {
   const price = usePrice();
   const bnbUsd = useBnbUsd();
 
+  // Resume hand-off: if the nav (a badge / in-flight list) set a resumeSwapId,
+  // open the progress step watching that swap. Read once on mount and clear the
+  // target so a later return to the tab starts fresh. useResumeTarget() works
+  // standalone (no-op when no <InflightProvider> is mounted yet), so this is a
+  // safe no-op until the provider lands. Mirrors mobile SwapSheet's resumeSwapId.
+  const { resumeSwapId, clearResumeTarget } = useResumeTarget();
+  const resumeIdRef = useRef<string | undefined>(resumeSwapId);
+  useEffect(() => {
+    if (resumeSwapId) clearResumeTarget();
+    // intentionally mount-only: we snapshot the id into resumeIdRef on first render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Reserve the per-IP scan-rate budget while swapping, exactly like Send.
   useEffect(() => suspendPolling(), [suspendPolling]);
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(resumeSwapId ? 3 : 1);
   const [direction, setDirection] = useState<SwapDirection>("exfer_to_bnb");
   const [from, setFrom] = useState("");
   const [amount, setAmount] = useState("");
@@ -156,9 +126,12 @@ export function Swap() {
   // null = unknown yet; false = engine confirmed off (pool_info threw).
   const [engineOn, setEngineOn] = useState<boolean | null>(null);
 
-  // The wallet's BSC balance (wei) — drives the buy-side deposit lead, the
-  // buyMax button, and the "Waiting for your BNB…" spinner. Polled on step 1.
-  const [bnbWei, setBnbWei] = useState<string | null>(null);
+  // The wallet's BSC address + balance — single poll, owned by useBnbAsset and
+  // shared with the <BnbAccount> panel below. `bnbWei` drives the buy-side
+  // deposit lead, the buyMax button, and the "Waiting for your BNB…" spinner.
+  // The hook also fires the deposit-arrival toast.
+  const bnbAsset = useBnbAsset();
+  const bnbWei = bnbAsset.bnbWei;
 
   const sell = direction === "exfer_to_bnb";
   const sendUnit = sell ? "EXFER" : "BNB";
@@ -198,38 +171,6 @@ export function Swap() {
       cancelled = true;
     };
   }, []);
-
-  // Poll the wallet's BNB balance on the build step so the buy-side deposit
-  // lead, buyMax, and "waiting for BNB" spinner stay live — and announce a fresh
-  // deposit with a toast so it's never silent. (BnbAccount polls its own copy;
-  // this drives the swap form.)
-  const lastBnbRef = useRef<bigint | null>(null);
-  useEffect(() => {
-    if (step !== 1) return;
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const b = await rpc<{ bnb_wei: string }>("bsc_get_balances");
-        if (cancelled) return;
-        setBnbWei(b.bnb_wei);
-        const now = BigInt(b.bnb_wei);
-        const prev = lastBnbRef.current;
-        if (prev != null && now > prev) {
-          const delta = fmtUnits((now - prev).toString(), 18, 5);
-          toast.incoming(`+${delta} BNB`, t("swap.bnbReceived"));
-        }
-        lastBnbRef.current = now;
-      } catch {
-        /* engine off / no HD seed — form just hides the BNB bits */
-      }
-    };
-    tick();
-    const id = window.setInterval(tick, 5000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [step, toast, t]);
 
   const amountValid = AMOUNT_RE.test(amount.trim()) && Number(amount) > 0;
 
@@ -310,6 +251,9 @@ export function Swap() {
     setLive(null);
     setAmount("");
     setErr(null);
+    // Drop the resume hand-off so finishing a resumed swap returns to a fresh
+    // form rather than re-entering the progress watcher.
+    resumeIdRef.current = undefined;
   }
 
   function switchDirection(d: SwapDirection) {
@@ -386,7 +330,7 @@ export function Swap() {
   }
 
   async function manualRefund() {
-    const id = quote?.swap_id;
+    const id = quote?.swap_id ?? resumeIdRef.current;
     if (!id) return;
     setBusy(true);
     try {
@@ -400,8 +344,9 @@ export function Swap() {
     }
   }
 
-  // Poll status while the swap is in progress.
-  const watchId = quote?.swap_id;
+  // Poll status while the swap is in progress. When resuming, there's no local
+  // quote — watch the handed-off swap id directly (mirrors mobile SwapSheet).
+  const watchId = quote?.swap_id ?? resumeIdRef.current;
   const pollRef = useRef<number | null>(null);
   useEffect(() => {
     if (step !== 3 || !watchId) return;
@@ -467,11 +412,17 @@ export function Swap() {
     <div className="mx-auto max-w-3xl space-y-6 p-8 fade-in">
       <Header />
 
+      {/* Live market header: EXFER/USD + 24h change, an interval toggle, the
+          candlestick chart, and a stats row (period high/low/avg + market cap).
+          Everything degrades quietly — no price hides the $ figure, no candles
+          shows an empty/loading state, supply RPC failure just drops mcap. */}
+      <MarketHeader price={price} />
+
       {step === 1 && (
         <>
           {/* Buy with no BNB yet: lead with the deposit card so the order of
               operations reads top-to-bottom (1. Add BNB → 2. Enter amount). */}
-          {needsFunding && <BnbAccount lead waiting />}
+          {needsFunding && <BnbAccount asset={bnbAsset} lead waiting />}
 
           <div className="card-padded space-y-6">
             <DirectionToggle direction={direction} onChange={switchDirection} />
@@ -627,7 +578,7 @@ export function Swap() {
           {/* In-wallet BNB account — the buy-side deposit target + a place to
               read/withdraw BNB. When already shown as the funding lead above,
               don't render it twice. */}
-          {!needsFunding && <BnbAccount lead={!sell} />}
+          {!needsFunding && <BnbAccount asset={bnbAsset} lead={!sell} />}
         </>
       )}
 
@@ -685,6 +636,234 @@ function Header() {
         {t("swap.headerDesc")}
       </p>
     </header>
+  );
+}
+
+// ── Market header ──────────────────────────────────────────────────────────
+// The exchange-style market surface above the swap form: live EXFER/USD + 24h
+// change pill, an interval toggle, the candlestick chart, and a stats row
+// (period high/low/avg + circulating supply & market cap). Ported from the
+// mobile SwapTab market card. Everything degrades gracefully.
+
+const INTERVALS: { key: string; label: string; timeVisible: boolean }[] = [
+  { key: "5m", label: "5M", timeVisible: true },
+  { key: "15m", label: "15M", timeVisible: true },
+  { key: "1h", label: "1H", timeVisible: true },
+  { key: "4h", label: "4H", timeVisible: true },
+  { key: "1d", label: "1D", timeVisible: false },
+  { key: "1w", label: "1W", timeVisible: false },
+];
+
+// Module-level caches so the chart + supply paint instantly on tab re-entry
+// instead of popping in after their async fetches (mirrors mobile's caches).
+const candlesCache: Record<string, Candle[]> = {};
+let supplyCache: number | null = null;
+
+/** A compact 24h-change pill — green up / red down / muted flat. */
+function ChangePill({ pct }: { pct: number }) {
+  const up = pct > 0.05;
+  const down = pct < -0.05;
+  const tone = up
+    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+    : down
+      ? "border-red-500/25 bg-red-500/10 text-red-300"
+      : "border-neutral-700 bg-neutral-800/40 text-neutral-400";
+  return (
+    <span
+      className={
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-xs font-semibold tabular-nums " +
+        tone
+      }
+    >
+      {up ? "▲" : down ? "▼" : "•"} {Math.abs(pct).toFixed(1)}%
+    </span>
+  );
+}
+
+/** One market-stat cell: a small muted label over a tabular value. */
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[11px] font-medium text-neutral-500">{label}</span>
+      <span className="font-mono text-sm font-semibold tabular-nums text-neutral-200">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function MarketHeader({ price }: { price: MarketPrice | null }) {
+  const { t } = useT();
+  const [interval, setIntervalKey] = useState("1d");
+  const [candles, setCandles] = useState<Candle[]>(candlesCache["1d"] ?? []);
+  const [loadingChart, setLoadingChart] = useState(false);
+  const [supply, setSupply] = useState<number | null>(supplyCache);
+  // The bar under the crosshair — when set, the price cells show THAT bar's
+  // high/low/close instead of the whole-period stats (TradingView-style legend).
+  const [hovered, setHovered] = useState<Candle | null>(null);
+
+  // Circulating supply from the tip height (no supply RPC). Fetched once —
+  // it barely moves (1 EXFER / 10s on ~69M). Failure just leaves mcap hidden.
+  useEffect(() => {
+    let cancelled = false;
+    void getBlockHeight().then((h) => {
+      if (cancelled || h == null) return;
+      const s = circulatingSupplyExfer(h);
+      supplyCache = s;
+      setSupply(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Candles for the chosen interval (cached per interval, so switching back is
+  // instant). An empty fetch keeps whatever we already had cached.
+  useEffect(() => {
+    let cancelled = false;
+    if (!candlesCache[interval]) setLoadingChart(true);
+    void getKlines(interval, 120).then((c) => {
+      if (cancelled) return;
+      if (c.length) candlesCache[interval] = c;
+      setCandles(c.length ? c : (candlesCache[interval] ?? []));
+      setLoadingChart(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [interval]);
+
+  const exferUsd = price?.usd ?? null;
+  const fp = (n: number) =>
+    n >= 1
+      ? n.toFixed(2)
+      : n.toLocaleString("en-US", {
+          maximumSignificantDigits: 4,
+          useGrouping: false,
+        });
+  const usdStr = exferUsd == null ? "—" : fp(exferUsd);
+
+  // Period high / low / average over the loaded candles (USD).
+  const stats = useMemo(() => {
+    if (!candles.length) return null;
+    let hi = -Infinity;
+    let lo = Infinity;
+    let sum = 0;
+    for (const c of candles) {
+      if (c.high > hi) hi = c.high;
+      if (c.low < lo) lo = c.low;
+      sum += c.close;
+    }
+    return { hi, lo, avg: sum / candles.length };
+  }, [candles]);
+
+  const marketCap =
+    supply != null && exferUsd != null ? supply * exferUsd : null;
+  const compact = (n: number) =>
+    n >= 1e9
+      ? (n / 1e9).toFixed(2) + "B"
+      : n >= 1e6
+        ? (n / 1e6).toFixed(2) + "M"
+        : n >= 1e3
+          ? (n / 1e3).toFixed(1) + "K"
+          : n.toFixed(0);
+
+  const activeIv = INTERVALS.find((i) => i.key === interval);
+
+  return (
+    <div className="card-padded space-y-3">
+      {/* Price + 24h change. */}
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+            EXFER · USD
+          </div>
+          <div className="mt-1 font-mono text-3xl font-semibold leading-none tabular-nums text-neutral-100">
+            <span className="mr-0.5 text-xl font-medium text-neutral-400">
+              $
+            </span>
+            {usdStr}
+          </div>
+        </div>
+        {price && <ChangePill pct={price.change24h} />}
+      </div>
+
+      {/* Interval toggle — scrolls horizontally if it ever overflows. */}
+      <div
+        className="flex gap-1 overflow-x-auto"
+        style={{ scrollbarWidth: "none" }}
+      >
+        {INTERVALS.map((iv) => {
+          const active = iv.key === interval;
+          return (
+            <button
+              key={iv.key}
+              type="button"
+              onClick={() => {
+                setIntervalKey(iv.key);
+                setHovered(null);
+              }}
+              className={
+                "shrink-0 rounded-md px-3 py-1 text-xs font-semibold transition " +
+                (active
+                  ? "bg-neutral-800 text-cyan-300"
+                  : "text-neutral-500 hover:text-neutral-300")
+              }
+            >
+              {iv.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Chart with empty / loading states. */}
+      <div className="min-h-[200px]">
+        {candles.length > 0 ? (
+          <PriceChart
+            candles={candles}
+            height={200}
+            timeVisible={activeIv?.timeVisible ?? true}
+            onHover={setHovered}
+          />
+        ) : (
+          <div className="flex h-[200px] items-center justify-center text-sm text-neutral-500">
+            {loadingChart ? <Spinner size={20} /> : t("swapTab.noChart")}
+          </div>
+        )}
+      </div>
+
+      {/* Market stats: period high/low/avg + market cap & circulating supply. */}
+      {(stats || supply != null) && (
+        <div className="grid grid-cols-3 gap-x-2 gap-y-3 border-t border-neutral-800 pt-3">
+          {stats && (
+            <Stat
+              label={hovered ? t("swapTab.barHigh") : t("swapTab.high")}
+              value={`$${fp(hovered ? hovered.high : stats.hi)}`}
+            />
+          )}
+          {stats && (
+            <Stat
+              label={hovered ? t("swapTab.barLow") : t("swapTab.low")}
+              value={`$${fp(hovered ? hovered.low : stats.lo)}`}
+            />
+          )}
+          {stats && (
+            <Stat
+              label={hovered ? t("swapTab.barClose") : t("swapTab.avg")}
+              value={`$${fp(hovered ? hovered.close : stats.avg)}`}
+            />
+          )}
+          <Stat
+            label={t("swapTab.mcap")}
+            value={marketCap != null ? `$${compact(marketCap)}` : "—"}
+          />
+          <Stat
+            label={t("swapTab.supply")}
+            value={supply != null ? compact(supply) : "—"}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -766,7 +945,17 @@ function ReviewCard({
       <div className="space-y-3">
         <Row label={t("swap.youSend")} value={`${fmtAmt(quote.amount_in, 8)} ${sendUnit}`} />
         <Row label={t("swap.youReceive")} value={`${fmtAmt(quote.amount_out, 8)} ${recvUnit}`} strong />
+        {/* Minimum received (locked): the HTLC locks the quoted amount_out, so
+            this is the exact amount that settles — no post-lock slippage. */}
+        <Row label={t("swap.minReceived")} value={`${fmtAmt(quote.amount_out, 8)} ${recvUnit}`} />
         {usd != null && <Row label={t("swap.usdValue")} value={`≈ ${usdNumber(usd)}`} />}
+        {/* Effective unit price of the EXFER leg in USD. */}
+        {exferUsd != null && (
+          <Row
+            label={t("swap.unitPrice")}
+            value={`${usdNumber(exferUsd)} / EXFER`}
+          />
+        )}
         <Row
           label={t("swap.rate")}
           value={`1 ${sendUnit} ≈ ${fmtAmt(String(rate), 8)} ${recvUnit}`}
@@ -909,303 +1098,6 @@ function ProgressCard({
           </button>
         )
       )}
-    </div>
-  );
-}
-
-/** In-wallet BNB account on BSC: address (QR + copy), live balance, withdraw.
- *  This is the "manage your BSC address" surface — funds the buy direction.
- *  `waiting` shows a "Waiting for your BNB…" spinner when leading the buy flow
- *  with a zero balance. */
-function BnbAccount({ lead, waiting = false }: { lead: boolean; waiting?: boolean }) {
-  const toast = useToast();
-  const { t } = useT();
-  const bnbUsd = useBnbUsd();
-  const [addr, setAddr] = useState<string | null>(null);
-  const [bnbWei, setBnbWei] = useState<string | null>(null);
-  const [open, setOpen] = useState(lead);
-  const [withdrawing, setWithdrawing] = useState(false);
-  const [to, setTo] = useState("");
-  const [amt, setAmt] = useState("");
-  const [wErr, setWErr] = useState<string | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const lastWei = useRef<bigint | null>(null);
-
-  // Human BNB balance + its ≈$ value (best-effort; hidden when BNB/USD absent).
-  const bnbHuman = (() => {
-    if (!bnbWei) return 0;
-    try {
-      return Number(BigInt(bnbWei)) / 1e18;
-    } catch {
-      return 0;
-    }
-  })();
-  const bnbUsdValue = bnbUsd != null && bnbHuman > 0 ? bnbHuman * bnbUsd : null;
-  const isZero = bnbWei != null && bnbHuman === 0;
-
-  const load = useCallback(async () => {
-    try {
-      const a = await rpc<{ address: string }>("bsc_get_address");
-      setAddr(a.address);
-      const b = await rpc<{ bnb_wei: string }>("bsc_get_balances");
-      setBnbWei(b.bnb_wei);
-      const now = BigInt(b.bnb_wei);
-      const prev = lastWei.current;
-      if (prev != null && now > prev) {
-        const delta = fmtUnits((now - prev).toString(), 18, 5);
-        toast.incoming(`+${delta} BNB`, t("swap.depositReceived"));
-      }
-      lastWei.current = now;
-    } catch {
-      /* engine off / no HD seed — section stays hidden */
-    }
-  }, [toast, t]);
-
-  // Poll the balance so a fresh deposit is never silent.
-  useEffect(() => {
-    load();
-    const id = window.setInterval(load, 5000);
-    return () => window.clearInterval(id);
-  }, [load]);
-
-  async function withdraw() {
-    setWErr(null);
-    if (!HEX40.test(to.trim())) {
-      setWErr(t("swap.errBscAddress"));
-      return;
-    }
-    if (!(Number(amt) > 0) && amt.trim().toLowerCase() !== "max") {
-      setWErr(t("swap.errEnterAmountMax"));
-      return;
-    }
-    setWithdrawing(true);
-    try {
-      const r = await rpc<{ txhash: string }>("bsc_send_bnb", {
-        to: to.trim(),
-        amount: amt.trim(),
-      });
-      toast.success(t("swap.toastBnbSentTitle"), t("swap.toastBnbSentBody", { tx: shortAddress(r.txhash, 10, 8) }));
-      setTo("");
-      setAmt("");
-      load();
-    } catch (e) {
-      setWErr(humanizeError(e));
-    } finally {
-      setWithdrawing(false);
-    }
-  }
-
-  // Nothing to show until walletd hands us a derived address.
-  if (!addr) return null;
-
-  return (
-    <section className="card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between px-5 py-3 text-left"
-      >
-        <div>
-          <div className="text-sm font-semibold text-neutral-100">{t("swap.bnbAccountTitle")}</div>
-          <div className="text-xs text-neutral-500">
-            {t("swap.bnbAccountSubtitle")}
-          </div>
-        </div>
-        <span className="text-right">
-          <span className="block font-mono text-sm tabular-nums text-neutral-200">
-            {fmtUnits(bnbWei ?? undefined, 18, 5)} BNB
-          </span>
-          {bnbUsdValue != null && (
-            <span className="block font-mono text-xs tabular-nums text-neutral-500">
-              ≈ {usdNumber(bnbUsdValue)}
-            </span>
-          )}
-        </span>
-      </button>
-
-      {open && (
-        <div className="space-y-5 border-t border-neutral-800 px-5 py-5">
-          <div className="flex flex-col items-center gap-3">
-            <MiniQr value={addr} size={160} />
-            <div className="flex w-full items-start gap-2">
-              <code className="addr flex-1 break-all rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-center text-xs">
-                {addr}
-              </code>
-              <CopyButton text={addr} className="btn-secondary" />
-            </div>
-            <p className="text-xs text-neutral-500">
-              {t("swap.depositHint")}
-            </p>
-            {waiting && isZero && (
-              <div className="flex items-center gap-2 text-xs text-neutral-400">
-                <Spinner size={13} /> {t("swap.waitingBnb")}
-              </div>
-            )}
-          </div>
-
-          {/* Withdraw */}
-          <div className="space-y-2 border-t border-neutral-800 pt-4">
-            <div className="flex items-baseline justify-between">
-              <div className="label mb-0">{t("swap.withdrawBnb")}</div>
-              <span className="font-mono text-xs tabular-nums text-neutral-500">
-                {fmtUnits(bnbWei ?? undefined, 18, 5)} BNB
-              </span>
-            </div>
-            <div className="grid grid-cols-[1.5fr_1fr] gap-2">
-              <input
-                className="input font-mono text-xs"
-                placeholder={t("swap.withdrawToPlaceholder")}
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                disabled={withdrawing}
-                autoComplete="off"
-              />
-              <div className="relative">
-                <input
-                  className="input pr-12"
-                  placeholder={t("swap.withdrawAmtPlaceholder")}
-                  value={amt}
-                  onChange={(e) => setAmt(e.target.value)}
-                  disabled={withdrawing}
-                  inputMode="decimal"
-                />
-                <button
-                  type="button"
-                  className="btn-ghost absolute right-1 top-1/2 -translate-y-1/2 text-xs"
-                  onClick={() => setAmt("max")}
-                  disabled={withdrawing}
-                >
-                  {t("swap.maxLabel")}
-                </button>
-              </div>
-            </div>
-            {/* Gas-reserve + irreversible-address warning. */}
-            <div className="banner-info text-xs">{t("swap.withdrawNote")}</div>
-            {wErr && <div className="banner-error">{wErr}</div>}
-            <button
-              type="button"
-              className="btn-secondary w-full"
-              disabled={withdrawing}
-              onClick={withdraw}
-            >
-              {withdrawing ? t("swap.sending") : t("swap.withdraw")}
-            </button>
-          </div>
-
-          {/* Export the BSC private key for MetaMask import. */}
-          <div className="border-t border-neutral-800 pt-4">
-            <button
-              type="button"
-              className="btn-ghost w-full text-neutral-400"
-              onClick={() => setExportOpen(true)}
-            >
-              {t("swap.exportBnbKey")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {exportOpen && <ExportBnbKeyModal onClose={() => setExportOpen(false)} />}
-    </section>
-  );
-}
-
-/* The BNB (BSC/EVM) private key — passphrase-gated — so the user can import
- * their BNB address into MetaMask-style wallets ("Import account → Private
- * key"). The key is derived at m/44'/60'/0'/0/0, the standard path, so the same
- * address appears in MetaMask. Shown once and never persisted. */
-function ExportBnbKeyModal({ onClose }: { onClose: () => void }) {
-  const { t } = useT();
-  const [pw, setPw] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [data, setData] = useState<{ address: string; key: string } | null>(null);
-
-  async function reveal(e: FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    if (pw.length < 4) {
-      setErr(t("swap.expEnterPw"));
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await revealEvmPrivateKey(pw);
-      setData({ address: res.address, key: res.private_key_hex });
-      setPw("");
-    } catch (e) {
-      setErr(humanizeError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-6 fade-in"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="card-padded w-full max-w-xl space-y-5">
-        <header>
-          <h2 className="text-xl font-semibold text-neutral-100">{t("swap.exportBnbKey")}</h2>
-          <p className="mt-1 text-sm text-neutral-400">{t("swap.expDesc")}</p>
-        </header>
-
-        {!data ? (
-          <form onSubmit={reveal} className="space-y-4">
-            <div className="banner-warn text-sm text-amber-200">{t("swap.expWarn")}</div>
-            <div>
-              <label className="label" htmlFor="export-bnb-pw">
-                {t("swap.walletPassword")}
-              </label>
-              <input
-                id="export-bnb-pw"
-                type="password"
-                className="input"
-                value={pw}
-                onChange={(e) => setPw(e.target.value)}
-                disabled={busy}
-                autoFocus
-                autoComplete="current-password"
-              />
-            </div>
-            {err && <div className="banner-error">{err}</div>}
-            <div className="flex justify-end gap-2">
-              <button type="button" className="btn-secondary" onClick={onClose} disabled={busy}>
-                {t("swap.back")}
-              </button>
-              <button type="submit" className="btn-danger" disabled={busy || pw === ""}>
-                {busy ? t("swap.confirming") : t("swap.expReveal")}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div className="space-y-4">
-            <div className="banner-error">{t("swap.expRevealed")}</div>
-            <div>
-              <div className="label">{t("swap.bnbAddressLabel")}</div>
-              <code className="addr block break-all rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs">
-                {data.address}
-              </code>
-            </div>
-            <div>
-              <div className="label">{t("swap.expPrivKey")}</div>
-              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 font-mono text-sm break-all text-red-200">
-                {data.key}
-              </div>
-            </div>
-            <div className="banner-info text-xs">{t("swap.expMetaMask")}</div>
-            <div className="flex justify-end gap-2">
-              <CopyButton text={data.key} className="btn-secondary" />
-              <button type="button" className="btn" onClick={onClose}>
-                {t("swap.done")}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

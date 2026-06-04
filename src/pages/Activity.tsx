@@ -12,6 +12,7 @@ import { CopyButton } from "../components/CopyButton";
 import { useT, type MsgKey } from "../lib/i18n";
 import { txExplorerUrl } from "../lib/format";
 import { getSwapUsd } from "../lib/swapPrice";
+import { swapStatusText } from "../lib/inflight";
 
 const EXPLORER = "https://explorer.exfer.dev";
 const txUrl = (h: string) => `${EXPLORER}/tx/${h}`;
@@ -114,7 +115,14 @@ function swapPill(status: string): { key: AnyKey; cls: string } {
   }
 }
 
-export function Activity() {
+export function Activity({
+  onResumeSwap,
+}: {
+  // Tapping an in-flight swap row routes to Swap with that swap as the resume
+  // target. (Activity only surfaces swaps in flight; LP ops resume from the
+  // Liquidity tab via its own nav badge / resume hand-off.)
+  onResumeSwap?: (swapId: string) => void;
+} = {}) {
   const { t } = useT();
   // Cast helper so the not-yet-in-dictionary act.* keys still interpolate.
   const tx = (key: AnyKey, vars?: Record<string, string | number>) =>
@@ -267,7 +275,7 @@ export function Activity() {
             {t("act.title")}
           </h1>
           <p className="text-base text-neutral-400">
-            {n === 1 ? tx("act.countOne", { n }) : tx("act.countMany", { n })}
+            {n === 1 ? tx("act.itemsOne", { n }) : tx("act.itemsMany", { n })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -303,7 +311,11 @@ export function Activity() {
           </h2>
           <div className="space-y-2">
             {inflight.map((s) => (
-              <InflightSwapCard key={s.swap_id} s={s} />
+              <InflightSwapCard
+                key={s.swap_id}
+                s={s}
+                onResume={onResumeSwap ? () => onResumeSwap(s.swap_id) : undefined}
+              />
             ))}
           </div>
         </section>
@@ -339,25 +351,41 @@ export function Activity() {
   );
 }
 
-/** Compact in-flight swap line — spinner + "X EXFER → Y BNB" + a status word. */
-function InflightSwapCard({ s }: { s: SwapRow }) {
+/** Compact in-flight swap line — spinner + "X EXFER → Y BNB" + a status word.
+ *  Clickable when an onResume handler is given: routes to Swap to resume this
+ *  swap. Status word uses the shared swapStatusText() vocabulary. */
+function InflightSwapCard({ s, onResume }: { s: SwapRow; onResume?: () => void }) {
   const { t } = useT();
-  const tx = (key: AnyKey, vars?: Record<string, string | number>) =>
-    t(key as MsgKey, vars);
   const sell = s.direction === "exfer_to_bnb";
   const inUnit = sell ? "EXFER" : "BNB";
   const outUnit = sell ? "BNB" : "EXFER";
-  return (
-    <div className="card flex items-center gap-3 px-5 py-3">
+
+  const inner = (
+    <>
       <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-neutral-600 border-t-cyan-400" />
       <div className="flex-1 text-sm text-neutral-200">
         <span className="amount">{fmtAmt(s.amount_in)}</span> {inUnit}
         {" → "}
         <span className="amount">{fmtAmt(s.amount_out)}</span> {outUnit}
       </div>
-      <span className="text-xs text-neutral-400">{tx("act.swapStatusLine", { status: s.status })}</span>
-    </div>
+      <span className="text-xs text-neutral-400">{swapStatusText(t, s.status)}</span>
+    </>
   );
+
+  if (onResume) {
+    return (
+      <button
+        type="button"
+        onClick={onResume}
+        title={t("act.swapResume")}
+        className="card flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-neutral-800/40"
+      >
+        {inner}
+        <span className="text-xs text-neutral-500">›</span>
+      </button>
+    );
+  }
+  return <div className="card flex items-center gap-3 px-5 py-3">{inner}</div>;
 }
 
 /** A settled swap as one record: direction + amounts + status pill, expandable

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import logoUrl from "../assets/logo.png";
 import { useT } from "../lib/i18n";
+import { useInflight } from "../lib/inflight";
 
 export type Tab =
   | "dashboard"
@@ -103,6 +104,14 @@ const TABS: { id: Tab }[] = [
 
 export function Layout({ activeTab, onTabChange, children }: Props) {
   const { t: tr } = useT();
+  // Per-tab in-flight counts: swaps live on the Swap tab, LP add/remove ops on
+  // the Liquidity tab. Engine off / no pool URL just yields zero (never throws).
+  const inflight = useInflight();
+  const badgeFor = (id: Tab): number => {
+    if (id === "swap") return inflight.swaps.length;
+    if (id === "liquidity") return inflight.lpOps.length;
+    return 0;
+  };
   return (
     <div className="flex h-full flex-col">
       <header className="border-b border-neutral-800 bg-black">
@@ -117,6 +126,7 @@ export function Layout({ activeTab, onTabChange, children }: Props) {
           <nav className="flex items-center gap-1">
             {TABS.map((t) => {
               const active = t.id === activeTab;
+              const badge = badgeFor(t.id);
               return (
                 <button
                   key={t.id}
@@ -130,6 +140,14 @@ export function Layout({ activeTab, onTabChange, children }: Props) {
                 >
                   <Icon name={t.id} />
                   {tr(`nav.${t.id}`)}
+                  {badge > 0 && (
+                    <span
+                      className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[10px] font-semibold leading-none text-black"
+                      title={tr("nav.inflight", { n: badge })}
+                    >
+                      {badge}
+                    </span>
+                  )}
                 </button>
               );
             })}

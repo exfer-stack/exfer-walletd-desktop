@@ -21,6 +21,7 @@ import { Liquidity } from "./pages/Liquidity";
 import { Activity } from "./pages/Activity";
 import { Settings } from "./pages/Settings";
 import { SwapWatcher } from "./components/SwapWatcher";
+import { InflightProvider, useResumeTarget } from "./lib/inflight";
 
 function App() {
   // Language lives at the very root so I18nProvider wraps everything —
@@ -99,30 +100,73 @@ function AppInner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void })
   }
 
   // Ready — mount the wallet data layer (shared balance + polling +
-  // incoming-deposit detection) around the tabbed UI.
+  // incoming-deposit detection) around the tabbed UI. InflightProvider shares
+  // the transient "resume target" hand-off so an in-flight row can route to the
+  // right tab and reopen that swap / LP deposit.
   return (
     <WalletProvider>
-      {/* Announces swap completions (toast + OS notification) even when the
-          Swap tab isn't open. No-op when the swap engine is disabled. */}
-      <SwapWatcher />
-      <Layout activeTab={tab} onTabChange={setTab}>
-        {tab === "dashboard" && <Dashboard />}
-        {tab === "receive" && <Receive />}
-        {tab === "send" && <Send />}
-        {tab === "swap" && <Swap />}
-        {tab === "liquidity" && <Liquidity />}
-        {tab === "activity" && <Activity />}
-        {tab === "settings" && (
-          <Settings
-            onRestart={(s) => setStatus(s)}
-            fingerprint={status.fingerprint}
-            localAddr={status.local_addr}
-            lang={lang}
-            setLang={setLang}
-          />
-        )}
-      </Layout>
+      <InflightProvider>
+        {/* Announces swap completions (toast + OS notification) even when the
+            Swap tab isn't open. No-op when the swap engine is disabled. */}
+        <SwapWatcher />
+        <Ready
+          tab={tab}
+          setTab={setTab}
+          status={status}
+          setStatus={setStatus}
+          lang={lang}
+          setLang={setLang}
+        />
+      </InflightProvider>
     </WalletProvider>
+  );
+}
+
+/** The ready, tabbed UI. Split out so it can call useResumeTarget() — the nav
+ *  hand-off setter — which only works inside InflightProvider. */
+function Ready({
+  tab,
+  setTab,
+  status,
+  setStatus,
+  lang,
+  setLang,
+}: {
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  status: Extract<BootstrapStatus, { status: "ready" }>;
+  setStatus: (s: BootstrapStatus) => void;
+  lang: Lang;
+  setLang: (l: Lang) => void;
+}) {
+  const { setResumeTarget } = useResumeTarget();
+
+  // Route to a tab while priming its resume target — an in-flight swap row jumps
+  // straight to Swap and resumes that swap. (LP deposits resume from within the
+  // Liquidity tab, which reads resumeLpAddId off the same hand-off.)
+  const resumeSwap = (swapId: string) => {
+    setResumeTarget({ resumeSwapId: swapId });
+    setTab("swap");
+  };
+
+  return (
+    <Layout activeTab={tab} onTabChange={setTab}>
+      {tab === "dashboard" && <Dashboard />}
+      {tab === "receive" && <Receive />}
+      {tab === "send" && <Send />}
+      {tab === "swap" && <Swap />}
+      {tab === "liquidity" && <Liquidity />}
+      {tab === "activity" && <Activity onResumeSwap={resumeSwap} />}
+      {tab === "settings" && (
+        <Settings
+          onRestart={(s) => setStatus(s)}
+          fingerprint={status.fingerprint}
+          localAddr={status.local_addr}
+          lang={lang}
+          setLang={setLang}
+        />
+      )}
+    </Layout>
   );
 }
 

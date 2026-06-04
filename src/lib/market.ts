@@ -77,6 +77,67 @@ export function usePrice(): MarketPrice | null {
   return price;
 }
 
+// ── candlesticks (price history) ─────────────────────────────────────────
+export interface Candle {
+  time: number; // unix seconds (UTC)
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+type RawCandle = { t: string; o: number | string; h: number | string; l: number | string; c: number | string };
+function mapCandles(items: RawCandle[]): Candle[] {
+  return items
+    .map((it) => ({
+      time: Math.floor(new Date(it.t).getTime() / 1000),
+      open: Number(it.o), high: Number(it.h), low: Number(it.l), close: Number(it.c),
+    }))
+    .filter((c) => isFinite(c.time) && isFinite(c.open) && isFinite(c.close))
+    .sort((a, b) => a.time - b.time);
+}
+
+/** OHLC candles for the chart, from THIS pool's own price history
+ *  (swap_price_klines: seeded once from OTC server-side, then grown from the
+ *  pool's mid). Empty array on failure — the chart shows its empty state. */
+export async function getKlines(interval = "1d", limit = 120): Promise<Candle[]> {
+  try {
+    const res = await rpc<{ items?: RawCandle[] }>("swap_price_klines", { interval, limit });
+    if (Array.isArray(res?.items)) return mapCandles(res.items);
+  } catch { /* fall through to empty */ }
+  return [];
+}
+
+// ── circulating supply ───────────────────────────────────────────────────
+// The node exposes no supply RPC, so we reproduce the emission curve from the
+// consensus constants: per block h the reward is
+//   R(h) = 1 EXFER + 99 EXFER · 2^(-h / HALF_LIFE)
+// (a perpetual 1-EXFER tail plus a ~2-year-half-life decaying bonus). Total
+// minted through height H is the running sum, which has a closed form:
+//   supply(H) = (H+1) + 99 · (1 - r^(H+1))/(1 - r),  r = 2^(-1/HALF_LIFE)
+// accurate to far better than display precision.
+
+const HALF_LIFE = 6_307_200; // blocks (~2 years at 10s) — matches the node
+
+/** Total EXFER emitted through `height` (whole EXFER). */
+export function circulatingSupplyExfer(height: number): number {
+  if (!isFinite(height) || height < 0) return 0;
+  const n = height + 1;
+  const r = Math.pow(2, -1 / HALF_LIFE);
+  const decaySum = (1 - Math.pow(r, n)) / (1 - r);
+  return n + 99 * decaySum;
+}
+
+/** Current EXFER tip height via walletd (null on failure). */
+export async function getBlockHeight(): Promise<number | null> {
+  try {
+    const r = await rpc<{ height?: number }>("get_block_height");
+    return typeof r?.height === "number" ? r.height : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── BNB/USD spot ─────────────────────────────────────────────────────────
 const BNB_CACHE_KEY = "exfer-walletd-desktop-bnbusd-cache-v1";
 

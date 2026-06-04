@@ -32,6 +32,8 @@ import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
 import { usePrice, useBnbUsd, usdNumber } from "../lib/market";
+import { addLpOp, removeLpOp } from "../lib/inflightLp";
+import { useResumeTarget } from "../lib/inflight";
 
 const FEE_RATE = 1; // exfers/byte, matches Send
 // The BNB leg is swept from a per-request address that pays its own BSC gas, so
@@ -72,6 +74,10 @@ export function Liquidity() {
   const { t } = useT();
   const price = usePrice();
   const bnbUsd = useBnbUsd();
+  // Resume hand-off: an in-flight LP-add row elsewhere can route here with the
+  // deposit id to re-poll. Read once on mount, then clear so a tab re-entry
+  // doesn't re-trigger it.
+  const { resumeLpAddId, clearResumeTarget } = useResumeTarget();
 
   // Reserve the per-IP scan-rate budget while the LP screen polls, like Swap/Send.
   useEffect(() => suspendPolling(), [suspendPolling]);
@@ -171,6 +177,44 @@ export function Liquidity() {
       .catch(() => {});
   }, [step]);
 
+  // Resume an in-progress add: routed here from an in-flight LP row, reopen
+  // straight onto THIS deposit's progress and poll it to completion (mirrors
+  // mobile's LiquiditySheet). One-shot — clear the hand-off so re-entering the
+  // tab doesn't replay it.
+  useEffect(() => {
+    if (!resumeLpAddId) return;
+    const id = resumeLpAddId;
+    clearResumeTarget();
+    let cancelled = false;
+    setStep("progress");
+    setStage(1);
+    (async () => {
+      try {
+        const status = await pollDeposit(id);
+        if (cancelled) return;
+        removeLpOp(id);
+        await load();
+        await refresh();
+        if (status === "completed") {
+          const pp = await rpc<Position>("lp_position", { address: exferAddr.toLowerCase() }).catch(() => null);
+          setResult({ kind: "added", exfer: pp?.value_exfer, bnb: pp?.value_bnb });
+        } else {
+          setResult({ kind: "refunded" });
+        }
+        setStep("done");
+      } catch (e) {
+        if (cancelled) return;
+        setErr(humanizeError(e));
+        setResult({ kind: "failed" });
+        setStep("done");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeLpAddId]);
+
   // Guard the EXFER reserve: a transient 0 reserve makes bnb/0 = Infinity, which
   // poisons every downstream number into NaN. Treat it as "unknown ratio" and
   // fall back to the OTC spot price for USD figures.
@@ -229,6 +273,10 @@ export function Liquidity() {
         "lp_deposit_start",
         { exfer_address: exferAddr, bsc_address: bscAddr },
       );
+      // Track it so the Liquidity nav badge + global in-flight surface show it —
+      // and so it survives the user leaving this page (the deposit finishes in
+      // the background). Cleared the moment the deposit goes terminal below.
+      addLpOp({ id: intent.id, kind: "add", exfer: amount, bnb: sig(bnbNeeded, 4), startedAt: Date.now() });
       await rpc("transfer", {
         from: exferAddr,
         outputs: [{ to: intent.deposit_exfer_address, amount: parseExferAmount(amount) }],
@@ -237,6 +285,7 @@ export function Liquidity() {
       await rpc("bsc_send_bnb", { to: intent.deposit_bsc_address, amount: sig(bnbNeeded, 8) });
       setStage(1);
       const status = await pollDeposit(intent.id);
+      removeLpOp(intent.id);
       await load();
       await refresh();
       if (status === "completed") {
@@ -269,7 +318,16 @@ export function Liquidity() {
     setBusy(true);
     setErr(null);
     try {
-      await rpc<{ withdrawal_id?: string }>("lp_withdraw_self", { exfer_address: exferAddr, shares });
+      const w = await rpc<{ withdrawal_id?: string }>("lp_withdraw_self", { exfer_address: exferAddr, shares });
+      // Surface it in the in-flight set while the pool pays both legs (a few
+      // seconds). No per-id status endpoint for removes — it falls off by TTL.
+      addLpOp({
+        id: w?.withdrawal_id || `wd-${Date.now()}`,
+        kind: "remove",
+        exfer: owed.exfer,
+        bnb: sig(Number(owed.bnb), 4),
+        startedAt: Date.now(),
+      });
       await load();
       await refresh();
       setResult({ kind: "removed", exfer: owed.exfer, bnb: owed.bnb });
@@ -573,7 +631,7 @@ export function Liquidity() {
                         : "border-neutral-700 bg-neutral-950 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200")
                     }
                   >
-                    {p === 100 ? t("lp.all") : `${p}%`}
+                    {`${p}%`}
                   </button>
                 );
               })}
