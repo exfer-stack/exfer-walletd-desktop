@@ -114,16 +114,25 @@ pub fn pinned_client(fingerprint: &str) -> Result<reqwest::Client, AppError> {
 fn scope_for_method(method: &str) -> Scope {
     match method {
         "transfer" | "send_raw_transaction" | "sign_message"
-        | "reveal_mnemonic" | "reveal_private_key"
+        | "reveal_mnemonic" | "reveal_private_key" | "reveal_evm_private_key"
         // walletd v1.9.x keyring lifecycle: per-address recovery phrase,
         // key-material exports, and deletion all move/expose secrets.
         | "reveal_address_mnemonic" | "export_vault" | "export_address"
-        | "import_vault" | "delete_address" => Scope::Spend,
+        | "import_vault" | "delete_address"
+        // HTLC lifecycle moves funds — Spend.
+        | "htlc_lock" | "htlc_claim" | "htlc_reclaim"
+        // Cross-chain swap: quoting reserves a preimage, execute/refund move
+        // funds across both legs; bsc_send_bnb withdraws BNB — all Spend.
+        // Missing here means the read token is sent and walletd rejects with
+        // -32001 (authentication required) before doing anything.
+        | "swap_get_quote" | "swap_execute" | "swap_refund"
+        | "bsc_send_bnb" => Scope::Spend,
         // import_private_key/import_mnemonic add a key (Manage, like
-        // generate_*). import_private_key was previously missing here and
-        // fell through to Read, which walletd rejects with -32001.
+        // generate_*). import_standard_mnemonic is the standard-scheme import
+        // the desktop uses (import_mnemonic_scheme) — it must be Manage too.
         "generate_address" | "generate_independent_address" | "generate_standard_address"
-        | "import_private_key" | "import_mnemonic" | "abandon_transfer" => Scope::Manage,
+        | "import_private_key" | "import_mnemonic" | "import_standard_mnemonic"
+        | "abandon_transfer" => Scope::Manage,
         _ => Scope::Read,
     }
 }

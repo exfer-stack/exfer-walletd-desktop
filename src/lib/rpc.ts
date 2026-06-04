@@ -105,6 +105,31 @@ export function setIndexerConfig(rpc: string): Promise<BootstrapStatus> {
   return invoke<BootstrapStatus>("set_indexer_config", { rpc });
 }
 
+export interface SwapConfig {
+  /** Swap pool URL; empty string ⇒ swap engine OFF. */
+  pool_url: string;
+  /** BSC JSON-RPC URL; empty ⇒ walletd's mainnet dataseed default. */
+  bsc_rpc_url: string;
+  /** BSC chain id; 0 ⇒ walletd default (56, mainnet). 97 = Chapel testnet. */
+  bsc_chain_id: number;
+}
+
+export function getSwapConfig(): Promise<SwapConfig> {
+  if (devmock.isActive())
+    return Promise.resolve({ pool_url: "", bsc_rpc_url: "", bsc_chain_id: 0 });
+  return invoke<SwapConfig>("get_swap_config");
+}
+
+export function setSwapConfig(cfg: SwapConfig): Promise<BootstrapStatus> {
+  if (devmock.isActive())
+    return invoke<BootstrapStatus>("bootstrap_status"); // dev: no-op
+  return invoke<BootstrapStatus>("set_swap_config", {
+    poolUrl: cfg.pool_url,
+    bscRpcUrl: cfg.bsc_rpc_url,
+    bscChainId: cfg.bsc_chain_id,
+  });
+}
+
 export function resetWallet(): Promise<BootstrapStatus> {
   if (devmock.isActive()) return devmock.reset_wallet();
   return invoke<BootstrapStatus>("reset_wallet");

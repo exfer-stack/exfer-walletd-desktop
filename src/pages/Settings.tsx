@@ -5,6 +5,8 @@ import {
   setNodeRpc,
   getIndexerConfig,
   setIndexerConfig,
+  getSwapConfig,
+  setSwapConfig,
   formatExfer,
   resetWallet,
 } from "../lib/rpc";
@@ -49,6 +51,17 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
   const [indexerError, setIndexerError] = useState<string | null>(null);
   const [indexerInfo, setIndexerInfo] = useState<string | null>(null);
 
+  // Swap engine config. Empty pool URL = swap OFF (the default). The current
+  // public pool is on BSC testnet, so enabling it also wants a testnet RPC +
+  // chain id 97. `swapCur*` track the saved values for the Save/Revert gates.
+  const [swapPool, setSwapPool] = useState("");
+  const [swapBscRpc, setSwapBscRpc] = useState("");
+  const [swapChain, setSwapChain] = useState("");
+  const [swapCur, setSwapCur] = useState({ pool: "", rpc: "", chain: "" });
+  const [savingSwap, setSavingSwap] = useState(false);
+  const [swapError, setSwapError] = useState<string | null>(null);
+  const [swapInfo, setSwapInfo] = useState<string | null>(null);
+
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState<StatusInfo | null>(null);
 
@@ -77,8 +90,47 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
       setIndexerUrl(c.rpc);
       setIndexerCurUrl(c.rpc);
     }, () => {});
+    getSwapConfig().then((c) => {
+      const chain = c.bsc_chain_id ? String(c.bsc_chain_id) : "";
+      setSwapPool(c.pool_url);
+      setSwapBscRpc(c.bsc_rpc_url);
+      setSwapChain(chain);
+      setSwapCur({ pool: c.pool_url, rpc: c.bsc_rpc_url, chain });
+    }, () => {});
     rpc<StatusInfo>("get_status").then(setStatus, () => {});
   }, []);
+
+  async function saveSwap(e: FormEvent) {
+    e.preventDefault();
+    setSwapError(null);
+    setSwapInfo(null);
+    const chainNum = swapChain.trim() === "" ? 0 : Number(swapChain.trim());
+    if (!Number.isInteger(chainNum) || chainNum < 0) {
+      setSwapError("Chain id must be a whole number (e.g. 56 mainnet, 97 testnet).");
+      return;
+    }
+    setSavingSwap(true);
+    try {
+      const s = await setSwapConfig({
+        pool_url: swapPool,
+        bsc_rpc_url: swapBscRpc,
+        bsc_chain_id: chainNum,
+      });
+      setSwapCur({ pool: swapPool.trim(), rpc: swapBscRpc.trim(), chain: swapChain.trim() });
+      setSwapInfo(
+        swapPool.trim()
+          ? "Saved — swap enabled, walletd reconnected."
+          : "Saved — swap disabled.",
+      );
+      toast.success("Swap config updated", "walletd reconnected.");
+      onRestart(s);
+    } catch (err) {
+      setSwapError(String(err));
+      toast.error("Couldn't update swap config", String(err));
+    } finally {
+      setSavingSwap(false);
+    }
+  }
 
   async function saveIndexer(e: FormEvent) {
     e.preventDefault();
@@ -314,6 +366,88 @@ export function Settings({ onRestart, fingerprint, localAddr }: Props) {
               className="btn-secondary"
               onClick={() => setIndexerUrl(indexerCurUrl)}
               disabled={savingIndexer}
+            >
+              Revert
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* Swap */}
+      <section className="card-padded space-y-4">
+        <header>
+          <h2 className="text-lg font-semibold text-neutral-100">Swap</h2>
+          <p className="text-sm text-neutral-400">
+            Cross-chain EXFER ↔ BNB swaps run through a swap pool. Leave the pool
+            URL blank to keep swap off. The current public pool is on BSC
+            <span className="text-neutral-300"> testnet (Chapel)</span> — to use
+            it, set the BSC RPC to a testnet endpoint and chain id to 97.
+          </p>
+        </header>
+        <form onSubmit={saveSwap} className="space-y-3">
+          <div>
+            <label className="label">Pool URL</label>
+            <input
+              className="input font-mono text-sm"
+              value={swapPool}
+              onChange={(e) => setSwapPool(e.target.value)}
+              disabled={savingSwap}
+              placeholder="blank = swap off · e.g. http://64.176.231.198:8080"
+            />
+          </div>
+          <div className="grid grid-cols-[1.6fr_1fr] gap-3">
+            <div>
+              <label className="label">BSC RPC URL</label>
+              <input
+                className="input font-mono text-sm"
+                value={swapBscRpc}
+                onChange={(e) => setSwapBscRpc(e.target.value)}
+                disabled={savingSwap}
+                placeholder="blank = mainnet default"
+              />
+            </div>
+            <div>
+              <label className="label">BSC chain id</label>
+              <input
+                className="input font-mono text-sm"
+                value={swapChain}
+                onChange={(e) => setSwapChain(e.target.value)}
+                disabled={savingSwap}
+                inputMode="numeric"
+                placeholder="56 / 97"
+              />
+            </div>
+          </div>
+          <p className="help">
+            Swap is currently{" "}
+            <code className="addr-xs">
+              {swapCur.pool ? `ON — ${swapCur.pool}` : "OFF"}
+            </code>
+          </p>
+          {swapError && <div className="banner-error">{swapError}</div>}
+          {swapInfo && <div className="banner-success">{swapInfo}</div>}
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="btn"
+              disabled={
+                savingSwap ||
+                (swapPool.trim() === swapCur.pool.trim() &&
+                  swapBscRpc.trim() === swapCur.rpc.trim() &&
+                  swapChain.trim() === swapCur.chain.trim())
+              }
+            >
+              {savingSwap ? "Restarting walletd…" : "Save & reconnect"}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setSwapPool(swapCur.pool);
+                setSwapBscRpc(swapCur.rpc);
+                setSwapChain(swapCur.chain);
+              }}
+              disabled={savingSwap}
             >
               Revert
             </button>

@@ -5,6 +5,7 @@ export type Tab =
   | "dashboard"
   | "receive"
   | "send"
+  | "swap"
   | "activity"
   | "settings";
 
@@ -47,6 +48,16 @@ function Icon({ name }: { name: Tab }) {
           <path d="m5 12 7-7 7 7" />
         </svg>
       );
+    case "swap":
+      // Two arrows crossing — the universal "exchange / swap" glyph.
+      return (
+        <svg {...common}>
+          <path d="M7 4v13" />
+          <path d="m3.5 7.5 3.5-3.5 3.5 3.5" />
+          <path d="M17 20V7" />
+          <path d="m20.5 16.5-3.5 3.5-3.5-3.5" />
+        </svg>
+      );
     case "activity":
       return (
         <svg {...common}>
@@ -73,6 +84,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "receive", label: "Receive" },
   { id: "send", label: "Send" },
+  { id: "swap", label: "Swap" },
   { id: "activity", label: "Activity" },
   { id: "settings", label: "Settings" },
 ];

@@ -385,6 +385,46 @@ async fn set_indexer_config(
     restart(&ctx).await.map_err(|e| e.to_user_string())
 }
 
+/// Cross-chain swap engine config. An empty `pool_url` means swap is OFF
+/// (the default). `bsc_rpc_url` empty ⇒ walletd's mainnet dataseed default;
+/// `bsc_chain_id` 0/absent ⇒ 56 (mainnet). The current public pool runs on
+/// BSC testnet, so enabling it means pool_url + bsc_rpc_url(testnet) + chain 97.
+#[derive(serde::Serialize)]
+struct SwapConfig {
+    pool_url: String,
+    bsc_rpc_url: String,
+    bsc_chain_id: u64,
+}
+
+#[tauri::command]
+async fn get_swap_config(ctx: State<'_, AppCtx>) -> Result<SwapConfig, String> {
+    let datadir = ctx.inner.lock().await.datadir.clone();
+    let cfg = read_desktop_config(&datadir);
+    Ok(SwapConfig {
+        pool_url: cfg.swap_pool_url.unwrap_or_default(),
+        bsc_rpc_url: cfg.bsc_rpc_url.unwrap_or_default(),
+        bsc_chain_id: cfg.bsc_chain_id.unwrap_or(0),
+    })
+}
+
+#[tauri::command]
+async fn set_swap_config(
+    ctx: State<'_, AppCtx>,
+    pool_url: String,
+    bsc_rpc_url: String,
+    bsc_chain_id: u64,
+) -> Result<BootstrapStatus, String> {
+    let datadir = ctx.inner.lock().await.datadir.clone();
+    let mut cfg = read_desktop_config(&datadir);
+    let pool = pool_url.trim().to_string();
+    let rpc = bsc_rpc_url.trim().to_string();
+    cfg.swap_pool_url = if pool.is_empty() { None } else { Some(pool) };
+    cfg.bsc_rpc_url = if rpc.is_empty() { None } else { Some(rpc) };
+    cfg.bsc_chain_id = if bsc_chain_id == 0 { None } else { Some(bsc_chain_id) };
+    write_desktop_config(&datadir, &cfg).map_err(|e| format!("persisting config: {e}"))?;
+    restart(&ctx).await.map_err(|e| e.to_user_string())
+}
+
 /// Wipe everything on this device: stop the embedded walletd, delete the
 /// entire app-data directory (sealed seed, tokens, TLS cert, desktop
 /// config), and clear the keychain passphrase. Returns the app to the
@@ -472,6 +512,8 @@ pub fn run() {
             set_node_rpc,
             get_indexer_config,
             set_indexer_config,
+            get_swap_config,
+            set_swap_config,
             reset_wallet,
             export_wallet_key,
             import_wallet_key,

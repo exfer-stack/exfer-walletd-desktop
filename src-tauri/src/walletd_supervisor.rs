@@ -39,6 +39,11 @@ pub const DEFAULT_NODE_RPC: &str = "http://198.13.38.245:9334";
 // powers the Activity feed and the From/To on each transfer. The indexer is
 // read-only and serves only public chain data, so no bearer token is needed.
 pub const DEFAULT_INDEXER_RPC: &str = "http://198.13.38.245:9335";
+// Cross-chain swap (exfer-swap pool + walletd's swap engine) ships OFF — same
+// posture as the mobile wallet — because the engine, the pool, and the BSC
+// chain must agree (the current public pool is on BSC testnet, not mainnet).
+// Users opt in by setting a pool URL in Settings, which lights up the
+// swap_*/bsc_* RPC. The suggested pool URL lives in the Settings placeholder.
 pub const DESKTOP_CONFIG_FILE: &str = "desktop-config.json";
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,6 +70,22 @@ pub struct DesktopConfig {
     /// `serde(default)` so pre-existing configs (node_rpc only) still parse.
     #[serde(default)]
     pub indexer_rpc: Option<String>,
+    /// Cross-chain swap pool URL. `None`/empty ⇒ [`DEFAULT_SWAP_POOL_URL`].
+    /// Set to an empty string to disable the swap engine entirely (the Swap
+    /// tab then degrades to hidden — `swap_*`/`bsc_*` return -32602).
+    #[serde(default)]
+    pub swap_pool_url: Option<String>,
+    /// BSC JSON-RPC endpoint for the in-wallet BNB account. Empty ⇒ mainnet
+    /// dataseed. Pair with a testnet `swap_pool_url`/`bsc_chain_id` for Chapel.
+    #[serde(default)]
+    pub bsc_rpc_url: Option<String>,
+    /// BSC chain id. `None` ⇒ 56 (mainnet); 97 = Chapel testnet.
+    #[serde(default)]
+    pub bsc_chain_id: Option<u64>,
+    /// BSC USDT (BEP-20) contract used for the buy-side pre-flight balance.
+    /// `None` ⇒ mainnet USDT.
+    #[serde(default)]
+    pub bsc_usdt_address: Option<String>,
 }
 
 impl Default for DesktopConfig {
@@ -72,6 +93,10 @@ impl Default for DesktopConfig {
         Self {
             node_rpc: DEFAULT_NODE_RPC.to_string(),
             indexer_rpc: None,
+            swap_pool_url: None,
+            bsc_rpc_url: None,
+            bsc_chain_id: None,
+            bsc_usdt_address: None,
         }
     }
 }
@@ -83,6 +108,18 @@ impl DesktopConfig {
             Some(s) if !s.trim().is_empty() => s.trim().to_string(),
             _ => DEFAULT_INDEXER_RPC.to_string(),
         }
+    }
+
+    /// Effective swap-pool URL passed to walletd's swap engine, or `None` to
+    /// leave the engine off. Unset or empty ⇒ off (swap ships off, opt-in via
+    /// Settings); a non-empty configured URL turns it on. Mirrors the mobile
+    /// wallet's default-off posture.
+    pub fn effective_swap_pool_url(&self) -> Option<String> {
+        self.swap_pool_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
     }
 }
 
@@ -178,6 +215,21 @@ fn build_walletd_config(datadir: &std::path::Path, desktop_cfg: &DesktopConfig) 
         // The indexer is anonymous (public read-only chain data); no token.
         indexer_token: None,
         indexer_timeout_secs: Some(15),
+        // Cross-chain swap engine. Off unless a pool URL is configured (opt-in
+        // via Settings). bsc_* default to BSC mainnet; set bsc_chain_id=97 + a
+        // testnet RPC in Settings to swap against the Chapel test pool.
+        swap_pool_url: desktop_cfg.effective_swap_pool_url(),
+        bsc_rpc_url: desktop_cfg
+            .bsc_rpc_url
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "https://bsc-dataseed1.binance.org".to_string()),
+        bsc_chain_id: desktop_cfg.bsc_chain_id.unwrap_or(56),
+        bsc_usdt_address: desktop_cfg
+            .bsc_usdt_address
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "0x55d398326f99059fF775485246999027B3197955".to_string()),
     }
 }
 

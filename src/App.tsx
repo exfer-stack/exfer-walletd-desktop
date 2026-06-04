@@ -9,8 +9,10 @@ import { Layout, type Tab } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
 import { Receive } from "./pages/Receive";
 import { Send } from "./pages/Send";
+import { Swap } from "./pages/Swap";
 import { Activity } from "./pages/Activity";
 import { Settings } from "./pages/Settings";
+import { SwapWatcher } from "./components/SwapWatcher";
 
 function App() {
   return (
@@ -84,10 +86,14 @@ function AppInner() {
   // incoming-deposit detection) around the tabbed UI.
   return (
     <WalletProvider>
+      {/* Announces swap completions (toast + OS notification) even when the
+          Swap tab isn't open. No-op when the swap engine is disabled. */}
+      <SwapWatcher />
       <Layout activeTab={tab} onTabChange={setTab}>
         {tab === "dashboard" && <Dashboard />}
         {tab === "receive" && <Receive />}
         {tab === "send" && <Send />}
+        {tab === "swap" && <Swap />}
         {tab === "activity" && <Activity />}
         {tab === "settings" && (
           <Settings

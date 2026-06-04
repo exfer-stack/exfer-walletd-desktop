@@ -57,3 +57,62 @@ export interface TransferReceipt {
   outputs: { to: string; amount: number; is_change: boolean }[];
   built_at_height: number;
 }
+
+// ── Cross-chain swap (EXFER ↔ BNB on BSC) ───────────────────────────────
+// Thin UI over walletd's swap engine. The daemon owns the preimage and both
+// HTLC legs; the frontend just drives swap_get_quote → swap_execute → poll
+// swap_status. These mirror walletd's SwapRecord (serde snake_case) — see
+// exfer-walletd src/swap.rs / src/api/swap.rs. The swap_*/bsc_* RPCs only
+// answer when walletd was started with a swap pool URL (DEFAULT_SWAP_POOL_URL
+// in walletd_supervisor.rs); otherwise they return -32602 and the Swap UI
+// degrades to hidden.
+
+export type SwapDirection = "exfer_to_bnb" | "bnb_to_exfer";
+
+export type SwapStatus =
+  | "quoted"
+  | "user_locked"
+  | "pool_locked"
+  | "claiming"
+  | "completed"
+  | "refunding"
+  | "refunded"
+  | "failed";
+
+/** Subset of walletd's SwapRecord the UI reads (quote / execute / status). */
+export interface SwapRec {
+  swap_id: string;
+  direction: SwapDirection;
+  status: SwapStatus;
+  amount_in: string;
+  amount_out: string;
+  fee_bps?: number;
+  our_bsc_address?: string | null;
+  error?: string | null;
+}
+
+/** Lighter row returned by swap_list — used by the SwapWatcher. */
+export interface SwapLite {
+  swap_id: string;
+  direction: SwapDirection;
+  status: string;
+  amount_out: string;
+}
+
+/** Raw wire shape of swap_pool_info (reserves may be string|number|null). */
+export interface PoolInfoRaw {
+  mid_price_bnb_per_exfer: number;
+  fee_bps: number;
+  exfer_reserve: number | string | null;
+  bnb_reserve: number | string | null;
+  max_swap_bps: number | null;
+}
+
+/** Normalized pool info the UI works with. */
+export interface PoolInfo {
+  mid: number;
+  feeBps: number;
+  exferReserve: number;
+  bnbReserve: number;
+  maxSwapBps: number;
+}

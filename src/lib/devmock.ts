@@ -111,11 +111,22 @@ function scopeFor(method: string): "read" | "manage" | "spend" {
     method === "sign_message" ||
     method === "reveal_mnemonic" ||
     method === "reveal_private_key" ||
+    method === "reveal_evm_private_key" ||
     method === "reveal_address_mnemonic" ||
     method === "export_vault" ||
     method === "export_address" ||
     method === "import_vault" ||
-    method === "delete_address"
+    method === "delete_address" ||
+    // HTLC lifecycle moves funds — Spend.
+    method === "htlc_lock" ||
+    method === "htlc_claim" ||
+    method === "htlc_reclaim" ||
+    // Cross-chain swap: quote reserves a preimage, execute/refund move funds,
+    // bsc_send_bnb withdraws BNB — all Spend, else walletd 401s with -32001.
+    method === "swap_get_quote" ||
+    method === "swap_execute" ||
+    method === "swap_refund" ||
+    method === "bsc_send_bnb"
   )
     return "spend";
   if (
@@ -124,6 +135,7 @@ function scopeFor(method: string): "read" | "manage" | "spend" {
     method === "generate_standard_address" ||
     method === "import_private_key" ||
     method === "import_mnemonic" ||
+    method === "import_standard_mnemonic" ||
     method === "abandon_transfer"
   )
     return "manage";
