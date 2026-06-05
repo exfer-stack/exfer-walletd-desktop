@@ -3,6 +3,7 @@ import {
   rpc,
   parseExferAmount,
   formatExfer,
+  formatExferInput,
   formatBalanceCompact,
 } from "../lib/rpc";
 import type { TransferReceipt } from "../lib/types";
@@ -131,7 +132,9 @@ export function Send() {
     // and it never converges. Once baseFee lands it takes over (tighter + exact).
     const feeFloor = Math.max(2000, (fromEnt?.utxo_count ?? 1) * 500);
     const avail = Math.max(0, bal - (baseFee ?? feeFloor) - othersTotal);
-    const amt = formatExfer(avail).replace(" EXFER", "");
+    // NON-grouped — formatExfer adds commas for ≥1,000 EXFER, which
+    // parseExferAmount rejects (Max would silently become unsendable).
+    const amt = formatExferInput(avail);
     setOutputs((prev) => {
       if (maxRow >= prev.length || prev[maxRow].amount === amt) return prev;
       return prev.map((o, k) => (k === maxRow ? { ...o, amount: amt } : o));
@@ -187,6 +190,14 @@ export function Send() {
         setError(t("snd.recipPrefix", { n: i + 1 }) + humanizeError(err));
         return;
       }
+    }
+
+    // Guard a zero-value send (e.g. Max on a drained address fills "0"): the
+    // daemon would reject it, but a clear message beats a raw error — and it
+    // stops a pointless fee-only broadcast.
+    if (parsedOutputs.reduce((a, o) => a + o.amount, 0) <= 0) {
+      setError(t("snd.enterAmount"));
+      return;
     }
 
     setPending(true);

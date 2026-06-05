@@ -270,6 +270,19 @@ export function formatBalanceCompact(exfers: number): string {
   return frac ? `${whole}.${frac} EXFER` : `${whole} EXFER`;
 }
 
+/** A plain, NON-grouped decimal string for an exfers amount — safe to write
+ *  INTO an amount <input> that `parseExferAmount` will later re-parse. The
+ *  display formatters (`formatExfer` / `formatBalanceCompact` / `splitExfer`)
+ *  insert `toLocaleString` comma thousands-separators, which `parseExferAmount`
+ *  REJECTS — so feeding their output back into an input silently breaks Send/
+ *  Swap "Max" for any balance ≥ 1,000 EXFER. Use this for round-tripping. */
+export function formatExferInput(exfers: number): string {
+  const e = Math.max(0, Math.floor(exfers));
+  const whole = Math.floor(e / EXFER_UNIT).toString();
+  const frac = (e % EXFER_UNIT).toString().padStart(8, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole;
+}
+
 export function parseExferAmount(input: string): number {
   // Accepts "1.234" → 123_400_000 exfers. Throws on garbage.
   const trimmed = input.trim();

@@ -13,7 +13,7 @@
 // SHOUT the whole paragraph — a body at <body> root inherits none of that. The
 // panel also flips left / clamps to the viewport so it never runs off-screen.
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const PANEL_W = 256; // w-64
@@ -34,11 +34,10 @@ export function HelpPopover({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
-  // Measure once the panel is open (and on the layout pass, so the trigger has
-  // its final box). Position below the trigger; flip above when there's no room
-  // beneath, and clamp horizontally so the fixed-width panel stays on-screen.
-  useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
+  // Position below the trigger; flip above when there's no room beneath, and
+  // clamp horizontally so the fixed-width panel stays on-screen.
+  const reposition = useCallback(() => {
+    if (!triggerRef.current) return;
     const r = triggerRef.current.getBoundingClientRect();
     let left = r.left;
     if (left + PANEL_W > window.innerWidth - MARGIN) {
@@ -51,7 +50,29 @@ export function HelpPopover({
         ? Math.max(MARGIN, r.top - GAP - 150)
         : r.bottom + GAP;
     setPos({ top, left });
-  }, [open]);
+  }, []);
+
+  // Measure on open, then keep the panel pinned to its "?" trigger. The whole
+  // app scrolls inside a single `<main overflow-auto>`, so without a capture-
+  // phase scroll listener the fixed-positioned panel would float away from the
+  // trigger the moment the user scrolls. Also reposition on resize and close on
+  // Escape (parity with the app's other dismissible surfaces).
+  useLayoutEffect(() => {
+    if (!open) return;
+    reposition();
+    const onScroll = () => reposition();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("scroll", onScroll, true); // capture: catch inner scrollers
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, reposition]);
 
   return (
     <span className="inline-flex align-middle">

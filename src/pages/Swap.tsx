@@ -17,7 +17,7 @@
 // "swap unavailable" notice instead of erroring.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { rpc, formatExfer, formatBalanceCompact } from "../lib/rpc";
+import { formatExferInput, formatBalanceCompact, rpc } from "../lib/rpc";
 import type {
   SwapDirection,
   SwapRec,
@@ -73,6 +73,22 @@ function fmtAmt(s: string | undefined, dp = 6): string {
       });
   }
   return frac ? `${w}.${frac}` : w;
+}
+
+/** Normalize a typed amount into a strictly daemon-parseable decimal before it
+ *  goes to swap_get_quote: a leading/trailing dot (".5" / "5.") becomes "0.5" /
+ *  "5", and the fraction is clamped to the token's precision (8 dp EXFER, 18 dp
+ *  BNB). The live on-screen estimate tolerates these via Number(), but the quote
+ *  RPC parses strictly and 400s on a leading dot or over-precision. */
+function normalizeAmountInput(s: string, dp: number): string {
+  let t = s.trim();
+  if (t.startsWith(".")) t = "0" + t;
+  if (t.endsWith(".")) t = t.slice(0, -1);
+  const [w, f] = t.split(".");
+  const whole = w === "" ? "0" : w;
+  if (f == null) return whole;
+  const frac = f.slice(0, dp).replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole;
 }
 
 /** A tiny inline spinner (Tailwind animate-spin) for the refunding/waiting bits. */
@@ -316,9 +332,16 @@ export function Swap() {
       return false;
     }
   })();
-  // Buy with no BNB yet: lead with the deposit card and de-emphasize the amount
-  // field so the order of operations reads top-to-bottom (1. Add BNB → 2. Enter).
-  const needsFunding = !sell && bnbZero;
+  // No BSC key at all (a seedless / imported wallet): a buy has nowhere to lock
+  // BNB from. Surface the same "fund" card, which renders BnbAccount's set-up
+  // pane when !created — otherwise the user could type an amount, hit Review,
+  // and only fail at Confirm with a raw daemon error, with no way to create a
+  // BNB wallet anywhere on this page.
+  const noBscKey = bnbAsset.ready && !bnbAsset.created;
+  // Buy with no BNB yet (or no BNB wallet yet): lead with the deposit / set-up
+  // card and de-emphasize the amount field so the order of operations reads
+  // top-to-bottom (1. Add BNB → 2. Enter).
+  const needsFunding = !sell && (bnbZero || noBscKey);
 
   // Sell Max = the funded address's spendable EXFER. Buy Max = all spendable
   // BNB, less a small gas reserve (BNB is also the gas token), capped at the
@@ -398,7 +421,9 @@ export function Swap() {
     try {
       const q = await rpc<SwapRec>("swap_get_quote", {
         direction,
-        amount_in: amount.trim(),
+        // Normalize ".5"/"5."/over-precision into a strict decimal the quote
+        // RPC accepts (sell pays EXFER = 8 dp, buy pays BNB = 18 dp).
+        amount_in: normalizeAmountInput(amount, sell ? 8 : 18),
         from: fromAddr,
       });
       setQuote(q);
@@ -640,10 +665,12 @@ export function Swap() {
                         setEditSide("pay");
                         setAmount(
                           // sell: v is in smallest units (exfers) and a %-chip
-                          // makes it fractional — floor before formatExfer, which
-                          // assumes an integer. buy: v is human BNB.
+                          // makes it fractional — floor to an integer. Use the
+                          // NON-grouped input formatter (formatExfer adds commas
+                          // for ≥1,000 EXFER, which the quote parser rejects).
+                          // buy: v is human BNB.
                           sell
-                            ? formatExfer(Math.floor(v)).replace(" EXFER", "")
+                            ? formatExferInput(Math.floor(v))
                             : fmtAmt(String(v), 8),
                         );
                       }}
