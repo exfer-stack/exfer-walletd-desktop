@@ -44,6 +44,22 @@ pub const DEFAULT_INDEXER_RPC: &str = "http://198.13.38.245:9335";
 // chain must agree (the current public pool is on BSC testnet, not mainnet).
 // Users opt in by setting a pool URL in Settings, which lights up the
 // swap_*/bsc_* RPC. The suggested pool URL lives in the Settings placeholder.
+
+/// The swap pool's self-signed TLS certificate (PEM), PINNED by walletd's pool
+/// client so the pool can serve self-signed HTTPS while a MITM still can't
+/// impersonate it. Same cert mobile ships; rotating it means a new build.
+pub const POOL_CA_PEM: &str = "-----BEGIN CERTIFICATE-----
+MIIBljCCATugAwIBAgIUTJepaegKfI5VDoZAGcBp0v8YT34wCgYIKoZIzj0EAwIw
+GDEWMBQGA1UEAwwNZXhmZXItc3dhcC1jYTAeFw0yNjA2MDQyMjEzMzdaFw0zNjA2
+MDEyMjEzMzdaMBgxFjAUBgNVBAMMDWV4ZmVyLXN3YXAtY2EwWTATBgcqhkjOPQIB
+BggqhkjOPQMBBwNCAARpZbH/f2lNoDecMdRrJtLP7ROwI2CcH65wkQ9C3s/GKnBP
+2x8m+nq7f5msXbVsUx/SCE79XqKY3GN8bcaLOcl0o2MwYTAdBgNVHQ4EFgQUqLAw
+xVVcFJN2vvY83lUd+fpozBkwHwYDVR0jBBgwFoAUqLAwxVVcFJN2vvY83lUd+fpo
+zBkwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwCgYIKoZIzj0EAwID
+SQAwRgIhAJWea9ZtxE/nWo7Jn+MVweU0q4chF/TCs3p7KPbujgLgAiEAv2MVABW2
+TiAd+cw7MH3pK+bxkCf4I038dROruAaFLw0=
+-----END CERTIFICATE-----
+";
 pub const DESKTOP_CONFIG_FILE: &str = "desktop-config.json";
 
 #[derive(Debug, Clone, Serialize)]
@@ -82,10 +98,6 @@ pub struct DesktopConfig {
     /// BSC chain id. `None` ⇒ 56 (mainnet); 97 = Chapel testnet.
     #[serde(default)]
     pub bsc_chain_id: Option<u64>,
-    /// BSC USDT (BEP-20) contract used for the buy-side pre-flight balance.
-    /// `None` ⇒ mainnet USDT.
-    #[serde(default)]
-    pub bsc_usdt_address: Option<String>,
 }
 
 impl Default for DesktopConfig {
@@ -96,7 +108,6 @@ impl Default for DesktopConfig {
             swap_pool_url: None,
             bsc_rpc_url: None,
             bsc_chain_id: None,
-            bsc_usdt_address: None,
         }
     }
 }
@@ -219,17 +230,15 @@ fn build_walletd_config(datadir: &std::path::Path, desktop_cfg: &DesktopConfig) 
         // via Settings). bsc_* default to BSC mainnet; set bsc_chain_id=97 + a
         // testnet RPC in Settings to swap against the Chapel test pool.
         swap_pool_url: desktop_cfg.effective_swap_pool_url(),
+        // Pin the pool's self-signed cert so enabling swap "just works" against
+        // the official pool. Only used once a pool URL is set (swap on).
+        swap_pool_ca: Some(POOL_CA_PEM.to_string()),
         bsc_rpc_url: desktop_cfg
             .bsc_rpc_url
             .clone()
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| "https://bsc-dataseed1.binance.org".to_string()),
         bsc_chain_id: desktop_cfg.bsc_chain_id.unwrap_or(56),
-        bsc_usdt_address: desktop_cfg
-            .bsc_usdt_address
-            .clone()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "0x55d398326f99059fF775485246999027B3197955".to_string()),
     }
 }
 

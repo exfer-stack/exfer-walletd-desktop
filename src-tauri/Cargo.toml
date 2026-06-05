@@ -30,14 +30,15 @@ rand               = "0.8"
 tokio              = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 tokio-util         = { version = "0.7", features = ["rt"] }
 
-# The embedded walletd. Pinned to the SAME rev as the mobile wallet so the
-# cross-chain swap engine + BSC/EVM key management behave byte-for-byte
-# identically. 5b5d93a adds: independent BSC/EVM key (own mnemonic,
-# create/import/export — 6dae14b), the vault carrying that key (d3c5c2e),
-# networkFeeBnb in the quote projection (d2d4040), the HTLC reveal-gate
-# funds-safety check (b20d1c3), the delete_address LP-shares guard (5870e27),
-# and expired-quote pruning. Must match mobile's pin.
-exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "5b5d93a" }
+# The embedded walletd. Pinned to the released tag (now that walletd cuts
+# proper releases) — the SAME version mobile ships, so the cross-chain swap
+# engine + BSC/EVM key management behave byte-for-byte identically. v1.13.0
+# carries: independent BSC/EVM key (own mnemonic, create/import/export), the
+# vault carrying that key, networkFeeBnb in the quote projection, the HTLC
+# reveal-gate funds-safety check, the delete_address LP-shares guard,
+# expired-quote pruning, a per-swap execute/refund lock, and bsc_tx_history.
+# Keep this tag in lockstep with mobile's pin.
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", tag = "v1.13.0" }
 
 # HTTP client used by the Tauri Rust side to talk to the embedded
 # walletd over loopback HTTPS. `rustls-tls-manual-roots` disables
