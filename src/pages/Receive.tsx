@@ -9,6 +9,7 @@ import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 export function Receive() {
   const { balance: data, refresh } = useWallet();
@@ -22,12 +23,19 @@ export function Receive() {
   // (optional). Blank name = just create, like before.
   const [creatingOpen, setCreatingOpen] = useState(false);
   const [createName, setCreateName] = useState("");
+  useEscapeKey(() => {
+    if (creatingOpen && !generating) setCreatingOpen(false);
+  });
 
   const entries = (data?.entries ?? []).filter((e) => !isHidden(e.address));
 
-  // Default the selection to the first address once balances arrive.
+  // Default the selection to the first address once balances arrive, and
+  // re-home it if the selected address is no longer visible (e.g. it was
+  // hidden elsewhere) — otherwise the QR/right pane keeps showing an address
+  // that's dropped out of the list.
   useEffect(() => {
-    if (!selected && entries.length > 0) {
+    if (entries.length === 0) return;
+    if (!selected || !entries.some((e) => e.address === selected)) {
       setSelected(entries[0].address);
     }
   }, [data, selected]);

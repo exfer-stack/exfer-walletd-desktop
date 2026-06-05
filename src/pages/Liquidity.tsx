@@ -39,6 +39,7 @@ import { humanizeError } from "../lib/errors";
 import { usePrice, useBnbUsd, usdNumber } from "../lib/market";
 import { addLpOp, removeLpOp } from "../lib/inflightLp";
 import { useResumeTarget } from "../lib/inflight";
+import { SetupBnbWalletModal } from "../components/SetupBnbWalletModal";
 
 const FEE_RATE = 1; // exfers/byte, matches Send
 // The BNB leg is swept from a per-request address that pays its own BSC gas, so
@@ -117,6 +118,7 @@ export function Liquidity() {
   // The BNB leg of an add is funded from this key, so the whole Add is gated on
   // it existing — otherwise bsc_send_bnb would fail mid-deposit.
   const [bscCreated, setBscCreated] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [bnbWei, setBnbWei] = useState("0");
   const [unavailable, setUnavailable] = useState(false);
   const [amount, setAmount] = useState("");
@@ -462,9 +464,9 @@ export function Liquidity() {
               <DoneStrip result={result} err={err} onDone={() => resetPane(hasPosition ? undefined : "add")} />
             ) : tab === "add" && !hasBscWallet ? (
               /* ── No BSC key: the BNB leg has nowhere to come from. Surface a
-                 clear "set up your BNB wallet" notice (pointing at the BNB
-                 account on Swap) instead of letting Add proceed to a failing
-                 bsc_send_bnb. ── */
+                 clear "set up your BNB wallet" notice WITH a button that creates
+                 / imports one right here, instead of dead-ending on text that
+                 points the user off to another screen. ── */
               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-5 py-8 text-center">
                 <div className="text-sm font-semibold text-neutral-100">
                   {t("bnb.notCreatedTitle")}
@@ -472,6 +474,13 @@ export function Liquidity() {
                 <p className="mx-auto mt-1.5 max-w-sm text-sm text-neutral-400">
                   {t("bnb.lpNeedsWallet")}
                 </p>
+                <button
+                  type="button"
+                  className="btn mx-auto mt-4"
+                  onClick={() => setSetupOpen(true)}
+                >
+                  {t("bnb.notCreatedTitle")}
+                </button>
               </div>
             ) : tab === "add" ? (
               /* ── ADD ── */
@@ -638,6 +647,18 @@ export function Liquidity() {
           )}
         </div>
       </div>
+
+      {setupOpen && (
+        <SetupBnbWalletModal
+          onClose={() => setSetupOpen(false)}
+          onCreated={() => {
+            // Key now exists — re-read so bscCreated/bscAddr flip and the Add
+            // form unlocks without leaving this screen.
+            setSetupOpen(false);
+            void load();
+          }}
+        />
+      )}
     </div>
   );
 }

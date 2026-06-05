@@ -24,6 +24,7 @@ import { fmtUnits, type BnbAsset } from "../lib/bnb";
 import { CopyButton } from "./CopyButton";
 import { SetupBnbWalletModal } from "./SetupBnbWalletModal";
 import { HelpPopover } from "./HelpPopover";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 const HEX40 = /^0x[0-9a-fA-F]{40}$/;
 
@@ -543,6 +544,7 @@ export function BnbAccount({
  * address appears in MetaMask. Shown once and never persisted. */
 export function ExportBnbKeyModal({ onClose }: { onClose: () => void }) {
   const { t } = useT();
+  useEscapeKey(onClose);
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

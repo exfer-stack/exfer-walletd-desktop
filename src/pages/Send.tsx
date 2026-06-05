@@ -130,7 +130,11 @@ export function Send() {
     // so the FIRST Max fill leaves room for the fee — otherwise it fills 100%,
     // simulate_transfer fails ("insufficient: amount + fee"), baseFee stays null,
     // and it never converges. Once baseFee lands it takes over (tighter + exact).
-    const feeFloor = Math.max(2000, (fromEnt?.utxo_count ?? 1) * 500);
+    // Use the on-demand UTXO count (the background balance poll doesn't carry
+    // utxo_count), so the floor actually scales with the inputs the lock will
+    // pick on a many-UTXO address — otherwise it falls to the 2000 minimum and
+    // the first Max fill can overshoot balance−fee and fail to converge.
+    const feeFloor = Math.max(2000, (utxos[from]?.utxo_count ?? 1) * 500);
     const avail = Math.max(0, bal - (baseFee ?? feeFloor) - othersTotal);
     // NON-grouped — formatExfer adds commas for ≥1,000 EXFER, which
     // parseExferAmount rejects (Max would silently become unsendable).
@@ -139,7 +143,7 @@ export function Send() {
       if (maxRow >= prev.length || prev[maxRow].amount === amt) return prev;
       return prev.map((o, k) => (k === maxRow ? { ...o, amount: amt } : o));
     });
-  }, [baseFee, othersTotal, maxRow, from, balance]);
+  }, [baseFee, othersTotal, maxRow, from, balance, utxos]);
 
   useEffect(() => {
     if (sendable.length > 0 && !from) {
@@ -244,6 +248,11 @@ export function Send() {
 
   const fromEntry = balance?.entries.find((e) => e.address === from);
   const fromUtxoCount = utxos[from]?.utxo_count;
+  // Soft warning (not a block — UTXO consolidation to yourself is legitimate):
+  // a recipient equal to the From address usually means a copy-paste slip.
+  const selfSend =
+    !!from &&
+    outputs.some((o) => o.to.trim().toLowerCase() === from.toLowerCase());
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
@@ -403,6 +412,11 @@ export function Send() {
               ))}
             </div>
 
+            {selfSend && !error && (
+              <div className="banner-warn text-sm text-amber-200">
+                {t("snd.selfSendWarn")}
+              </div>
+            )}
             {error && <div className="banner-error">{error}</div>}
 
             <div className="flex items-center justify-end">

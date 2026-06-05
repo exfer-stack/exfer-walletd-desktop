@@ -15,6 +15,7 @@ import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
 import { createBscWallet, importBscKey, importBscMnemonic } from "../lib/bnb";
+import { useEscapeKey } from "../lib/useEscapeKey";
 import { CopyButton } from "./CopyButton";
 
 type Mode = "choose" | "generate" | "import";
@@ -45,6 +46,7 @@ export function SetupBnbWalletModal({
 }) {
   const { t } = useT();
   const [mode, setMode] = useState<Mode>("choose");
+  useEscapeKey(onClose);
 
   return (
     <div

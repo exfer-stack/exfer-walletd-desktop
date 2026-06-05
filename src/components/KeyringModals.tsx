@@ -10,6 +10,7 @@ import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
 import { shortAddress } from "../lib/labels";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 // ---------------------------------------------------------------------------
 // Shared backdrop
@@ -22,6 +23,7 @@ function Backdrop({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  useEscapeKey(onClose);
   // Portal to <body>: these modals are rendered from inside table rows
   // (<tbody>), where a bare <div> is invalid HTML and the browser reparents
   // it. A portal keeps the overlay a valid, top-level child of <body>.

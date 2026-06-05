@@ -31,6 +31,7 @@ import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
+import { useEscapeKey } from "../lib/useEscapeKey";
 import {
   usePrice,
   useBnbUsd,
@@ -274,20 +275,28 @@ export function Swap() {
     // Gross output the AMM must produce to NET `want`: a sell nets BNB (the fee
     // is taken from the BNB output), a buy receives EXFER (fee is on the BNB in).
     const grossOut = sell ? want + estNetFee : want;
-    if (!(reserveIn > 0 && reserveOut > 0) || grossOut >= reserveOut) return;
+    // Asking for more than the pool can ever output (or bad reserves): clear the
+    // pay field rather than leaving a stale value that Review would act on.
+    if (!(reserveIn > 0 && reserveOut > 0) || grossOut >= reserveOut) {
+      setAmount("");
+      return;
+    }
     // Uniswap-v2 inverse: input needed for a desired output, incl. the fee.
     const inHuman =
       (reserveIn * grossOut) /
       ((reserveOut - grossOut) * (1 - poolInfo.feeBps / 10_000));
     const payHuman = sell ? inHuman : inHuman + estNetFee;
-    setAmount(
+    // Render to the pay token's precision (8 dp EXFER / 18 dp BNB), trailing
+    // zeros trimmed, no grouping. toFixed (not maximumSignificantDigits) so a
+    // value never carries more decimals than the quote parser accepts; a dust
+    // request that rounds below one unit clears the field instead of showing a
+    // misleading "0" that silently dead-ends Review.
+    const dp = sell ? 8 : 18;
+    const s =
       payHuman > 0 && isFinite(payHuman)
-        ? payHuman.toLocaleString("en-US", {
-            maximumSignificantDigits: 8,
-            useGrouping: false,
-          })
-        : "",
-    );
+        ? payHuman.toFixed(dp).replace(/\.?0+$/, "")
+        : "";
+    setAmount(Number(s) > 0 ? s : "");
   }, [editSide, recvInput, poolInfo, sell, estNetFee]);
 
   // ── Client-side minimum (item [6]) ──
@@ -1182,8 +1191,12 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
         </div>
       </div>
 
-      {/* Chart with empty / loading states — taller to use reclaimed space. */}
-      <div className="min-h-[280px]">
+      {/* Chart with empty / loading states — taller to use reclaimed space.
+          Reset the crosshair-hover on mouse-leave too: the lightweight-charts
+          crosshair doesn't always fire an empty event when the cursor exits
+          sideways or on wheel-scroll, which would otherwise leave the big
+          headline price stuck on a stale hovered bar instead of the live price. */}
+      <div className="min-h-[280px]" onMouseLeave={() => setHovered(null)}>
         {candles.length > 0 ? (
           <PriceChart
             candles={candles}
@@ -1574,6 +1587,7 @@ function ImpactConfirmModal({
   onProceed: () => void;
 }) {
   const { t } = useT();
+  useEscapeKey(onCancel);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-6 fade-in"

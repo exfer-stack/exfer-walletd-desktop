@@ -17,6 +17,7 @@ import { isHidden, unhide } from "../lib/hidden";
 import { setLabel } from "../lib/labels";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 /** A 24h-change pill: green ▲ up, red ▼ down, grey • flat. Best-effort — the
  *  caller only renders it when a live price (and so a change) is available. */
@@ -60,6 +61,12 @@ export function Dashboard() {
   // The BNB deposit/withdraw/export console lives one click away in a modal so
   // the dashboard tile stays a glanceable summary.
   const [bnbOpen, setBnbOpen] = useState(false);
+
+  // Escape closes whichever overlay is open (parity with backdrop-click / ✕).
+  useEscapeKey(() => {
+    if (bnbOpen) setBnbOpen(false);
+    else if (creatingOpen && !generating) setCreatingOpen(false);
+  });
 
   const allEntries = data?.entries ?? [];
   const hiddenEntries = allEntries.filter((e) => isHidden(e.address));
