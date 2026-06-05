@@ -1,6 +1,6 @@
 [package]
 name        = "exfer-walletd-desktop"
-version     = "0.16.0"
+version     = "0.16.1"
 description = "Desktop GUI for exfer-walletd. One double-click → walletd in-process + a window for balance / generate-address / transfer."
 edition     = "2021"
 license     = "MIT"
@@ -38,7 +38,7 @@ tokio-util         = { version = "0.7", features = ["rt"] }
 # reveal-gate funds-safety check, the delete_address LP-shares guard,
 # expired-quote pruning, a per-swap execute/refund lock, and bsc_tx_history.
 # Keep this tag in lockstep with mobile's pin.
-exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", tag = "v1.13.2" }
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", tag = "v1.13.3" }
 
 # HTTP client used by the Tauri Rust side to talk to the embedded
 # walletd over loopback HTTPS. `rustls-tls-manual-roots` disables
