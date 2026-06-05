@@ -1,11 +1,19 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig(async ({ mode }) => {
+  // Read .env / .env.local ourselves: Vite does NOT load them into
+  // `process.env` for the config file, so a bare `npm run dev` would leave the
+  // `/__walletd` proxy below unregistered → the browser-dev mode hits an
+  // unproxied path → empty response → "Unexpected end of JSON input". Reading
+  // via loadEnv registers the proxy straight from `.env.local`, no shell export.
+  const env = loadEnv(mode, process.cwd(), "");
+  const walletdTarget = env.VITE_WALLETD_PROXY_TARGET;
+  return {
   plugins: [react()],
 
   build: {
@@ -52,12 +60,10 @@ export default defineConfig(async () => ({
         secure: true,
         rewrite: (p: string) => p.replace(/^\/__bnbusd/, ""),
       },
-      // @ts-expect-error process is a nodejs global
-      ...(process.env.VITE_WALLETD_PROXY_TARGET
+      ...(walletdTarget
         ? {
             "/__walletd": {
-              // @ts-expect-error process is a nodejs global
-              target: process.env.VITE_WALLETD_PROXY_TARGET,
+              target: walletdTarget,
               changeOrigin: true,
               rewrite: (p: string) => p.replace(/^\/__walletd/, ""),
             },
@@ -65,4 +71,5 @@ export default defineConfig(async () => ({
         : {}),
     },
   },
-}));
+  };
+});

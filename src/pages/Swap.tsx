@@ -119,6 +119,18 @@ export function Swap() {
   // Reserve the per-IP scan-rate budget while swapping, exactly like Send.
   useEffect(() => suspendPolling(), [suspendPolling]);
 
+  // One-shot refresh on entry: polling is suspended above (rate budget), so the
+  // From-picker would otherwise show whatever stale snapshot the last poll left.
+  // A single refresh on mount makes the picker balances fresh the moment Swap
+  // opens — and they share useWallet().balance with the Dashboard total, so the
+  // two can never disagree (same object), they just both update on this refresh
+  // and again when a swap completes.
+  useEffect(() => {
+    refresh();
+    // mount-only — a fresh snapshot on entry, then suspended polling holds it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [step, setStep] = useState<1 | 2 | 3>(resumeSwapId ? 3 : 1);
   const [direction, setDirection] = useState<SwapDirection>("exfer_to_bnb");
   const [from, setFrom] = useState("");
@@ -514,7 +526,7 @@ export function Swap() {
     // the wide viewport reads as purposeful rather than a void.
     return (
       <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
-        <PageBar price={price} poolRate={null} />
+        <PageBar poolRate={null} />
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 lg:col-span-8">
             <MarketHeader price={price} />
@@ -538,7 +550,7 @@ export function Swap() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
       {/* Page bar: title left, live EXFER/USD + 24h change + pool rate right. */}
-      <PageBar price={price} poolRate={poolRate} />
+      <PageBar poolRate={poolRate} />
 
       {/* Two panes. The chart (left) is the SHORT column so it's the one we pin —
           it stays under the taller wizard rail as that rail scrolls, instead of
@@ -560,9 +572,13 @@ export function Swap() {
           <div className="space-y-4">
             {step === 1 && (
               <div className="card p-5 space-y-3.5">
-                {/* Buy with no BNB yet: lead with the deposit card so the order
-                    of operations reads top-to-bottom (1. Add BNB → 2. Enter). */}
-                {needsFunding && <BnbAccount asset={bnbAsset} lead waiting />}
+                {/* Buy with no BNB yet: lead with a single-purpose "Add BNB"
+                    deposit card so the order of operations reads top-to-bottom
+                    (1. Add BNB → 2. Enter). Deposit-only — the withdraw/export
+                    console is suppressed here (nothing to withdraw at zero) and
+                    the compact account card below is hidden to avoid showing the
+                    same BNB panel twice. */}
+                {needsFunding && <BnbAccount asset={bnbAsset} variant="fund" waiting />}
 
                 {/* The canonical reversible pair: a "You pay" card over a "You
                     receive" card with a circular ⇅ on the seam between them.
@@ -730,9 +746,11 @@ export function Swap() {
                     {sell ? t("swap.swapFrom") : t("swap.receiveTo")}
                   </label>
                   {pickList.length === 0 ? (
-                    <p className="help">
+                    // Boxed neutral notice occupying the picker's footprint, so
+                    // the empty state isn't bare text dangling under the label.
+                    <div className="mt-1.5 rounded-lg border border-neutral-800 bg-neutral-950 px-3.5 py-2.5 text-sm text-neutral-400">
                       {sell ? t("swap.noFundedAddr") : t("swap.noAddrGenerate")}
-                    </p>
+                    </div>
                   ) : (
                     <AddrPicker
                       items={pickList}
@@ -801,9 +819,10 @@ export function Swap() {
               />
             )}
 
-            {/* The in-wallet BNB account fills the rail below the wizard so the
-                right column tracks the chart pane's height. */}
-            <BnbAccount asset={bnbAsset} variant="compact" />
+            {/* The full BNB account console (deposit / withdraw / export) lives
+                on the Dashboard BNB tile → modal; the swap rail no longer
+                carries a second always-on copy of it. The buy-with-no-BNB
+                "Add BNB" lead (above) is the only BNB surface here. */}
           </div>
         </div>
       </div>
@@ -942,39 +961,21 @@ function AddrPicker({
 
 /** Single compact page bar: title left; live EXFER/USD + 24h change + pool rate
  *  pulled right as muted mono metadata (the only place the price/rate render). */
-function PageBar({
-  price,
-  poolRate,
-}: {
-  price: MarketPrice | null;
-  poolRate: string | null;
-}) {
+function PageBar({ poolRate }: { poolRate: string | null }) {
   const { t } = useT();
-  const usd = price?.usd ?? null;
-  const usdStr =
-    usd == null
-      ? "—"
-      : usd >= 1
-        ? usd.toFixed(2)
-        : usd.toLocaleString("en-US", {
-            maximumSignificantDigits: 4,
-            useGrouping: false,
-          });
+  // The live EXFER/USD price + 24h change now headline the chart card (big and
+  // unmissable), so the page bar carries only the title and the muted pool rate
+  // (EXFER↔BNB + fee) — the swap-specific metadata that has no other home.
   return (
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       <h1 className="text-xl font-semibold tracking-tight text-neutral-100">
         {t("swap.title")}
       </h1>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-sm tabular-nums text-neutral-400">
-        <span className="text-neutral-200">${usdStr}</span>
-        {price && <ChangePill pct={price.change24h} />}
-        {poolRate && (
-          <span className="text-neutral-500">
-            <span className="mr-2 text-neutral-700">·</span>
-            {poolRate}
-          </span>
-        )}
-      </div>
+      {poolRate && (
+        <div className="font-mono text-sm tabular-nums text-neutral-500">
+          {poolRate}
+        </div>
+      )}
     </header>
   );
 }
@@ -1110,33 +1111,48 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
 
   return (
     <div className="card-padded space-y-3">
-      {/* Interval toggle — tight segmented row directly above the chart. The
-          price now lives once in the page bar, so this card is de-chromed. */}
-      <div
-        className="flex gap-1 overflow-x-auto"
-        style={{ scrollbarWidth: "none" }}
-      >
-        {INTERVALS.map((iv) => {
-          const active = iv.key === interval;
-          return (
-            <button
-              key={iv.key}
-              type="button"
-              onClick={() => {
-                setIntervalKey(iv.key);
-                setHovered(null);
-              }}
-              className={
-                "shrink-0 rounded-md px-3 py-1 text-xs font-semibold transition " +
-                (active
-                  ? "bg-neutral-800 text-cyan-300"
-                  : "text-neutral-500 hover:text-neutral-300")
-              }
-            >
-              {iv.label}
-            </button>
-          );
-        })}
+      {/* Headline price — big and FIRST so the swap price is unmissable. The
+          interval toggle rides the right of the same row. Hovering a candle
+          swaps the headline to that bar's close (TradingView-style), else it's
+          the live EXFER/USD. */}
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+            EXFER · USD
+          </div>
+          <div className="mt-0.5 flex items-baseline gap-2">
+            <span className="font-mono text-3xl font-semibold tabular-nums text-neutral-50">
+              {hovered ? `$${fp(hovered.close)}` : exferUsd != null ? `$${fp(exferUsd)}` : "—"}
+            </span>
+            {!hovered && price && <ChangePill pct={price.change24h} />}
+          </div>
+        </div>
+        <div
+          className="flex gap-1 overflow-x-auto"
+          style={{ scrollbarWidth: "none" }}
+        >
+          {INTERVALS.map((iv) => {
+            const active = iv.key === interval;
+            return (
+              <button
+                key={iv.key}
+                type="button"
+                onClick={() => {
+                  setIntervalKey(iv.key);
+                  setHovered(null);
+                }}
+                className={
+                  "shrink-0 rounded-md px-3 py-1 text-xs font-semibold transition " +
+                  (active
+                    ? "bg-neutral-800 text-cyan-300"
+                    : "text-neutral-500 hover:text-neutral-300")
+                }
+              >
+                {iv.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Chart with empty / loading states — taller to use reclaimed space. */}

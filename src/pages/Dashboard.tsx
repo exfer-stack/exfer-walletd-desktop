@@ -8,6 +8,7 @@ import {
 import type { GeneratedAddress } from "../lib/types";
 import { AddressRow } from "../components/AddressRow";
 import { BnbAccount } from "../components/BnbAccount";
+import { HelpPopover } from "../components/HelpPopover";
 import { useWallet } from "../lib/wallet";
 import { useBnbAsset, fmtUnits } from "../lib/bnb";
 import { usePrice, usdValue, useBnbUsd, usdNumber } from "../lib/market";
@@ -351,8 +352,9 @@ export function Dashboard() {
           {bnbAsset.address ? (
             <section className="card-padded space-y-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-neutral-400">
                   {t("dash.bnbTileTitle")}
+                  <HelpPopover title={t("bnb.helpTitle")} body={t("bnb.helpBody")} />
                 </div>
                 <div className="text-right">
                   <div className="font-mono text-sm tabular-nums text-neutral-100">
@@ -449,17 +451,8 @@ export function Dashboard() {
             if (e.target === e.currentTarget) setBnbOpen(false);
           }}
         >
-          <div className="w-full max-w-md space-y-3">
-            <div className="flex justify-end">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setBnbOpen(false)}
-              >
-                {t("dash.bnbClose")}
-              </button>
-            </div>
-            <BnbAccount asset={bnbAsset} variant="full" lead />
+          <div className="w-full max-w-md">
+            <BnbAccount asset={bnbAsset} variant="full" onClose={() => setBnbOpen(false)} />
           </div>
         </div>
       )}

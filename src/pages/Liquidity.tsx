@@ -395,7 +395,6 @@ export function Liquidity() {
   }
 
   const posValueUsd = hasPosition ? Number(pos!.value_exfer ?? 0) * exferUsd * 2 : 0;
-  const poolUsd = exferReserve * exferUsd * 2;
   const maxAdd = Math.min(exferBal / 1e8, mid > 0 ? bnbHuman / mid : Infinity);
 
   return (
@@ -403,27 +402,18 @@ export function Liquidity() {
       <Header mid={mid} exferUsd={exferUsd} ready={mid > 0} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* ── LEFT RAIL — read-only context ── */}
-        <div className="flex lg:col-span-5">
-          <div className="card-padded flex w-full flex-col space-y-4">
-            {/* Pool */}
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                <Stat label={t("lp.poolValue")} value={`≈ ${usdNumber(poolUsd)}`} />
-                <Stat label={t("lp.providers")} value={String(pool.lp_count)} />
-                <Stat label={t("lp.reserveExfer")} value={sig(exferReserve)} />
-                <Stat label={t("lp.reserveBnb")} value={sig(bnbReserve, BNB_DP)} />
-              </div>
-              <div className="flex items-baseline justify-between border-t border-neutral-800 pt-2 text-xs">
-                <span className="uppercase tracking-wide text-neutral-500">{t("lp.totalShares")}</span>
-                <span className="font-mono tabular-nums text-neutral-400">{pool.total_shares}</span>
-              </div>
-            </div>
-
-            <div className="flex-1" />
+        {/* ── LEFT RAIL — read-only context. self-start so the card sizes to
+            its content instead of stretching to the (taller) action card's
+            height, which left a large empty void in the no-position state. ── */}
+        <div className="self-start lg:col-span-5">
+          <div className="card-padded space-y-4">
+            {/* Pool-wide figures (total reserves, pool value, total shares,
+                provider count) and the %-of-pool share are intentionally NOT
+                shown: the desktop wallet exposes only the user's OWN holdings,
+                never the pool's totals or relative size. */}
 
             {/* Your position */}
-            <div className="space-y-2 border-t border-neutral-800 pt-4">
+            <div className="space-y-2">
               {hasPosition ? (
                 <>
                   <div className="flex items-baseline justify-between">
@@ -436,9 +426,6 @@ export function Liquidity() {
                   <div className="grid grid-cols-2 gap-3 font-mono text-sm tabular-nums text-neutral-300">
                     <span>{sig(Number(pos!.value_exfer ?? 0))} EXFER</span>
                     <span className="text-right">{sig(Number(pos!.value_bnb ?? 0), BNB_DP)} BNB</span>
-                  </div>
-                  <div className="text-xs text-neutral-500">
-                    {sig(pos!.pool_share_pct ?? 0, 3)}% {t("lp.ofPool")}
                   </div>
                 </>
               ) : !posScanned || !posLoaded ? (
@@ -493,7 +480,12 @@ export function Liquidity() {
                 <div>
                   <label className="label">{t("lp.fromExfer")}</label>
                   {funded.length === 0 ? (
-                    <div className="banner-error">{t("lp.noFunded")}</div>
+                    // A wallet with no EXFER yet is a normal state, not an error
+                    // — neutral boxed notice (matches Swap's empty-from state),
+                    // not a blood-red banner.
+                    <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3.5 py-2.5 text-sm text-neutral-400">
+                      {t("lp.noFunded")}
+                    </div>
                   ) : (
                     <select
                       className="input cursor-pointer hover:border-neutral-600"
@@ -635,9 +627,6 @@ export function Liquidity() {
                       }
                     >
                       <code className="addr-xs text-neutral-300">{shortAddress(p.address)}</code>
-                      <span className="font-mono tabular-nums text-neutral-500">
-                        {sig(p.pos.pool_share_pct ?? 0, 3)}%
-                      </span>
                       <span className="font-mono tabular-nums text-neutral-200">
                         ≈ {usdNumber(Number(p.pos.value_exfer ?? 0) * exferUsd * 2)}
                       </span>
@@ -697,15 +686,6 @@ function TabButton({
     >
       {children}
     </button>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="space-y-1">
-      <div className="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className="font-mono text-sm tabular-nums text-neutral-100">{value}</div>
-    </div>
   );
 }
 

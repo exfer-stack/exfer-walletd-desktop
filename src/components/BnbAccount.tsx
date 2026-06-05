@@ -23,8 +23,17 @@ import { useBnbUsd, usdNumber } from "../lib/market";
 import { fmtUnits, type BnbAsset } from "../lib/bnb";
 import { CopyButton } from "./CopyButton";
 import { SetupBnbWalletModal } from "./SetupBnbWalletModal";
+import { HelpPopover } from "./HelpPopover";
 
 const HEX40 = /^0x[0-9a-fA-F]{40}$/;
+
+/** The "?" that explains where this address comes from + MetaMask import. The
+ *  origin/recovery story used to be an always-on paragraph under the QR — moved
+ *  behind this so the default surface reads light. */
+function AddrHelp() {
+  const { t } = useT();
+  return <HelpPopover title={t("bnb.helpTitle")} body={t("bnb.helpBody")} />;
+}
 
 /** A tiny inline spinner (Tailwind animate-spin) for the waiting bits. */
 function Spinner({ size = 14 }: { size?: number }) {
@@ -73,34 +82,89 @@ function MiniQr({ value, size = 160 }: { value: string; size?: number }) {
   );
 }
 
-/** The deposit QR + address + copy + hint, shared by both variants. */
+/** A full-width, click-to-copy address chip. The address is LEFT-aligned with
+ *  break-all + relaxed line-height (never the centered, jagged, char-by-char
+ *  wrap the old `text-center` produced) and the copy affordance is a shrink-0
+ *  trailing label, so the hex always reads as one clean block — one line where
+ *  it fits (the modal), two tidy left-aligned lines where it's narrow (the swap
+ *  rail), and never a ragged 4-line stack. The whole chip is the copy target. */
+function AddressChip({ addr, short = false }: { addr: string; short?: boolean }) {
+  const { t } = useT();
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(addr);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard denied */
+    }
+  }
+  // Copy + QR always carry the FULL address; the visible text is the standard
+  // middle-elided short form in narrow columns (the swap rail) so a 42-char hex
+  // never wraps into a ragged multi-line stack, and shown in full where the
+  // width allows (the modal). Kept short enough to never trip `truncate` (which
+  // would clip the tail the user verifies and add a second ellipsis).
+  const shown = short ? shortAddress(addr) : addr;
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={addr}
+      className="group flex w-full items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2.5 text-left transition hover:border-neutral-600"
+    >
+      <code
+        className={
+          "min-w-0 flex-1 font-mono text-[13px] leading-relaxed tracking-tight text-neutral-200 " +
+          (short ? "truncate" : "break-all")
+        }
+      >
+        {shown}
+      </code>
+      <span
+        className={
+          "flex shrink-0 items-center gap-1 text-xs font-medium transition " +
+          (copied ? "text-emerald-300" : "text-neutral-400 group-hover:text-cyan-300")
+        }
+      >
+        <span aria-hidden>{copied ? "✓" : "⧉"}</span>
+        {copied ? t("cpy.copied") : t("cpy.copy")}
+      </span>
+    </button>
+  );
+}
+
+/** The deposit QR + address + safety hint, shared by every variant. `compact`
+ *  (the narrow swap rail) middle-elides the address so it never wraps. */
 function DepositBlock({
   addr,
   qrSize,
   waiting,
   isZero,
+  compact = false,
 }: {
   addr: string;
   qrSize: number;
   waiting: boolean;
   isZero: boolean;
+  compact?: boolean;
 }) {
   const { t } = useT();
   return (
-    <div className="flex flex-col items-center gap-3">
-      <MiniQr value={addr} size={qrSize} />
-      <div className="flex w-full items-start gap-2">
-        <code className="addr flex-1 break-all rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-center text-xs">
-          {addr}
-        </code>
-        <CopyButton text={addr} className="btn-secondary" />
+    <div className="space-y-3">
+      <div className="flex justify-center">
+        <MiniQr value={addr} size={qrSize} />
       </div>
-      <p className="text-xs text-neutral-500">{t("swap.depositHint")}</p>
+      <AddressChip addr={addr} short={compact} />
       {/* BSC-only safety: the address is identical across EVM chains, so a
-          wrong-network / wrong-token deposit is unrecoverable. */}
-      <div className="banner-warn w-full text-xs text-amber-200">{t("bnb.chainSafety")}</div>
+          wrong-network / wrong-token deposit is unrecoverable. The "where does
+          this come from / MetaMask" story now lives behind the header "?". */}
+      <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200/90">
+        <span aria-hidden className="mt-px shrink-0">⚠</span>
+        <span>{t("bnb.chainSafety")}</span>
+      </div>
       {waiting && isZero && (
-        <div className="flex items-center gap-2 text-xs text-neutral-400">
+        <div className="flex items-center justify-center gap-2 text-xs text-neutral-400">
           <Spinner size={13} /> {t("swap.waitingBnb")}
         </div>
       )}
@@ -188,7 +252,7 @@ function WithdrawBlock({
           {fmtUnits(bnbWei ?? undefined, 18, 5)} BNB
         </span>
       </div>
-      <div className="grid grid-cols-[1.5fr_1fr] gap-2">
+      <div className="grid grid-cols-[1.3fr_1fr] gap-2">
         <input
           className="input font-mono text-xs"
           placeholder={t("swap.withdrawToPlaceholder")}
@@ -199,7 +263,7 @@ function WithdrawBlock({
         />
         <div className="relative">
           <input
-            className="input pr-12"
+            className="input pr-14"
             placeholder={t("swap.withdrawAmtPlaceholder")}
             value={amt}
             onChange={(e) => {
@@ -240,25 +304,26 @@ function WithdrawBlock({
  *
  * Props:
  *   asset    — the useBnbAsset() result (address + bnbWei + refresh).
- *   variant  — "full" (collapsible Swap panel) | "compact" (Dashboard card).
- *   lead     — full only: start expanded (e.g. the buy-side deposit lead).
- *   waiting  — full only: show the "Waiting for your BNB…" spinner when zero.
+ *   variant  — "full" (the Dashboard deposit/withdraw modal console) |
+ *              "compact" (legacy inline card) |
+ *              "fund" (deposit-only lead for the buy-with-no-BNB swap step).
+ *   waiting  — full/fund: show the "Waiting for your BNB…" spinner when zero.
  */
 export function BnbAccount({
   asset,
   variant = "full",
-  lead = false,
   waiting = false,
+  onClose,
 }: {
   asset: BnbAsset;
-  variant?: "full" | "compact";
-  lead?: boolean;
+  variant?: "full" | "compact" | "fund";
   waiting?: boolean;
+  /** full only: when set, the header shows an ✕ close button (modal use). */
+  onClose?: () => void;
 }) {
   const { t } = useT();
   const bnbUsd = useBnbUsd();
   const { address: addr, created, bnbWei, reserveWei, refresh } = asset;
-  const [open, setOpen] = useState(lead);
   const [exportOpen, setExportOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
 
@@ -348,14 +413,36 @@ export function BnbAccount({
     </div>
   );
 
+  // ── Fund step (Swap buy with no BNB yet): a single-purpose "Add BNB" card.
+  //    Deposit only — no withdraw form / key export, so the one action that
+  //    matters here (top up, then swap) isn't buried under controls the user
+  //    can't act on with a zero balance. ──
+  if (variant === "fund") {
+    return (
+      <section className="card overflow-hidden">
+        <div className="space-y-4 px-5 py-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-neutral-100">
+              {t("swap.fundStepTitle")}
+              <AddrHelp />
+            </div>
+            <div className="text-xs text-neutral-500">{t("swap.fundStepSubtitle")}</div>
+          </div>
+          <DepositBlock addr={addr} qrSize={152} waiting={waiting} isZero={isZero} compact />
+        </div>
+      </section>
+    );
+  }
+
   // ── Compact card (Dashboard): always-open, self-contained card. ──
   if (variant === "compact") {
     return (
       <section className="card-padded space-y-5">
         <div className="flex items-start justify-between">
           <div>
-            <div className="text-sm font-semibold text-neutral-100">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-neutral-100">
               {t("swap.bnbAccountTitle")}
+              <AddrHelp />
             </div>
             <div className="text-xs text-neutral-500">{t("swap.bnbAccountSubtitle")}</div>
           </div>
@@ -380,37 +467,56 @@ export function BnbAccount({
     );
   }
 
-  // ── Full panel (Swap): collapsible. ──
+  // ── Full console (Dashboard deposit/withdraw modal). Non-collapsible: it
+  //    opens in its own modal, so a collapse toggle would hide the only content.
+  //    A clean header (title + "?" left, live balance right) sits over the
+  //    deposit / withdraw / export sections. ──
   return (
     <section className="card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between px-5 py-3 text-left"
-      >
-        <div>
-          <div className="text-sm font-semibold text-neutral-100">{t("swap.bnbAccountTitle")}</div>
-          <div className="text-xs text-neutral-500">{t("swap.bnbAccountSubtitle")}</div>
+      <header className="flex items-start justify-between gap-4 border-b border-neutral-800 px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-base font-semibold text-neutral-100">
+              {t("swap.bnbAccountTitle")}
+            </h2>
+            <AddrHelp />
+          </div>
+          <p className="mt-0.5 text-xs leading-relaxed text-neutral-500">
+            {t("swap.bnbAccountSubtitle")}
+          </p>
         </div>
-        <span className="text-right">
-          <span className="block font-mono text-sm tabular-nums text-neutral-200">
-            {fmtUnits(bnbWei ?? undefined, 18, 5)} BNB
-          </span>
-          {bnbUsdValue != null && (
-            <span className="block font-mono text-xs tabular-nums text-neutral-500">
-              ≈ {usdNumber(bnbUsdValue)}
-            </span>
+        <div className="flex shrink-0 items-start gap-3">
+          <div className="text-right">
+            <div className="font-mono text-lg font-semibold tabular-nums text-neutral-100">
+              {fmtUnits(bnbWei ?? undefined, 18, 5)}{" "}
+              <span className="text-sm font-medium text-neutral-500">BNB</span>
+            </div>
+            {bnbUsdValue != null && (
+              <div className="font-mono text-xs tabular-nums text-neutral-500">
+                ≈ {usdNumber(bnbUsdValue)}
+              </div>
+            )}
+          </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={t("dash.bnbClose")}
+              className="-mr-1 -mt-0.5 grid h-7 w-7 place-items-center rounded-md text-neutral-500 transition hover:bg-neutral-800 hover:text-neutral-200"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
           )}
-        </span>
-      </button>
-
-      {open && (
-        <div className="space-y-5 border-t border-neutral-800 px-5 py-5">
-          <DepositBlock addr={addr} qrSize={160} waiting={waiting} isZero={isZero} />
-          <WithdrawBlock bnbWei={bnbWei} reserveWei={reserveWei} onSent={refresh} />
-          {exportButton}
         </div>
-      )}
+      </header>
+
+      <div className="space-y-5 px-5 py-5">
+        <DepositBlock addr={addr} qrSize={168} waiting={waiting} isZero={isZero} />
+        <WithdrawBlock bnbWei={bnbWei} reserveWei={reserveWei} onSent={refresh} />
+        {exportButton}
+      </div>
 
       {exportOpen && <ExportBnbKeyModal onClose={() => setExportOpen(false)} />}
     </section>
