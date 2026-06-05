@@ -76,23 +76,23 @@ export function AddressRow({
                 {t("adr.save")}
               </button>
             </div>
-          ) : label ? (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="text-left text-base font-medium text-neutral-100 hover:text-cyan-300"
-              title={t("adr.clickToRename")}
-            >
-              {label}
-            </button>
           ) : (
+            /* Primary identity is the label, or — when unlabelled — the short
+               address. walletd marks every self-generated key imported:true
+               with no real HD index, so "Imported"/"Address N" was misleading;
+               we never show it. The line stays clickable to add/rename a label. */
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="text-left text-sm text-neutral-500 hover:text-cyan-300"
-              title={t("adr.clickToLabel")}
+              className={
+                "text-left hover:text-cyan-300 " +
+                (label
+                  ? "text-base font-medium text-neutral-100"
+                  : "addr-xs text-neutral-300")
+              }
+              title={label ? t("adr.clickToRename") : t("adr.clickToLabel")}
             >
-              {t("adr.addLabelInline")}
+              {label ?? shortAddress(address)}
             </button>
           )}
         </td>

@@ -13,6 +13,7 @@ import { useBnbAsset, fmtUnits } from "../lib/bnb";
 import { usePrice, usdValue, useBnbUsd, usdNumber } from "../lib/market";
 import { useToast } from "../lib/toast";
 import { isHidden, unhide } from "../lib/hidden";
+import { setLabel } from "../lib/labels";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
 
@@ -50,6 +51,10 @@ export function Dashboard() {
   const bnbAsset = useBnbAsset({ announceDeposits: false });
   const bnbUsd = useBnbUsd();
   const [generating, setGenerating] = useState(false);
+  // The create flow opens a tiny dialog so a new address can be named up front
+  // (optional). Blank name = just create, like before.
+  const [creatingOpen, setCreatingOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
   const [showHidden, setShowHidden] = useState(false);
   // The BNB deposit/withdraw/export console lives one click away in a modal so
   // the dashboard tile stays a glanceable summary.
@@ -87,20 +92,35 @@ export function Dashboard() {
   })();
   const bnbUsdValue = bnbUsd != null && bnbHuman > 0 ? bnbHuman * bnbUsd : null;
 
-  async function generateAddress() {
+  // Each generated address is its own independent key. We let the user name it
+  // in one step: generate, then save the (optional) name as the address label.
+  async function generateAddress(name?: string) {
     setGenerating(true);
     try {
-      const a = await rpc<GeneratedAddress>("generate_standard_address");
+      const label = name?.trim() ?? "";
+      const a = await rpc<GeneratedAddress>("generate_standard_address", {
+        label: label || null,
+      });
+      if (label) setLabel(a.address, label);
       await refresh();
       toast.success(
         t("dash.addrCreatedTitle"),
-        t("dash.addrCreatedBody", { addr: a.address.slice(0, 10) }),
+        label
+          ? t("na.createdNamed", { name: label })
+          : t("dash.addrCreatedBody", { addr: a.address.slice(0, 10) }),
       );
+      setCreatingOpen(false);
+      setCreateName("");
     } catch (e) {
       toast.error(t("dash.addrCreateFailTitle"), humanizeError(e));
     } finally {
       setGenerating(false);
     }
+  }
+
+  function openCreate() {
+    setCreateName("");
+    setCreatingOpen(true);
   }
 
   const isEmpty = !loading && data !== null && data.entries.length === 0;
@@ -213,7 +233,7 @@ export function Dashboard() {
               </button>
               <button
                 type="button"
-                onClick={generateAddress}
+                onClick={openCreate}
                 disabled={generating || atCap}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50"
                 title={
@@ -241,7 +261,7 @@ export function Dashboard() {
                 <p className="text-sm text-neutral-400">{t("dash.emptyBody")}</p>
                 <button
                   type="button"
-                  onClick={generateAddress}
+                  onClick={openCreate}
                   disabled={generating}
                   className="btn mt-3"
                 >
@@ -366,6 +386,59 @@ export function Dashboard() {
           )}
         </aside>
       </div>
+
+      {/* New-address dialog — an optional name field so a fresh key can be
+          labelled on creation. Blank name just creates, like before. */}
+      {creatingOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-neutral-900/40 p-6 fade-in"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !generating)
+              setCreatingOpen(false);
+          }}
+        >
+          <div className="card-padded mt-24 w-full max-w-sm space-y-4">
+            <h2 className="text-base font-semibold tracking-tight text-neutral-100">
+              {t("na.title")}
+            </h2>
+            <p className="text-sm text-neutral-400">{t("na.info")}</p>
+            <div>
+              <label className="label">{t("na.nameOptional")}</label>
+              <input
+                className="input"
+                value={createName}
+                maxLength={28}
+                autoFocus
+                onChange={(e) => setCreateName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !generating)
+                    generateAddress(createName);
+                  if (e.key === "Escape" && !generating) setCreatingOpen(false);
+                }}
+                placeholder={t("na.namePlaceholder")}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setCreatingOpen(false)}
+                disabled={generating}
+              >
+                {t("na.cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => generateAddress(createName)}
+                disabled={generating}
+              >
+                {generating ? t("dash.generating") : t("na.create")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* The full BNB console (deposit QR, withdraw, key export), one click
           away in a modal so the dashboard stays glanceable. */}
