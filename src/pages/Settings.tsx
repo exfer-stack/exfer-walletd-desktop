@@ -342,8 +342,9 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
       </header>
 
       <div className="grid grid-cols-12 items-start gap-5">
-        {/* LEFT — Connections: the routine config, one card, one shared Save */}
-        <form onSubmit={saveConnections} className="card-padded col-span-12 space-y-3 lg:col-span-5">
+        {/* LEFT — Connections (routine config) + Daemon (machine state) */}
+        <div className="col-span-12 space-y-5 lg:col-span-6">
+        <form onSubmit={saveConnections} className="card-padded space-y-3">
           <Eyebrow>{t("set.connectionsTitle")}</Eyebrow>
 
           <ConnRow
@@ -430,78 +431,8 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
           </div>
         </form>
 
-        {/* RIGHT — action / state panels in a 2-col sub-grid so they fill the
-            wider column instead of stacking into a tall ragged stack */}
-        <div className="col-span-12 grid grid-cols-2 items-start gap-5 lg:col-span-7">
-          {/* Backup & data */}
-          <section className="card-padded space-y-3">
-            <Eyebrow>{t("set.backupDataTitle")}</Eyebrow>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setShowBackup(true)}
-              >
-                {t("set.backupBtn")}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowRestore(true)}
-              >
-                {t("set.restoreBtn")}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowImport(true)}
-              >
-                {t("set.importKey")}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowImportPhrase(true)}
-              >
-                {t("set.importPhrase")}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={exportCsv}
-                disabled={exporting}
-              >
-                {exporting ? t("set.exporting") : t("set.exportCsv")}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={exportLabels}
-              >
-                {t("set.exportLabels")}
-              </button>
-            </div>
-            <p className="help">{t("set.backupTip")}</p>
-          </section>
-
-          {/* Sensitive export — single danger button + always-visible warning */}
-          <section className="card-padded space-y-3">
-            <Eyebrow>{t("set.sensitiveTitle")}</Eyebrow>
-            <button
-              type="button"
-              className="btn-danger w-full"
-              onClick={() => setShowPrivateKey(true)}
-            >
-              {t("set.sensitiveExportKey")}
-            </button>
-            <p className="help flex gap-1.5 text-amber-400/90">
-              <span aria-hidden>⚠</span>
-              <span>{t("set.sensitiveTip")}</span>
-            </p>
-          </section>
-
           {/* Daemon — machine state; Updates folds in via the header button */}
-          <section className="card-padded col-span-2 space-y-3">
+          <section className="card-padded space-y-3">
             <div className="flex items-center justify-between gap-3">
               <Eyebrow>{t("set.daemonTitle")}</Eyebrow>
               {updCheck === "available" ? (
@@ -555,6 +486,68 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
                 </>
               )}
             </dl>
+          </section>
+        </div>
+
+        {/* RIGHT — backup, import, export, and key reveal as labeled rows
+            (a clean settings list, not a grid of unlike buttons) */}
+        <div className="col-span-12 space-y-5 lg:col-span-6">
+          <section className="card-padded space-y-5">
+            <Eyebrow>{t("set.backupDataTitle")}</Eyebrow>
+
+            <SettingGroup title={t("set.grpVault")}>
+              <SettingRow
+                title={t("set.backupBtn")}
+                desc={t("set.backupTip")}
+                onClick={() => setShowBackup(true)}
+              />
+              <SettingRow
+                title={t("set.restoreBtn")}
+                desc={t("set.restoreDesc")}
+                onClick={() => setShowRestore(true)}
+              />
+            </SettingGroup>
+
+            <SettingGroup title={t("set.grpImport")}>
+              <SettingRow
+                title={t("set.importKey")}
+                desc={t("set.importKeyDesc")}
+                onClick={() => setShowImport(true)}
+              />
+              <SettingRow
+                title={t("set.importPhrase")}
+                desc={t("set.importPhraseDesc")}
+                onClick={() => setShowImportPhrase(true)}
+              />
+            </SettingGroup>
+
+            <SettingGroup title={t("set.grpExport")}>
+              <SettingRow
+                title={exporting ? t("set.exporting") : t("set.exportCsv")}
+                desc={t("set.exportCsvDesc")}
+                onClick={exportCsv}
+                disabled={exporting}
+              />
+              <SettingRow
+                title={t("set.exportLabels")}
+                desc={t("set.exportLabelsDesc")}
+                onClick={exportLabels}
+              />
+            </SettingGroup>
+          </section>
+
+          {/* Sensitive export — danger row with an always-visible warning */}
+          <section className="card-padded space-y-3">
+            <Eyebrow>{t("set.sensitiveTitle")}</Eyebrow>
+            <SettingRow
+              tone="danger"
+              title={t("set.sensitiveExportKey")}
+              onClick={() => setShowPrivateKey(true)}
+            />
+            <p className="help flex gap-1.5 text-amber-400/90">
+              <span aria-hidden>⚠</span>
+              <span>{t("set.sensitiveTip")}</span>
+            </p>
           </section>
         </div>
 
@@ -624,6 +617,80 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
         />
       )}
     </div>
+  );
+}
+
+/** A labeled group of settings rows: a small micro-header over a divided list.
+ *  Turns the old grid of unlike buttons into a scannable, conventional settings
+ *  list (vault backup / import / export each get their own group). */
+function SettingGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="px-0.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+        {title}
+      </div>
+      <div className="divide-y divide-neutral-800/70">{children}</div>
+    </div>
+  );
+}
+
+/** A single settings row: title + one-line description on the left, a chevron
+ *  affordance on the right; the whole row is the click target (macOS/iOS-style)
+ *  so the meaning lives in the label, not a wall of identical buttons. */
+function SettingRow({
+  title,
+  desc,
+  onClick,
+  disabled,
+  tone,
+}: {
+  title: string;
+  desc?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: "danger";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="group -mx-2 flex w-full items-center justify-between gap-4 rounded-lg px-2 py-2.5 text-left transition hover:bg-neutral-800/50 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <span className="min-w-0">
+        <span
+          className={
+            "block text-sm font-medium " +
+            (tone === "danger" ? "text-red-300" : "text-neutral-200")
+          }
+        >
+          {title}
+        </span>
+        {desc && (
+          <span className="mt-0.5 block text-xs text-neutral-500">{desc}</span>
+        )}
+      </span>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-4 w-4 shrink-0 text-neutral-600 transition group-hover:text-neutral-300"
+        aria-hidden
+      >
+        <path d="m9 18 6-6-6-6" />
+      </svg>
+    </button>
   );
 }
 
