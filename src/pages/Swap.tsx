@@ -363,7 +363,11 @@ export function Swap() {
     if (!sell) return 0;
     const e = pickList.find((x) => x.address === fromAddr);
     const bal = e?.balance ?? 0;
-    const feeReserve = Math.max(2000, (e?.utxo_count ?? 1) * 500);
+    // Hold back a generous-but-negligible cushion (0.05 EXFER = 5e6 exfers, the
+    // same as mobile) for the lock transaction's OWN fee — paying out the entire
+    // balance leaves nothing to cover it and the lock fails with "insufficient
+    // (amount + fee)". Scale up if the address has many UTXOs (bigger lock).
+    const feeReserve = Math.max(5_000_000, (e?.utxo_count ?? 1) * 500);
     return Math.max(0, bal - feeReserve);
   }, [sell, pickList, fromAddr]);
   // BNB balance in human units — drives the buy-side "Balance:" line.
@@ -383,7 +387,10 @@ export function Swap() {
     } catch {
       return 0;
     }
-    const GAS_RESERVE = 0.002; // ample for a BSC HTLC lock (gas is ~0.0001 BNB)
+    // ~5× a BSC HTLC lock (~0.0001 BNB) — enough headroom, but small enough that
+    // a modestly-funded wallet still gets a Max button (mobile found 0.002 hid it
+    // too often). Keep in lockstep with mobile's buy-side reserve.
+    const GAS_RESERVE = 0.0005;
     let m = Math.max(0, bnbHuman - GAS_RESERVE);
     if (poolInfo && poolInfo.bnbReserve > 0) {
       const capBySize = poolInfo.bnbReserve * (poolInfo.maxSwapBps / 10_000);
