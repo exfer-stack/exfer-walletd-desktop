@@ -20,8 +20,9 @@ import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
 import { useBnbUsd, usdNumber } from "../lib/market";
-import { fmtUnits, type BnbAsset } from "../lib/bnb";
+import { fmtUnits, revealBscMnemonic, type BnbAsset } from "../lib/bnb";
 import { CopyButton } from "./CopyButton";
+import { SetupBnbWalletModal } from "./SetupBnbWalletModal";
 
 const HEX40 = /^0x[0-9a-fA-F]{40}$/;
 
@@ -226,9 +227,10 @@ export function BnbAccount({
 }) {
   const { t } = useT();
   const bnbUsd = useBnbUsd();
-  const { address: addr, bnbWei, refresh } = asset;
+  const { address: addr, created, bnbWei, refresh } = asset;
   const [open, setOpen] = useState(lead);
   const [exportOpen, setExportOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
 
   // Human BNB balance + its ≈$ value (best-effort; hidden when BNB/USD absent).
   const bnbHuman = (() => {
@@ -242,7 +244,66 @@ export function BnbAccount({
   const bnbUsdValue = bnbUsd != null && bnbHuman > 0 ? bnbHuman * bnbUsd : null;
   const isZero = bnbWei != null && bnbHuman === 0;
 
-  // Nothing to show until walletd hands us a derived address.
+  // No BNB key yet (seedless wallet): render a SETUP pane so this component is
+  // self-contained — every consumer (Swap / Dashboard / Liquidity) gets the
+  // "set up your BNB wallet" CTA for free, gating BNB actions before any form.
+  if (!created) {
+    const setupModal = setupOpen && (
+      <SetupBnbWalletModal
+        onClose={() => setSetupOpen(false)}
+        onCreated={() => {
+          // The key now exists; re-poll so address + balance land and this
+          // component swaps to the live account surface below.
+          refresh();
+        }}
+      />
+    );
+
+    const setupPane = (
+      <div className="space-y-4">
+        <p className="text-sm text-neutral-400">{t("bnb.setupBody")}</p>
+        <button
+          type="button"
+          className="btn w-full"
+          onClick={() => setSetupOpen(true)}
+        >
+          {t("bnb.setupTitle")}
+        </button>
+      </div>
+    );
+
+    if (variant === "compact") {
+      return (
+        <section className="card-padded space-y-4">
+          <div>
+            <div className="text-sm font-semibold text-neutral-100">
+              {t("swap.bnbAccountTitle")}
+            </div>
+            <div className="text-xs text-neutral-500">{t("swap.bnbAccountSubtitle")}</div>
+          </div>
+          {setupPane}
+          {setupModal}
+        </section>
+      );
+    }
+
+    return (
+      <section className="card overflow-hidden">
+        <div className="px-5 py-4">
+          <div className="mb-4">
+            <div className="text-sm font-semibold text-neutral-100">
+              {t("swap.bnbAccountTitle")}
+            </div>
+            <div className="text-xs text-neutral-500">{t("swap.bnbAccountSubtitle")}</div>
+          </div>
+          {setupPane}
+        </div>
+        {setupModal}
+      </section>
+    );
+  }
+
+  // Created but address not yet polled in (transient): nothing to render.
   if (!addr) return null;
 
   const exportButton = (
@@ -335,7 +396,11 @@ export function ExportBnbKeyModal({ onClose }: { onClose: () => void }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [data, setData] = useState<{ address: string; key: string } | null>(null);
+  const [data, setData] = useState<{
+    address: string;
+    key: string;
+    mnemonic: string[] | null;
+  } | null>(null);
 
   async function reveal(e: FormEvent) {
     e.preventDefault();
@@ -347,7 +412,16 @@ export function ExportBnbKeyModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     try {
       const res = await revealEvmPrivateKey(pw);
-      setData({ address: res.address, key: res.private_key_hex });
+      // Also fetch the recovery phrase so the user can view/back it up again —
+      // not just the private key. Raw-key-imported BNB wallets have no phrase
+      // (bsc_reveal_mnemonic errors); show only the key in that case.
+      let mnemonic: string[] | null = null;
+      try {
+        mnemonic = (await revealBscMnemonic(pw)).mnemonic;
+      } catch {
+        mnemonic = null;
+      }
+      setData({ address: res.address, key: res.private_key_hex, mnemonic });
       setPw("");
     } catch (e) {
       setErr(humanizeError(e));
@@ -406,6 +480,27 @@ export function ExportBnbKeyModal({ onClose }: { onClose: () => void }) {
                 {data.address}
               </code>
             </div>
+            {data.mnemonic && (
+              <div>
+                <div className="label">{t("swap.bnbRecoveryPhrase")}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {data.mnemonic.map((w, i) => (
+                    <div
+                      key={i}
+                      className="flex items-baseline gap-2 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2"
+                    >
+                      <span className="w-4 text-right font-mono text-[11px] text-neutral-600">
+                        {i + 1}
+                      </span>
+                      <span className="font-mono text-sm text-neutral-100">{w}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 flex justify-end">
+                  <CopyButton text={data.mnemonic.join(" ")} className="btn-secondary" />
+                </div>
+              </div>
+            )}
             <div>
               <div className="label">{t("swap.expPrivKey")}</div>
               <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 font-mono text-sm break-all text-red-200">

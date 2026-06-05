@@ -50,6 +50,12 @@ import { useResumeTarget } from "../lib/inflight";
 // Permissive decimal: BNB carries up to 18 fractional digits, EXFER up to 8.
 const AMOUNT_RE = /^\d*\.?\d*$/;
 
+// The pool deducts a settlement-gas fee (network_fee_bnb, in BNB) from the
+// output. Until a firm quote lands we don't know it, so fall back to the pool's
+// default SWAP_GAS_FEE_BNB so the step-1 estimate already accounts for it and
+// the client-side minimum guard works even if the field is ever missing.
+const NET_FEE_BNB_FALLBACK = 0.0002;
+
 /** Trim a human decimal string to at most `dp` fractional digits (drops
  *  trailing zeros), falling back to significant digits for values that would
  *  otherwise round to a misleading "0". */
@@ -191,6 +197,47 @@ export function Swap() {
     }
     return sell ? a * poolInfo.mid : a / poolInfo.mid;
   }, [poolInfo, amount, amountValid, sell]);
+
+  // The settlement-gas fee (BNB) the pool deducts. Read the live quote when we
+  // have one, else the pool's default until a firm quote lands.
+  const estNetFee =
+    quote?.network_fee_bnb && Number(quote.network_fee_bnb) > 0
+      ? Number(quote.network_fee_bnb)
+      : NET_FEE_BNB_FALLBACK;
+
+  // Net of the pool's network fee — what actually ARRIVES — so the step-1
+  // "You receive" matches the review (which deducts it). Without this the form
+  // showed the gross output and the review then dropped for a small swap.
+  const estOutNet = useMemo(() => {
+    if (estOut == null) return null;
+    if (sell) return Math.max(0, estOut - estNetFee); // BNB out, minus the fee
+    // Buy: the pool prices EXFER on (BNB in − fee); re-derive on the net input.
+    const a = Number(amount);
+    if (!poolInfo || !isFinite(a)) return estOut;
+    const net = a - estNetFee;
+    if (net <= 0) return 0;
+    const ri = poolInfo.bnbReserve;
+    const ro = poolInfo.exferReserve;
+    if (ri > 0 && ro > 0) {
+      const inWithFee = (net * (10_000 - poolInfo.feeBps)) / 10_000;
+      return (inWithFee * ro) / (ri + inWithFee);
+    }
+    return net / poolInfo.mid;
+  }, [estOut, sell, estNetFee, amount, poolInfo]);
+
+  // ── Client-side minimum (item [6]) ──
+  // A trade whose whole output is eaten by the settlement-gas fee is pointless
+  // and the daemon 400s it. Mirror the pool: accept any trade whose output
+  // exceeds the network fee (small buffer for the AMM/fee gap), and convert the
+  // BNB floor to the INPUT unit so we can show "Min ~N {unit}" and block Review.
+  const minOutBnb = estNetFee * 1.2;
+  const minAmount =
+    poolInfo && poolInfo.mid > 0
+      ? sell
+        ? minOutBnb / poolInfo.mid
+        : minOutBnb
+      : 0;
+  const belowMin = amountValid && minAmount > 0 && Number(amount) < minAmount;
 
   // Effective EXFER/USD: the OTC EXFER quote, falling back to the pool mid ×
   // BNB/USD. Best-effort — null hides the ≈$ figures.
@@ -541,16 +588,16 @@ export function Swap() {
                     <div className="flex items-baseline justify-between text-sm">
                       <span className="text-neutral-500">{t("swap.youReceiveEst")}</span>
                       <span className="font-mono tabular-nums text-neutral-200">
-                        {estOut != null
-                          ? `≈ ${fmtAmt(String(estOut), 6)} ${recvUnit}`
+                        {estOutNet != null
+                          ? `≈ ${fmtAmt(String(estOutNet), 6)} ${recvUnit}`
                           : `— ${recvUnit}`}
                       </span>
                     </div>
-                    {exferUsd != null && estOut != null && (
+                    {exferUsd != null && estOutNet != null && (
                       <div className="flex items-baseline justify-between text-xs">
                         <span className="text-neutral-600">{t("swap.usdValue")}</span>
                         <span className="font-mono tabular-nums text-neutral-500">
-                          ≈ {usdNumber((sell ? Number(amount) : estOut) * exferUsd)}
+                          ≈ {usdNumber((sell ? Number(amount) : estOutNet) * exferUsd)}
                         </span>
                       </div>
                     )}
@@ -568,6 +615,17 @@ export function Swap() {
                       </div>
                     )}
                   </div>
+
+                  {/* Below-minimum guard: the whole output would be eaten by the
+                      network fee, so block Review with an inline floor hint. */}
+                  {belowMin && (
+                    <p className="mt-1.5 text-xs text-amber-300">
+                      {t("swap.minAmount", {
+                        n: fmtAmt(String(minAmount), 6),
+                        unit: sendUnit,
+                      })}
+                    </p>
+                  )}
                 </div>
 
                 {err && <div className="banner-error">{err}</div>}
@@ -575,7 +633,7 @@ export function Swap() {
                 <button
                   type="button"
                   className="btn w-full"
-                  disabled={busy || engineOn === null || !amountValid || !fromAddr}
+                  disabled={busy || engineOn === null || !amountValid || !fromAddr || belowMin}
                   onClick={getQuote}
                 >
                   {busy
@@ -597,6 +655,7 @@ export function Swap() {
                   priceImpact={priceImpact}
                   highImpact={highImpact}
                   exferUsd={exferUsd}
+                  bnbUsd={bnbUsd}
                   busy={busy}
                   err={err}
                   onBack={() => {
@@ -932,6 +991,7 @@ function ReviewCard({
   priceImpact,
   highImpact,
   exferUsd,
+  bnbUsd,
   busy,
   err,
   onBack,
@@ -944,6 +1004,7 @@ function ReviewCard({
   priceImpact: number;
   highImpact: boolean;
   exferUsd: number | null;
+  bnbUsd: number | null;
   busy: boolean;
   err: string | null;
   onBack: () => void;
@@ -970,6 +1031,17 @@ function ReviewCard({
       : quote.our_bsc_address
         ? shortAddress(quote.our_bsc_address, 6, 4)
         : null;
+  // Settlement-gas fee the pool deducts from the output (already reflected in
+  // amount_out). Disclose it — BNB + ≈USD — so the locked receive amount is
+  // accounted for. Falls back to the pool default if the field is ever absent.
+  const netFeeBnb =
+    quote.network_fee_bnb && Number(quote.network_fee_bnb) > 0
+      ? Number(quote.network_fee_bnb)
+      : NET_FEE_BNB_FALLBACK;
+  const netFeeUsd = bnbUsd != null ? netFeeBnb * bnbUsd : null;
+  const netFeeValue =
+    `${fmtAmt(String(netFeeBnb), 8)} BNB` +
+    (netFeeUsd != null ? ` (≈ ${usdNumber(netFeeUsd)})` : "");
   return (
     <div className="card p-5 space-y-3.5">
       <h2 className="text-sm font-semibold text-neutral-300">
@@ -1010,6 +1082,8 @@ function ReviewCard({
         </div>
         {/* Fee + BNB account on one line. */}
         {feeAcct && <Row label={t("swap.poolFee")} value={feeAcct} mono />}
+        {/* Settlement-gas fee disclosure — already deducted from amount_out. */}
+        <Row label={t("swap.networkFee")} value={netFeeValue} mono />
       </div>
 
       {err && <div className="banner-error">{err}</div>}
@@ -1045,6 +1119,37 @@ function ProgressCard({
   const status = live?.status ?? "user_locked";
   const rank = STATUS_RANK[status] ?? 1;
   const terminal = ["completed", "refunded", "failed"].includes(status);
+
+  // A "quoted" swap was never confirmed — no funds moved. Be honest instead of
+  // rendering the locked-step checklist (which would imply funds are locked).
+  if (status === "quoted") {
+    const inUnit = live?.direction === "exfer_to_bnb" ? "EXFER" : "BNB";
+    const outUnit = live?.direction === "exfer_to_bnb" ? "BNB" : "EXFER";
+    const amounts = live
+      ? `${fmtAmt(live.amount_in, 8)} ${inUnit} → ${fmtAmt(live.amount_out, 8)} ${outUnit}`
+      : "";
+    return (
+      <div className="card p-5 space-y-3.5">
+        <h2 className="text-sm font-semibold text-neutral-300">
+          {t("swap.notConfirmedTitle")}
+        </h2>
+        {amounts && (
+          <div className="font-mono text-sm tabular-nums text-neutral-200">
+            {amounts}
+          </div>
+        )}
+        <Banner
+          kind="info"
+          title={t("swap.notConfirmedTitle")}
+          body={t("swap.notConfirmedResumeBody")}
+        />
+        <button type="button" className="btn w-full" onClick={onDone}>
+          {t("swap.done")}
+        </button>
+      </div>
+    );
+  }
+
   const nodes = [
     { key: "locked", label: t("swap.stepLocked"), at: 1 },
     { key: "matched", label: t("swap.stepMatched"), at: 2 },

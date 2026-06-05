@@ -87,6 +87,8 @@ export interface SwapRec {
   amount_in: string;
   amount_out: string;
   fee_bps?: number;
+  /** Pool's settlement-gas fee (human BNB), already deducted from amount_out. */
+  network_fee_bnb?: string | null;
   our_bsc_address?: string | null;
   error?: string | null;
 }

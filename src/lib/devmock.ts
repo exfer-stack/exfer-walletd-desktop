@@ -126,7 +126,12 @@ function scopeFor(method: string): "read" | "manage" | "spend" {
     method === "swap_get_quote" ||
     method === "swap_execute" ||
     method === "swap_refund" ||
-    method === "bsc_send_bnb"
+    method === "bsc_send_bnb" ||
+    // BSC/EVM recovery-phrase reveal + key deletion expose/strand funds;
+    // lp_withdraw_self pays out the pool to the user — all Spend.
+    method === "bsc_reveal_mnemonic" ||
+    method === "bsc_delete_key" ||
+    method === "lp_withdraw_self"
   )
     return "spend";
   if (
@@ -136,6 +141,11 @@ function scopeFor(method: string): "read" | "manage" | "spend" {
     method === "import_private_key" ||
     method === "import_mnemonic" ||
     method === "import_standard_mnemonic" ||
+    // BSC/EVM independent-key provisioning mutates the keystore (no funds).
+    method === "bsc_create_address" ||
+    method === "bsc_import_mnemonic" ||
+    method === "bsc_import_key" ||
+    method === "htlc_forget" ||
     method === "abandon_transfer"
   )
     return "manage";

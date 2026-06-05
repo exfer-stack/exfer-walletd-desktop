@@ -113,6 +113,10 @@ export function Liquidity() {
   const [pos, setPos] = useState<Position | null>(null);
   const [posLoaded, setPosLoaded] = useState(false);
   const [bscAddr, setBscAddr] = useState("");
+  // Seedless wallets start with no BSC key (`created:false`, `address:null`).
+  // The BNB leg of an add is funded from this key, so the whole Add is gated on
+  // it existing — otherwise bsc_send_bnb would fail mid-deposit.
+  const [bscCreated, setBscCreated] = useState(false);
   const [bnbWei, setBnbWei] = useState("0");
   const [unavailable, setUnavailable] = useState(false);
   const [amount, setAmount] = useState("");
@@ -135,10 +139,13 @@ export function Liquidity() {
       }
       setPool(p);
       const [a, b] = await Promise.all([
-        rpc<{ address: string }>("bsc_get_address").catch(() => ({ address: "" })),
+        rpc<{ address: string | null; created: boolean }>("bsc_get_address").catch(
+          () => ({ address: "", created: false }),
+        ),
         rpc<{ bnb_wei: string }>("bsc_get_balances").catch(() => ({ bnb_wei: "0" })),
       ]);
-      setBscAddr(a.address);
+      setBscAddr(a.address ?? "");
+      setBscCreated(!!a.created);
       setBnbWei(b.bnb_wei);
       if (exferAddr) {
         const pp = await rpc<Position>("lp_position", { address: exferAddr.toLowerCase() }).catch(() => null);
@@ -252,7 +259,11 @@ export function Liquidity() {
   const enoughExfer = amountValid && parseExferAmountSafe(amount) <= exferBal;
   const enoughBnb = bnbNeeded <= bnbHuman;
   const belowMin = amountValid && minExfer > 0 && amtNum < minExfer;
-  const canAdd = amountValid && enoughExfer && enoughBnb && !belowMin;
+  // The BNB leg is funded from the BSC key — gate the whole Add until it exists
+  // (seedless wallets have none). Without it there's no BNB to send and no
+  // address to sweep from, so an "add" can't complete.
+  const hasBscWallet = bscCreated && !!bscAddr;
+  const canAdd = hasBscWallet && amountValid && enoughExfer && enoughBnb && !belowMin;
 
   function pollDeposit(id: string): Promise<"completed" | "expired"> {
     return new Promise((resolve, reject) => {
@@ -462,6 +473,19 @@ export function Liquidity() {
               <ProgressStrip stage={stage} labels={[t("lp.stepSend"), t("lp.stepSweep"), t("lp.stepCredit")]} />
             ) : phase === "done" && result ? (
               <DoneStrip result={result} err={err} onDone={() => resetPane(hasPosition ? undefined : "add")} />
+            ) : tab === "add" && !hasBscWallet ? (
+              /* ── No BSC key: the BNB leg has nowhere to come from. Surface a
+                 clear "set up your BNB wallet" notice (pointing at the BNB
+                 account on Swap) instead of letting Add proceed to a failing
+                 bsc_send_bnb. ── */
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-5 py-8 text-center">
+                <div className="text-sm font-semibold text-neutral-100">
+                  {t("bnb.notCreatedTitle")}
+                </div>
+                <p className="mx-auto mt-1.5 max-w-sm text-sm text-neutral-400">
+                  {t("bnb.lpNeedsWallet")}
+                </p>
+              </div>
             ) : tab === "add" ? (
               /* ── ADD ── */
               <div className="space-y-3">

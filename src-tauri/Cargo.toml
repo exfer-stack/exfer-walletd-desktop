@@ -30,10 +30,14 @@ rand               = "0.8"
 tokio              = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 tokio-util         = { version = "0.7", features = ["rt"] }
 
-# The embedded walletd. Pinned to the same rev as the mobile wallet so the
-# cross-chain swap engine (swap_*/bsc_* RPC, BSC address derivation, HTLC legs)
-# is present and behaves byte-for-byte identically. v1.12.1 predates swap.
-exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "604f6e2" }
+# The embedded walletd. Pinned to the SAME rev as the mobile wallet so the
+# cross-chain swap engine + BSC/EVM key management behave byte-for-byte
+# identically. 5b5d93a adds: independent BSC/EVM key (own mnemonic,
+# create/import/export — 6dae14b), the vault carrying that key (d3c5c2e),
+# networkFeeBnb in the quote projection (d2d4040), the HTLC reveal-gate
+# funds-safety check (b20d1c3), the delete_address LP-shares guard (5870e27),
+# and expired-quote pruning. Must match mobile's pin.
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "5b5d93a" }
 
 # HTTP client used by the Tauri Rust side to talk to the embedded
 # walletd over loopback HTTPS. `rustls-tls-manual-roots` disables

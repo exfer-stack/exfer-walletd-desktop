@@ -29,9 +29,18 @@ export function fmtUnits(raw: string | undefined, decimals: number, frac = 4): s
   }
 }
 
+/** Raw `bsc_get_address` shape: address is null until a BNB key exists. */
+export interface BscAddressInfo {
+  address: string | null;
+  created: boolean;
+}
+
 export interface BnbAsset {
   /** The wallet's derived BSC address (m/44'/60'/0'/0/0), or null until known. */
   address: string | null;
+  /** Whether a BNB key exists yet. Seedless wallets start with `created:false`
+   *  (and `address:null`) — consumers route the user to set one up first. */
+  created: boolean;
   /** Live BNB balance in wei (string), or null until first poll succeeds. */
   bnbWei: string | null;
   /** Force an immediate re-poll of address + balance. */
@@ -50,6 +59,7 @@ export function useBnbAsset(opts: { announceDeposits?: boolean } = {}): BnbAsset
   const toast = useToast();
   const { t } = useT();
   const [address, setAddress] = useState<string | null>(null);
+  const [created, setCreated] = useState<boolean>(false);
   const [bnbWei, setBnbWei] = useState<string | null>(null);
   const lastWei = useRef<bigint | null>(null);
   // Keep the latest address in a ref so the poll closure stays stable.
@@ -57,10 +67,17 @@ export function useBnbAsset(opts: { announceDeposits?: boolean } = {}): BnbAsset
 
   const load = useCallback(async () => {
     try {
+      // Re-read the address until a BNB key exists. `bsc_get_address` never
+      // errors on "none": it returns {created:false} so we can route the user
+      // to set one up. Once created, `addrRef` is set and we stop re-reading.
       if (!addrRef.current) {
-        const a = await rpc<{ address: string }>("bsc_get_address");
+        const a = await rpc<BscAddressInfo>("bsc_get_address");
         addrRef.current = a.address;
         setAddress(a.address);
+        setCreated(a.created);
+        // No BNB key yet — there's no balance to poll; bail before the
+        // bsc_get_balances call (which would error without a key).
+        if (!a.created) return;
       }
       const b = await rpc<{ bnb_wei: string }>("bsc_get_balances");
       setBnbWei(b.bnb_wei);
@@ -89,5 +106,46 @@ export function useBnbAsset(opts: { announceDeposits?: boolean } = {}): BnbAsset
     };
   }, [load]);
 
-  return { address, bnbWei, refresh: load };
+  return { address, created, bnbWei, refresh: load };
+}
+
+// ── typed RPC wrappers for the BNB key lifecycle ──────────────────────────
+
+/** Generate a brand-new BNB wallet (fresh 24-word mnemonic → secp256k1).
+ *  Returns the address plus the words to back up. `force` overwrites an
+ *  existing seed-derived address on a seeded wallet (normally unneeded —
+ *  seedless wallets have no key, so create is the default). */
+export function createBscWallet(
+  force?: boolean,
+): Promise<{ address: string; mnemonic: string[] }> {
+  return rpc("bsc_create_address", force ? { force: true } : {});
+}
+
+/** Import a MetaMask-style raw private key (0x + 64 hex) as the BNB wallet. */
+export function importBscKey(
+  privateKeyHex: string,
+  overwrite?: boolean,
+): Promise<{ address: string }> {
+  return rpc("bsc_import_key", {
+    private_key_hex: privateKeyHex,
+    overwrite: overwrite ?? false,
+  });
+}
+
+/** Import a MetaMask-style BIP-39 phrase (12 or 24 words) as the BNB wallet. */
+export function importBscMnemonic(
+  mnemonic: string,
+  overwrite?: boolean,
+): Promise<{ address: string }> {
+  return rpc("bsc_import_mnemonic", {
+    mnemonic,
+    overwrite: overwrite ?? false,
+  });
+}
+
+/** Reveal the BNB wallet's recovery phrase (passphrase- + Spend-gated). */
+export function revealBscMnemonic(
+  passphrase: string,
+): Promise<{ mnemonic: string[] }> {
+  return rpc("bsc_reveal_mnemonic", { passphrase });
 }

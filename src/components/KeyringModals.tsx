@@ -183,6 +183,14 @@ export function RecoveryPhraseModal({
 // Delete an address (destructive — erases the key)
 // ---------------------------------------------------------------------------
 
+interface LpPosition {
+  has_position: boolean;
+  shares: string;
+  pool_share_pct: number;
+  value_bnb: string;
+  value_exfer: string;
+}
+
 export function DeleteAddressModal({
   address,
   balance,
@@ -202,15 +210,60 @@ export function DeleteAddressModal({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // LP shares are off-chain and invisible to walletd's on-chain funds guard, so
+  // a "balance 0" address can still own a position. Probe it on open and block
+  // the (irreversible) delete behind an explicit acknowledgement.
+  const [lp, setLp] = useState<LpPosition | null>(null);
+  const [lpAck, setLpAck] = useState(false);
+  // Until the probe resolves we don't know whether this address owns LP shares,
+  // so the delete must stay blocked. A FAILED probe is treated as "might have
+  // LP" (fail closed): block + warn, never allow.
+  const [lpChecked, setLpChecked] = useState(false);
+  const [lpProbeFailed, setLpProbeFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLpChecked(false);
+    setLpProbeFailed(false);
+    rpc<LpPosition>("lp_position", { address: address.toLowerCase() })
+      .then((p) => {
+        if (cancelled) return;
+        if (p?.has_position && p.shares !== "0") setLp(p);
+        setLpChecked(true);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        // "swap not configured" means there's no LP subsystem at all, so no
+        // shares can exist — treat it as a clean "no LP" and allow the delete.
+        // Any OTHER error (pool unreachable, etc.) is a real probe failure: we
+        // can't rule out an LP position, so fail closed (block + warn).
+        const msg = String((e as { message?: unknown })?.message ?? e);
+        if (!/swap not configured|swap engine|set --swap-pool/i.test(msg)) {
+          setLpProbeFailed(true);
+        }
+        setLpChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+  const hasLp = lp != null;
+  // Blocked while the probe is in flight, while a confirmed LP position is
+  // unacknowledged, or whenever the probe failed (can't rule LP out).
+  const lpBlocks = !lpChecked || lpProbeFailed || (hasLp && !lpAck);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (lpBlocks) return;
     setError(null);
     setPending(true);
     try {
+      // Pass force when overriding either guard: the on-chain funds checkbox, or
+      // the off-chain LP acknowledgement (the backend now rejects deleting an
+      // address that still owns LP shares unless force is set).
       await rpc("delete_address", {
         address,
         passphrase: password,
-        force: funded ? force : false,
+        force: (funded && force) || (hasLp && lpAck),
       });
       toast.success(t("kr.delDone"), t("kr.delDoneBody", { addr: shortAddress(address) }));
       onDeleted();
@@ -249,6 +302,33 @@ export function DeleteAddressModal({
           </div>
         )}
 
+        {lpProbeFailed && <div className="banner-error text-sm">{t("err.network")}</div>}
+
+        {hasLp && (
+          <div className="banner-error space-y-2 text-sm">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={lpAck}
+                onChange={(e) => setLpAck(e.target.checked)}
+              />
+              <span>
+                {t("kr.delLpWarn", {
+                  exfer: Number(lp!.value_exfer).toLocaleString("en-US", {
+                    maximumSignificantDigits: 6,
+                    useGrouping: false,
+                  }),
+                  bnb: Number(lp!.value_bnb).toLocaleString("en-US", {
+                    maximumSignificantDigits: 4,
+                    useGrouping: false,
+                  }),
+                })}
+              </span>
+            </label>
+          </div>
+        )}
+
         <div>
           <label className="label" htmlFor="del-pw">
             {t("kr.walletPassword")}
@@ -273,7 +353,7 @@ export function DeleteAddressModal({
           <button
             type="submit"
             className="btn-danger"
-            disabled={pending || password === "" || (funded && !force)}
+            disabled={pending || password === "" || (funded && !force) || lpBlocks}
           >
             {pending ? t("kr.deleting") : t("kr.delHeading")}
           </button>

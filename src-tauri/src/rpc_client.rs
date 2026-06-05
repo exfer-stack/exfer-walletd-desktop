@@ -126,12 +126,21 @@ fn scope_for_method(method: &str) -> Scope {
         // Missing here means the read token is sent and walletd rejects with
         // -32001 (authentication required) before doing anything.
         | "swap_get_quote" | "swap_execute" | "swap_refund"
-        | "bsc_send_bnb" => Scope::Spend,
+        | "bsc_send_bnb"
+        // BSC/EVM recovery-phrase reveal exposes key material (same bar as
+        // reveal_evm_private_key); bsc_delete_key can strand BNB funds;
+        // lp_withdraw_self triggers a pool payout to the user — all Spend.
+        | "bsc_reveal_mnemonic" | "bsc_delete_key"
+        | "lp_withdraw_self" => Scope::Spend,
         // import_private_key/import_mnemonic add a key (Manage, like
         // generate_*). import_standard_mnemonic is the standard-scheme import
         // the desktop uses (import_mnemonic_scheme) — it must be Manage too.
+        // The BSC/EVM independent-key lifecycle (create/import) mutates the
+        // keystore but moves no funds — Manage, mirroring walletd.
         "generate_address" | "generate_independent_address" | "generate_standard_address"
         | "import_private_key" | "import_mnemonic" | "import_standard_mnemonic"
+        | "bsc_create_address" | "bsc_import_mnemonic" | "bsc_import_key"
+        | "htlc_forget"
         | "abandon_transfer" => Scope::Manage,
         _ => Scope::Read,
     }

@@ -47,10 +47,11 @@ export interface InflightSwap {
 export type { LpOp };
 
 // Statuses that mean the swap is done (any other status is still in flight).
-// "quoted" is terminal here: a bare quote never locked funds, so it's not
-// something the user is waiting on.
+// "quoted" / "expired" are terminal here: a bare quote that lapsed never locked
+// funds, so it's not something the user is waiting on.
 const TERMINAL_SWAP = new Set([
   "quoted",
+  "expired",
   "completed",
   "refunded",
   "failed",
