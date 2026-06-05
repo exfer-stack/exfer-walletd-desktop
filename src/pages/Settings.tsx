@@ -5,8 +5,6 @@ import {
   setNodeRpc,
   getIndexerConfig,
   setIndexerConfig,
-  getSwapConfig,
-  setSwapConfig,
   formatExfer,
   resetWallet,
 } from "../lib/rpc";
@@ -56,16 +54,8 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
   const [indexerError, setIndexerError] = useState<string | null>(null);
   const [indexerInfo, setIndexerInfo] = useState<string | null>(null);
 
-  // Swap engine config. Empty pool URL = swap OFF (the default). The current
-  // public pool is on BSC testnet, so enabling it also wants a testnet RPC +
-  // chain id 97. `swapCur*` track the saved values for the Save/Revert gates.
-  const [swapPool, setSwapPool] = useState("");
-  const [swapBscRpc, setSwapBscRpc] = useState("");
-  const [swapChain, setSwapChain] = useState("");
-  const [swapCur, setSwapCur] = useState({ pool: "", rpc: "", chain: "" });
-  const [savingSwap, setSavingSwap] = useState(false);
-  const [swapError, setSwapError] = useState<string | null>(null);
-  const [swapInfo, setSwapInfo] = useState<string | null>(null);
+  // Swap is hard-coded ON against the official pool (not user-configurable),
+  // so there's no swap row here anymore.
 
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState<StatusInfo | null>(null);
@@ -95,58 +85,16 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
       setIndexerUrl(c.rpc);
       setIndexerCurUrl(c.rpc);
     }, () => {});
-    getSwapConfig().then((c) => {
-      const chain = c.bsc_chain_id ? String(c.bsc_chain_id) : "";
-      setSwapPool(c.pool_url);
-      setSwapBscRpc(c.bsc_rpc_url);
-      setSwapChain(chain);
-      setSwapCur({ pool: c.pool_url, rpc: c.bsc_rpc_url, chain });
-    }, () => {});
     rpc<StatusInfo>("get_status").then(setStatus, () => {});
   }, []);
 
   // ---- change flags (drive the per-row "changed" dot + the shared footer) ----
   const nodeChanged = value.trim() !== current.trim();
   const indexerChanged = indexerUrl.trim() !== indexerCurUrl.trim();
-  const swapChanged =
-    swapPool.trim() !== swapCur.pool.trim() ||
-    swapBscRpc.trim() !== swapCur.rpc.trim() ||
-    swapChain.trim() !== swapCur.chain.trim();
-  const anyChanged = nodeChanged || indexerChanged || swapChanged;
-  const savingAny = savingNode || savingIndexer || savingSwap;
-  const connError = nodeError ?? indexerError ?? swapError;
-  const connInfo = nodeInfo ?? indexerInfo ?? swapInfo;
-
-  async function saveSwap() {
-    setSwapError(null);
-    setSwapInfo(null);
-    const chainNum = swapChain.trim() === "" ? 0 : Number(swapChain.trim());
-    if (!Number.isInteger(chainNum) || chainNum < 0) {
-      setSwapError(t("set.swapChainErr"));
-      return;
-    }
-    setSavingSwap(true);
-    try {
-      const s = await setSwapConfig({
-        pool_url: swapPool,
-        bsc_rpc_url: swapBscRpc,
-        bsc_chain_id: chainNum,
-      });
-      setSwapCur({ pool: swapPool.trim(), rpc: swapBscRpc.trim(), chain: swapChain.trim() });
-      setSwapInfo(
-        swapPool.trim()
-          ? t("set.swapSavedOn")
-          : t("set.swapSavedOff"),
-      );
-      toast.success(t("set.swapToastOkTitle"), t("set.swapToastOkBody"));
-      onRestart(s);
-    } catch (err) {
-      setSwapError(humanizeError(err));
-      toast.error(t("set.swapToastErrTitle"), humanizeError(err));
-    } finally {
-      setSavingSwap(false);
-    }
-  }
+  const anyChanged = nodeChanged || indexerChanged;
+  const savingAny = savingNode || savingIndexer;
+  const connError = nodeError ?? indexerError;
+  const connInfo = nodeInfo ?? indexerInfo;
 
   async function saveIndexer() {
     setIndexerError(null);
@@ -195,21 +143,15 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
     e.preventDefault();
     if (nodeChanged) await saveNode();
     if (indexerChanged) await saveIndexer();
-    if (swapChanged) await saveSwap();
   }
 
   function revertConnections() {
     setValue(current);
     setIndexerUrl(indexerCurUrl);
-    setSwapPool(swapCur.pool);
-    setSwapBscRpc(swapCur.rpc);
-    setSwapChain(swapCur.chain);
     setNodeError(null);
     setIndexerError(null);
-    setSwapError(null);
     setNodeInfo(null);
     setIndexerInfo(null);
-    setSwapInfo(null);
   }
 
   async function doCheckUpdate() {
@@ -308,8 +250,6 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
     URL.revokeObjectURL(url);
   }
 
-  const swapOn = swapPool.trim() !== "";
-
   return (
     <div className="mx-auto max-w-6xl space-y-5 p-8 fade-in">
       {/* Header: title + walletd version chip, language toggle top-right */}
@@ -373,42 +313,6 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
               disabled={savingAny}
               placeholder={t("set.indexerPlaceholder")}
             />
-          </ConnRow>
-
-          <ConnRow
-            label={t("set.swapTitle")}
-            changed={swapChanged}
-            chip={swapCur.pool ? t("set.swapOn", { pool: swapCur.pool }) : t("set.swapOff")}
-          >
-            <input
-              className="input font-mono text-sm"
-              value={swapPool}
-              onChange={(e) => setSwapPool(e.target.value)}
-              disabled={savingAny}
-              placeholder={t("set.swapPoolPlaceholder")}
-            />
-            {/* RPC + chain id only matter once a pool is set */}
-            {swapOn && (
-              <div className="mt-2 grid grid-cols-[1.6fr_1fr] gap-3">
-                <input
-                  className="input font-mono text-sm"
-                  value={swapBscRpc}
-                  onChange={(e) => setSwapBscRpc(e.target.value)}
-                  disabled={savingAny}
-                  placeholder={t("set.swapRpcPlaceholder")}
-                  aria-label={t("set.swapRpcLabel")}
-                />
-                <input
-                  className="input font-mono text-sm"
-                  value={swapChain}
-                  onChange={(e) => setSwapChain(e.target.value)}
-                  disabled={savingAny}
-                  inputMode="numeric"
-                  placeholder="56 / 97"
-                  aria-label={t("set.swapChainLabel")}
-                />
-              </div>
-            )}
           </ConnRow>
 
           <div className="flex items-center gap-2 pt-1">

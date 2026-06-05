@@ -60,6 +60,10 @@ SQAwRgIhAJWea9ZtxE/nWo7Jn+MVweU0q4chF/TCs3p7KPbujgLgAiEAv2MVABW2
 TiAd+cw7MH3pK+bxkCf4I038dROruAaFLw0=
 -----END CERTIFICATE-----
 ";
+/// The cross-chain swap pool — HARD-CODED (not user-configurable). The engine
+/// is always on against this pool, same as the mobile wallet. Self-signed HTTPS
+/// pinned via POOL_CA_PEM; BSC leg via the publicnode RPC default.
+pub const DEFAULT_SWAP_POOL_URL: &str = "https://64.176.231.198:8080";
 pub const DESKTOP_CONFIG_FILE: &str = "desktop-config.json";
 
 #[derive(Debug, Clone, Serialize)]
@@ -121,16 +125,11 @@ impl DesktopConfig {
         }
     }
 
-    /// Effective swap-pool URL passed to walletd's swap engine, or `None` to
-    /// leave the engine off. Unset or empty ⇒ off (swap ships off, opt-in via
-    /// Settings); a non-empty configured URL turns it on. Mirrors the mobile
-    /// wallet's default-off posture.
+    /// Swap-pool URL passed to walletd's swap engine. HARD-CODED to the official
+    /// pool and always on — swap is not user-configurable (matches mobile). The
+    /// legacy `swap_pool_url` config field is ignored.
     pub fn effective_swap_pool_url(&self) -> Option<String> {
-        self.swap_pool_url
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
+        Some(DEFAULT_SWAP_POOL_URL.to_string())
     }
 }
 
