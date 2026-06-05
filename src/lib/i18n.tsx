@@ -704,6 +704,14 @@ const EN = {
   "kr.delLpWarn": "This address owns a liquidity position (≈ {exfer} EXFER + {bnb} BNB). Deleting its key loses access to those shares unless you restore the same address from your recovery phrase. I understand.",
   "bnb.notCreatedTitle": "Set up your BNB wallet",
   "bnb.lpNeedsWallet": "Set up your BNB wallet to provide liquidity.",
+  "snd.max": "Max",
+  "na.title": "New address",
+  "na.create": "Create",
+  "na.cancel": "Cancel",
+  "na.info": "Generates a fresh key in your wallet. Give it a name so you can tell it apart — a private nickname, stored only on this device.",
+  "na.nameOptional": "Name (optional)",
+  "na.namePlaceholder": "e.g. deposits, savings…",
+  "na.createdNamed": "“{name}” is ready to receive.",
 };
 
 export type MsgKey = keyof typeof EN;
@@ -1378,6 +1386,14 @@ const ZH: Record<MsgKey, string> = {
   "set.importPhraseDesc": "用 12/24 词助记词导入一个地址。",
   "set.exportCsvDesc": "地址与余额导出为 CSV 文件。",
   "set.exportLabelsDesc": "地址标签导出为 JSON 文件。",
+  "snd.max": "最大",
+  "na.title": "新建地址",
+  "na.create": "创建",
+  "na.cancel": "取消",
+  "na.info": "在你的钱包里生成一把全新的私钥。起个名字方便区分——这是只存在本机的私人昵称。",
+  "na.nameOptional": "名称（可选）",
+  "na.namePlaceholder": "例如：收款、储蓄…",
+  "na.createdNamed": "「{name}」已可接收。",
 };
 
 const DICT: Record<Lang, Record<MsgKey, string>> = { en: EN, zh: ZH };

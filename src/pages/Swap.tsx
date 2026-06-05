@@ -274,7 +274,17 @@ export function Swap() {
   // Sell Max = the funded address's spendable EXFER. Buy Max = all spendable
   // BNB, less a small gas reserve (BNB is also the gas token), capped at the
   // pool's per-swap size cap.
-  const sendBal = pickList.find((e) => e.address === fromAddr)?.balance ?? 0;
+  // Sell Max must leave room for the EXFER lock's own network fee (paid from the
+  // same UTXOs, ~69 exfers/input) — otherwise locking 100% fails with
+  // "insufficient balance (amount + fee)". Reserve a small per-UTXO buffer so a
+  // true Max swap always builds; the tiny remainder stays in the wallet.
+  const sellMax = useMemo(() => {
+    if (!sell) return 0;
+    const e = pickList.find((x) => x.address === fromAddr);
+    const bal = e?.balance ?? 0;
+    const feeReserve = Math.max(2000, (e?.utxo_count ?? 1) * 500);
+    return Math.max(0, bal - feeReserve);
+  }, [sell, pickList, fromAddr]);
   const buyMax = useMemo(() => {
     if (sell || !bnbWei) return 0;
     let bnbHuman = 0;
@@ -548,12 +558,12 @@ export function Swap() {
                         ? t("swap.amountStep")
                         : t("swap.youSendUnit", { unit: sendUnit })}
                     </label>
-                    {sell && sendBal > 0 && (
+                    {sell && sellMax > 0 && (
                       <button
                         type="button"
                         className="btn-ghost text-xs"
                         onClick={() =>
-                          setAmount(formatExfer(sendBal).replace(" EXFER", ""))
+                          setAmount(formatExfer(sellMax).replace(" EXFER", ""))
                         }
                         disabled={busy}
                       >

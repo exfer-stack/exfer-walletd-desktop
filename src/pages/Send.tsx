@@ -49,6 +49,11 @@ export function Send() {
   // Live fee estimate: the fee at rate 1 (= the tx's cost in exfers) for the
   // current template. null until there's a complete, valid template to simulate.
   const [baseFee, setBaseFee] = useState<number | null>(null);
+  // Which recipient row (if any) is pinned to "Max". Its amount auto-tracks
+  // (balance − fee − other rows) so it stays exact as the fee re-simulates and
+  // never trips the insufficient-funds guard. Cleared when that row's amount is
+  // edited by hand, or when any row is removed (indices shift).
+  const [maxRow, setMaxRow] = useState<number | null>(null);
 
   // Don't offer hidden addresses as a sending source.
   const sendable = (balance?.entries ?? []).filter((e) => !isHidden(e.address));
@@ -97,6 +102,42 @@ export function Send() {
     };
   }, [from, validOutputs]);
 
+  // Sum of every row except the pinned "Max" row — what Max has to leave room
+  // for. Bad/empty amounts count as 0.
+  const othersTotal = useMemo(() => {
+    if (maxRow === null) return 0;
+    return outputs.reduce((s, o, k) => {
+      if (k === maxRow) return s;
+      try {
+        return s + parseExferAmount(o.amount);
+      } catch {
+        return s;
+      }
+    }, 0);
+  }, [outputs, maxRow]);
+
+  // Keep the Max row exact. Re-runs when the fee re-simulates (`baseFee`) or the
+  // other rows change (`othersTotal`), so "send max" respects amounts already
+  // entered elsewhere and lands exactly on balance − fee — never over. Writing
+  // the Max row doesn't change `othersTotal` (it's excluded), so this can't
+  // loop; it converges once the simulated fee settles.
+  useEffect(() => {
+    if (maxRow === null) return;
+    const fromEnt = balance?.entries.find((e) => e.address === from);
+    const bal = fromEnt?.balance ?? 0;
+    // Until the real fee simulates, reserve a UTXO-sized floor (~69 exfers/input)
+    // so the FIRST Max fill leaves room for the fee — otherwise it fills 100%,
+    // simulate_transfer fails ("insufficient: amount + fee"), baseFee stays null,
+    // and it never converges. Once baseFee lands it takes over (tighter + exact).
+    const feeFloor = Math.max(2000, (fromEnt?.utxo_count ?? 1) * 500);
+    const avail = Math.max(0, bal - (baseFee ?? feeFloor) - othersTotal);
+    const amt = formatExfer(avail).replace(" EXFER", "");
+    setOutputs((prev) => {
+      if (maxRow >= prev.length || prev[maxRow].amount === amt) return prev;
+      return prev.map((o, k) => (k === maxRow ? { ...o, amount: amt } : o));
+    });
+  }, [baseFee, othersTotal, maxRow, from, balance]);
+
   useEffect(() => {
     if (sendable.length > 0 && !from) {
       setFrom(sendable[0].address);
@@ -117,6 +158,8 @@ export function Send() {
   }
   function removeRow(i: number) {
     setOutputs((prev) => prev.filter((_, k) => k !== i));
+    // Indices shift on removal — drop the Max pin rather than track it wrong.
+    setMaxRow(null);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -337,7 +380,13 @@ export function Send() {
                   recents={recents}
                   canRemove={outputs.length > 1}
                   disabled={pending}
+                  isMax={maxRow === i}
+                  onToggleMax={() => setMaxRow(maxRow === i ? null : i)}
                   onChange={(patch) => updateOutput(i, patch)}
+                  onAmountEdit={() => {
+                    // A manual edit releases the Max pin on this row.
+                    if (maxRow === i) setMaxRow(null);
+                  }}
                   onRemove={() => removeRow(i)}
                 />
               ))}
@@ -367,7 +416,10 @@ function RecipientRow({
   recents,
   canRemove,
   disabled,
+  isMax,
+  onToggleMax,
   onChange,
+  onAmountEdit,
   onRemove,
 }: {
   index: number;
@@ -375,7 +427,10 @@ function RecipientRow({
   recents: string[];
   canRemove: boolean;
   disabled: boolean;
+  isMax: boolean;
+  onToggleMax: () => void;
   onChange: (patch: Partial<OutputRow>) => void;
+  onAmountEdit: () => void;
   onRemove: () => void;
 }) {
   const { t } = useT();
@@ -403,14 +458,35 @@ function RecipientRow({
           <option key={r} value={r} />
         ))}
       </datalist>
-      <input
-        className="input text-right font-mono tabular-nums"
-        placeholder="0.01"
-        value={value.amount}
-        onChange={(e) => onChange({ amount: e.target.value })}
-        disabled={disabled}
-        inputMode="decimal"
-      />
+      <div className="flex items-center gap-1.5">
+        <input
+          className="input flex-1 text-right font-mono tabular-nums"
+          placeholder="0.01"
+          value={value.amount}
+          onChange={(e) => {
+            // A manual edit releases the Max pin on this row.
+            onAmountEdit();
+            onChange({ amount: e.target.value });
+          }}
+          disabled={disabled}
+          inputMode="decimal"
+        />
+        <button
+          type="button"
+          onClick={onToggleMax}
+          disabled={disabled}
+          aria-pressed={isMax}
+          className={
+            "btn-ghost shrink-0 border px-2 py-1 text-xs disabled:opacity-30 " +
+            (isMax
+              ? "border-cyan-400 bg-cyan-500/10 text-cyan-300"
+              : "border-transparent")
+          }
+          title={t("snd.max")}
+        >
+          {t("snd.max")}
+        </button>
+      </div>
       <button
         type="button"
         onClick={onRemove}
