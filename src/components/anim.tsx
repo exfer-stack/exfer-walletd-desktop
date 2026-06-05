@@ -5,7 +5,24 @@
 // classes (swap-flow / swap-node-active / success-*) live in index.css and are
 // gated behind prefers-reduced-motion.
 
-import logoUrl from "../assets/logo.png";
+import tokenCoin from "../assets/exfer-token.png";
+
+/** The EXFER token coin — the proper mark (a centered glyph on a black disc)
+ *  with a thin white ring so it reads as a coin on the dark surface, matching
+ *  the mobile wallet. Use this everywhere EXFER appears as a coin (never the
+ *  bare wordmark logo). */
+export function ExferMark({ size = 20 }: { size?: number }) {
+  return (
+    <img
+      src={tokenCoin}
+      alt=""
+      width={size}
+      height={size}
+      className="block flex-none rounded-full"
+      style={{ boxSizing: "border-box", border: "1px solid rgba(255,255,255,0.55)" }}
+    />
+  );
+}
 
 /** A small border-spinner for the active stepper node. */
 function Spin({ size = 14 }: { size?: number }) {
@@ -172,13 +189,7 @@ export function PairCoins({ size = 56 }: { size?: number }) {
   return (
     <span className="inline-flex items-center">
       <span className="relative z-[2] inline-grid" style={shadow}>
-        <img
-          src={logoUrl}
-          alt=""
-          width={size}
-          height={size}
-          className="rounded-full"
-        />
+        <ExferMark size={size} />
       </span>
       <span className="relative z-[1] -ml-4 inline-grid" style={shadow}>
         <BnbMark size={size} />

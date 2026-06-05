@@ -45,10 +45,9 @@ import {
 import { recordSwapUsd } from "../lib/swapPrice";
 import { useBnbAsset } from "../lib/bnb";
 import { BnbAccount } from "../components/BnbAccount";
-import { StagedStepper, SuccessMark } from "../components/anim";
+import { StagedStepper, SuccessMark, ExferMark } from "../components/anim";
 import { PriceChart } from "../components/PriceChart";
 import { useResumeTarget } from "../lib/inflight";
-import logoUrl from "../assets/logo.png";
 
 // Permissive decimal: BNB carries up to 18 fractional digits, EXFER up to 8.
 const AMOUNT_RE = /^\d*\.?\d*$/;
@@ -1253,11 +1252,7 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
 function TokenChip({ unit }: { unit: "EXFER" | "BNB" }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100">
-      {unit === "EXFER" ? (
-        <img src={logoUrl} alt="" className="h-5 w-5 rounded-full" />
-      ) : (
-        <BnbMark size={20} />
-      )}
+      {unit === "EXFER" ? <ExferMark size={20} /> : <BnbMark size={20} />}
       {unit}
     </span>
   );
