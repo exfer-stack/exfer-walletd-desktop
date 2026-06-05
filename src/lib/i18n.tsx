@@ -652,6 +652,16 @@ const EN = {
   "set.backupTip": "Encrypted with your wallet password — keep both.",
   "set.sensitiveTip": "Shows plaintext key material on screen — anyone watching or capturing your screen can steal it.",
   "set.dangerOneLiner": "Erases local keys + saved password. On-chain coins are safe only if you have a backup.",
+  "dash.marketTitle": "Market",
+  "dash.change24h": "24h",
+  "snd.broadcast": "Broadcast",
+  "lp.youAdd": "You add",
+  "act.colTime": "Time",
+  "act.colDesc": "Description",
+  "act.colAmount": "Amount",
+  "act.colStatus": "Status",
+  "act.clearConfirmBtn": "Confirm clear",
+  "rcv.creating": "Creating…",
 };
 
 export type MsgKey = keyof typeof EN;
@@ -1274,6 +1284,16 @@ const ZH: Record<MsgKey, string> = {
   "set.backupTip": "用钱包密码加密——文件和密码都要保管好。",
   "set.sensitiveTip": "会在屏幕上显示明文私钥——任何能看到或录制你屏幕的人都能窃取。",
   "set.dangerOneLiner": "清除本机密钥和已保存的密码。只有提前备份，链上资产才安全。",
+  "dash.marketTitle": "行情",
+  "dash.change24h": "24小时",
+  "snd.broadcast": "广播",
+  "lp.youAdd": "你将添加",
+  "act.colTime": "时间",
+  "act.colDesc": "描述",
+  "act.colAmount": "金额",
+  "act.colStatus": "状态",
+  "act.clearConfirmBtn": "确认清空",
+  "rcv.creating": "创建中…",
 };
 
 const DICT: Record<Lang, Record<MsgKey, string>> = { en: EN, zh: ZH };

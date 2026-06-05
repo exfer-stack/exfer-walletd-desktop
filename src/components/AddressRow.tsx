@@ -114,7 +114,10 @@ export function AddressRow({
               />
             )}
             <div
-              className={"amount" + (balance === 0 ? " text-neutral-600" : "")}
+              className={
+                "amount whitespace-nowrap" +
+                (balance === 0 ? " text-neutral-600" : "")
+              }
               title={formatExfer(balance)}
             >
               {formatBalanceCompact(balance)}

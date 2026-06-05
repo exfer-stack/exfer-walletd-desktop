@@ -341,9 +341,9 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
         </div>
       </header>
 
-      <div className="grid grid-cols-12 gap-5">
+      <div className="grid grid-cols-12 items-start gap-5">
         {/* LEFT — Connections: the routine config, one card, one shared Save */}
-        <form onSubmit={saveConnections} className="card-padded col-span-12 space-y-3 lg:col-span-7">
+        <form onSubmit={saveConnections} className="card-padded col-span-12 space-y-3 lg:col-span-5">
           <Eyebrow>{t("set.connectionsTitle")}</Eyebrow>
 
           <ConnRow
@@ -430,8 +430,9 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
           </div>
         </form>
 
-        {/* RIGHT — stacked action / state panels */}
-        <div className="col-span-12 space-y-5 lg:col-span-5">
+        {/* RIGHT — action / state panels in a 2-col sub-grid so they fill the
+            wider column instead of stacking into a tall ragged stack */}
+        <div className="col-span-12 grid grid-cols-2 items-start gap-5 lg:col-span-7">
           {/* Backup & data */}
           <section className="card-padded space-y-3">
             <Eyebrow>{t("set.backupDataTitle")}</Eyebrow>
@@ -440,7 +441,6 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
                 type="button"
                 className="btn"
                 onClick={() => setShowBackup(true)}
-                title={t("set.backupTip")}
               >
                 {t("set.backupBtn")}
               </button>
@@ -484,29 +484,24 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
             <p className="help">{t("set.backupTip")}</p>
           </section>
 
-          {/* Sensitive export — single danger button + warning tooltip */}
+          {/* Sensitive export — single danger button + always-visible warning */}
           <section className="card-padded space-y-3">
             <Eyebrow>{t("set.sensitiveTitle")}</Eyebrow>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={() => setShowPrivateKey(true)}
-              >
-                {t("set.sensitiveExportKey")}
-              </button>
-              <span
-                className="cursor-help text-amber-400"
-                title={t("set.sensitiveTip")}
-                aria-label={t("set.sensitiveTip")}
-              >
-                ⚠
-              </span>
-            </div>
+            <button
+              type="button"
+              className="btn-danger w-full"
+              onClick={() => setShowPrivateKey(true)}
+            >
+              {t("set.sensitiveExportKey")}
+            </button>
+            <p className="help flex gap-1.5 text-amber-400/90">
+              <span aria-hidden>⚠</span>
+              <span>{t("set.sensitiveTip")}</span>
+            </p>
           </section>
 
           {/* Daemon — machine state; Updates folds in via the header button */}
-          <section className="card-padded space-y-3">
+          <section className="card-padded col-span-2 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <Eyebrow>{t("set.daemonTitle")}</Eyebrow>
               {updCheck === "available" ? (
@@ -517,6 +512,8 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
                 <span className="addr-xs text-neutral-400">
                   {t("set.updDownloading", { pct: updProgress })}
                 </span>
+              ) : updCheck === "none" ? (
+                <span className="addr-xs text-neutral-500">{t("set.updLatest")}</span>
               ) : (
                 <button
                   type="button"
@@ -524,14 +521,18 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
                   onClick={doCheckUpdate}
                   disabled={updCheck === "checking"}
                 >
-                  {updCheck === "checking"
-                    ? t("set.updChecking")
-                    : updCheck === "none"
-                      ? t("set.updLatest")
-                      : t("set.updCheck")}
+                  {updCheck === "checking" ? t("set.updChecking") : t("set.updCheck")}
                 </button>
               )}
             </div>
+            {updCheck === "installing" && (
+              <div className="h-1 w-full overflow-hidden rounded bg-neutral-800">
+                <div
+                  className="h-full rounded bg-cyan-500 transition-[width]"
+                  style={{ width: updProgress + "%" }}
+                />
+              </div>
+            )}
             <dl className="grid grid-cols-[max-content_1fr] items-center gap-x-6 gap-y-2 text-sm">
               <dt className="text-neutral-400">{t("set.daemonBind")}</dt>
               <dd className="min-w-0">
@@ -544,13 +545,13 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
               {status && (
                 <>
                   <dt className="text-neutral-400">{t("set.daemonVersion")}</dt>
-                  <dd className="addr-xs">{status.version}</dd>
+                  <dd className="mono tabular-nums text-sm text-neutral-100">{status.version}</dd>
                   <dt className="text-neutral-400">{t("set.daemonWalletCount")}</dt>
-                  <dd className="addr-xs">{status.wallet_count}</dd>
+                  <dd className="mono tabular-nums text-sm text-neutral-100">{status.wallet_count}</dd>
                   <dt className="text-neutral-400">{t("set.daemonInflightTransfers")}</dt>
-                  <dd className="addr-xs">{status.in_flight_transfers}</dd>
+                  <dd className="mono tabular-nums text-sm text-neutral-100">{status.in_flight_transfers}</dd>
                   <dt className="text-neutral-400">{t("set.daemonInflightUtxos")}</dt>
-                  <dd className="addr-xs">{status.in_flight_utxos}</dd>
+                  <dd className="mono tabular-nums text-sm text-neutral-100">{status.in_flight_utxos}</dd>
                 </>
               )}
             </dl>
@@ -560,9 +561,7 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
         {/* BOTTOM — Danger zone, one compact red row */}
         <section className="col-span-12 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-red-500/40 bg-red-500/5 px-6 py-4">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-red-300">
-              {t("set.dangerTitle")}
-            </h2>
+            <Eyebrow className="text-red-300">{t("set.dangerTitle")}</Eyebrow>
             <p className="text-sm text-red-400/80">{t("set.dangerOneLiner")}</p>
           </div>
           <div className="flex items-center gap-2">
@@ -630,9 +629,20 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
 
 /** Compact uppercase card eyebrow — demotes the old text-lg h2s so the inputs
  *  and daemon numbers are the visual focus. */
-function Eyebrow({ children }: { children: React.ReactNode }) {
+function Eyebrow({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+    <h2
+      className={
+        "text-sm font-semibold uppercase tracking-wide " +
+        (className ?? "text-neutral-400")
+      }
+    >
       {children}
     </h2>
   );

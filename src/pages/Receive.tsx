@@ -73,7 +73,7 @@ export function Receive() {
         <h1 className="text-2xl font-semibold tracking-tight text-neutral-100">
           {t("rcv.title")}
         </h1>
-        <p className="text-base text-neutral-400">
+        <p className="text-sm text-neutral-400">
           {t("rcv.subtitle")}
         </p>
       </header>
@@ -82,7 +82,7 @@ export function Receive() {
 
       <div className="grid gap-6 md:grid-cols-[1fr_1.2fr]">
         {/* Address picker */}
-        <section className="card overflow-hidden">
+        <section className="card flex flex-col overflow-hidden">
           <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
               {t("rcv.yourAddresses")}
@@ -91,17 +91,17 @@ export function Receive() {
               type="button"
               onClick={generateAddress}
               disabled={generating || (data?.entries.length ?? 0) >= MAX_ADDRESSES}
-              className="btn-ghost"
+              className="btn-ghost min-w-[5rem]"
               title={
                 (data?.entries.length ?? 0) >= MAX_ADDRESSES
                   ? t("rcv.cappedTitle", { n: MAX_ADDRESSES })
                   : undefined
               }
             >
-              {generating ? "…" : t("rcv.new")}
+              {generating ? t("rcv.creating") : t("rcv.new")}
             </button>
           </header>
-          <ul className="max-h-[420px] divide-y divide-neutral-800 overflow-auto">
+          <ul className="flex-1 divide-y divide-neutral-800 overflow-auto">
             {entries.length === 0 ? (
               <li className="px-5 py-8 text-center text-sm text-neutral-400">
                 {t("rcv.emptyPre")}{" "}
@@ -125,18 +125,26 @@ export function Receive() {
                     onClick={() => setSelected(e.address)}
                     className={
                       active
-                        ? "block w-full px-5 py-3 text-left bg-cyan-500/10 border-l-2 border-cyan-400"
-                        : "block w-full px-5 py-3 text-left border-l-2 border-transparent hover:bg-neutral-900"
+                        ? "block w-full px-5 py-3 text-left bg-cyan-500/10 border-l-2 border-cyan-400 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                        : "block w-full px-5 py-3 text-left border-l-2 border-transparent hover:bg-neutral-900 focus-visible:bg-neutral-900 focus-visible:border-cyan-400/60 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                     }
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-neutral-100">
-                          {label ?? t("rcv.addressLabel")}
+                          {label ?? shortAddress(e.address)}
                         </div>
-                        <code className="addr-xs">
-                          {shortAddress(e.address)}
-                        </code>
+                        {label ? (
+                          <code className="addr-xs">
+                            {shortAddress(e.address)}
+                          </code>
+                        ) : (
+                          <span className="addr-xs text-neutral-500">
+                            {e.imported
+                              ? t("rcv.imported")
+                              : t("rcv.addressN", { n: e.index ?? "" })}
+                          </span>
+                        )}
                       </div>
                       <div className="amount text-right text-sm">
                         {formatExfer(e.balance)}
@@ -147,6 +155,11 @@ export function Receive() {
               );
             })}
           </ul>
+          {entries.length > 0 ? (
+            <div className="border-t border-neutral-800 px-5 py-2 text-right text-xs tabular-nums text-neutral-500">
+              {entries.length}/{MAX_ADDRESSES}
+            </div>
+          ) : null}
         </section>
 
         {/* QR + address detail */}
@@ -174,13 +187,8 @@ export function Receive() {
               </div>
 
               <div className="space-y-2 text-center">
-                <div className="text-sm font-medium uppercase tracking-wide text-neutral-400">
-                  {getLabel(selected) ??
-                    (selectedEntry?.imported
-                      ? t("rcv.imported")
-                      : t("rcv.addressN", {
-                          n: selectedEntry?.index ?? "",
-                        }))}
+                <div className="text-base font-medium text-neutral-100">
+                  {getLabel(selected) ?? shortAddress(selected)}
                 </div>
                 <div className="amount-md">
                   {selectedEntry ? formatExfer(selectedEntry.balance) : ""}

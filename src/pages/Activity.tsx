@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { rpc, formatExfer } from "../lib/rpc";
 import {
   listHistory,
@@ -23,6 +23,74 @@ const addrUrl = (a: string) => `${EXPLORER}/address/${a}`;
 // works for these keys.
 type AnyKey = MsgKey | string;
 
+/** Inline stroke icons — same idiom as Send.tsx (lucide paths, currentColor)
+ *  so the row affordances and controls share one weight/baseline instead of
+ *  OS-rendered Unicode/emoji glyphs. */
+function Svg({
+  size = 16,
+  className,
+  children,
+}: {
+  size?: number;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      {children}
+    </svg>
+  );
+}
+
+const IconRefresh = (p: { className?: string }) => (
+  <Svg className={p.className}>
+    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+    <path d="M21 3v5h-5" />
+    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+    <path d="M3 21v-5h5" />
+  </Svg>
+);
+const IconTrash = (p: { className?: string }) => (
+  <Svg className={p.className}>
+    <path d="M3 6h18" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
+  </Svg>
+);
+const IconSwap = (p: { className?: string }) => (
+  <Svg size={14} className={p.className}>
+    <path d="M8 3 4 7l4 4" />
+    <path d="M4 7h16" />
+    <path d="m16 21 4-4-4-4" />
+    <path d="M20 17H4" />
+  </Svg>
+);
+const IconArrowUp = (p: { className?: string }) => (
+  <Svg size={14} className={p.className}>
+    <path d="M12 19V5" />
+    <path d="m5 12 7-7 7 7" />
+  </Svg>
+);
+const IconArrowUpRight = (p: { className?: string }) => (
+  <Svg size={14} className={p.className}>
+    <path d="M7 17 17 7" />
+    <path d="M7 7h10v10" />
+  </Svg>
+);
+
 /** A hash shown as: optional label, short form, copy button, and an
  *  "open in explorer" link — so the bare hex is never a dead end. */
 function HashLine({
@@ -37,17 +105,17 @@ function HashLine({
   const { t } = useT();
   return (
     <div className="flex items-center gap-2">
-      <span className="w-14 shrink-0 text-xs text-neutral-500">{label}</span>
+      <span className="w-20 shrink-0 whitespace-nowrap text-xs text-neutral-500">{label}</span>
       <code className="addr-xs flex-1 truncate">{shortAddress(value, 10, 8)}</code>
       <CopyButton text={value} className="btn-ghost text-xs" />
       <a
         href={href}
         target="_blank"
         rel="noreferrer"
-        className="rounded-md px-1.5 py-0.5 text-xs text-cyan-400 hover:bg-neutral-800"
+        className="inline-flex rounded-md p-1 text-cyan-400 hover:bg-neutral-800"
         title={t("act.viewExplorer")}
       >
-        ↗
+        <IconArrowUpRight className="h-3.5 w-3.5" />
       </a>
     </div>
   );
@@ -164,6 +232,9 @@ export function Activity({
     },
   );
   const [polling, setPolling] = useState(false);
+  // Two-step inline confirm for the destructive clear (avoids the unstyled
+  // native confirm() dialog against the dark themed surfaces).
+  const [confirmingClear, setConfirmingClear] = useState(false);
 
   // Cross-chain swaps live in walletd's journal, not the EXFER history log —
   // surface them as their own labeled records. swap_list throws when the swap
@@ -339,7 +410,7 @@ export function Activity({
   );
 
   return (
-    <div className="mx-auto max-w-6xl space-y-3 p-6 fade-in">
+    <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
       {/* Compact one-row header: title + count, segmented filter, icon actions. */}
       <header className="flex items-center justify-between">
         <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
@@ -357,23 +428,41 @@ export function Activity({
             onClick={() => refreshAll(true)}
             disabled={polling}
             title={t("act.refresh")}
-            className="btn-ghost rounded-md p-1.5 text-neutral-300"
+            className="btn-ghost rounded-md p-1.5 text-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <span className={`block text-base leading-none ${polling ? "animate-spin" : ""}`}>↻</span>
+            <IconRefresh className={`h-4 w-4 ${polling ? "animate-spin" : ""}`} />
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm(t("act.clearConfirm"))) {
-                clearHistory();
-                bump((v) => v + 1);
-              }
-            }}
-            title={t("act.clearLog")}
-            className="btn-ghost rounded-md p-1.5 text-red-500 hover:bg-red-500/10"
-          >
-            <span className="block text-base leading-none">🗑</span>
-          </button>
+          {confirmingClear ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  clearHistory();
+                  bump((v) => v + 1);
+                  setConfirmingClear(false);
+                }}
+                className="btn-danger rounded-md px-2.5 py-1 text-xs"
+              >
+                {t("act.clearConfirmBtn" as MsgKey)}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingClear(false)}
+                className="btn-ghost rounded-md px-2.5 py-1 text-xs"
+              >
+                {t("kr.cancel")}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingClear(true)}
+              title={t("act.clearLog")}
+              className="btn-ghost rounded-md p-1.5 text-red-500 hover:bg-red-500/10"
+            >
+              <IconTrash className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </header>
 
@@ -385,7 +474,25 @@ export function Activity({
               {t("act.emptyState")}
             </div>
           ) : (
+            <div className="max-h-[calc(100vh-9rem)] overflow-y-auto">
             <table className="w-full table-fixed">
+              <thead className="sticky top-0 z-10 bg-neutral-950 text-xs text-neutral-500">
+                <tr className="border-b border-neutral-800">
+                  <th className="w-7" />
+                  <th className="w-[5.5rem] py-1.5 pl-3 text-left font-normal">
+                    {t("act.colTime" as MsgKey)}
+                  </th>
+                  <th className="py-1.5 text-left font-normal">
+                    {t("act.colDesc" as MsgKey)}
+                  </th>
+                  <th className="w-28 py-1.5 pr-2 text-right font-normal">
+                    {t("act.colAmount" as MsgKey)}
+                  </th>
+                  <th className="w-24 py-1.5 pr-3 text-right font-normal">
+                    {t("act.colStatus" as MsgKey)}
+                  </th>
+                </tr>
+              </thead>
               <tbody>
                 {shown.map((it) =>
                   it.kind === "swap" ? (
@@ -407,6 +514,7 @@ export function Activity({
                 )}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 
@@ -461,7 +569,9 @@ function SwapRowItem({
 
   return (
     <tr className={rowCls(selected, inflight)} onClick={onSelect}>
-      <td className="w-7 py-2 pl-3 pr-1 text-center align-middle text-neutral-400">⇄</td>
+      <td className="w-7 py-2 pl-3 pr-1 align-middle text-neutral-500">
+        <IconSwap className="mx-auto h-3.5 w-3.5" />
+      </td>
       <td className="w-[5.5rem] py-2 pr-2 align-middle">
         <span className="addr-xs whitespace-nowrap text-neutral-500">{fmtStamp(created)}</span>
       </td>
@@ -515,7 +625,9 @@ function TransferRowItem({
 
   return (
     <tr className={rowCls(selected, false)} onClick={onSelect}>
-      <td className="w-7 py-2 pl-3 pr-1 text-center align-middle text-neutral-400">↑</td>
+      <td className="w-7 py-2 pl-3 pr-1 align-middle text-neutral-500">
+        <IconArrowUp className="mx-auto h-3.5 w-3.5" />
+      </td>
       <td className="w-[5.5rem] py-2 pr-2 align-middle">
         <span className="addr-xs whitespace-nowrap text-neutral-500">{fmtStamp(dt)}</span>
       </td>
@@ -606,6 +718,7 @@ function SwapDetail({
         <Row
           label={tx("act.swapCreated")}
           value={`${created.toLocaleDateString()} · ${created.toLocaleTimeString()}`}
+          className="col-span-2"
         />
       </div>
 
@@ -674,6 +787,7 @@ function TransferDetail({
         <Row
           label={t("act.swapCreated")}
           value={`${dt.toLocaleDateString()} · ${dt.toLocaleTimeString()}`}
+          className="col-span-2"
         />
       </div>
 
@@ -700,9 +814,17 @@ function TransferDetail({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
   return (
-    <div className="space-y-0.5">
+    <div className={`space-y-0.5${className ? ` ${className}` : ""}`}>
       <div className="text-xs text-neutral-500">{label}</div>
       <div className="amount text-sm text-neutral-100">{value}</div>
     </div>

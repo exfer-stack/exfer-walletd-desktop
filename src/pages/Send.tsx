@@ -192,7 +192,7 @@ export function Send() {
   const fromUtxoCount = utxos[from]?.utxo_count;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-8 fade-in">
+    <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
       {/* Compact top bar: title left, live total + fee right. No subtitle. */}
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
@@ -213,9 +213,9 @@ export function Send() {
         </div>
       </div>
 
-      <div className="card-padded grid grid-cols-[300px_1fr] gap-6">
+      <div className="card-padded grid grid-cols-[300px_1fr] items-start gap-6 divide-x divide-neutral-800">
         {/* LEFT — source picker. Stays visible through the receipt. */}
-        <div className="space-y-2">
+        <div className="space-y-2 pr-6">
           <label className="label">{t("snd.from")}</label>
           {sendable.length === 0 ? (
             <p className="help">{t("snd.noAddresses")}</p>
@@ -296,9 +296,11 @@ export function Send() {
 
         {/* RIGHT — recipients + send, OR the receipt (swaps in place). */}
         {receipt ? (
-          <Receipt receipt={receipt} onSendAnother={sendAnother} />
+          <div className="pl-6">
+            <Receipt receipt={receipt} onSendAnother={sendAnother} />
+          </div>
         ) : (
-          <form onSubmit={onSubmit} className="space-y-4">
+          <form onSubmit={onSubmit} className="space-y-4 pl-6">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="label mb-0">
@@ -308,7 +310,7 @@ export function Send() {
                 </span>
                 <button
                   type="button"
-                  className="btn-ghost text-sm"
+                  className="btn-ghost"
                   onClick={addRow}
                   disabled={outputs.length >= 16 || pending}
                   aria-label={t("snd.addRecipient")}
@@ -319,12 +321,12 @@ export function Send() {
               </div>
 
               {/* One-time column headers above the dense row list. */}
-              <div className="grid grid-cols-[1.6fr_minmax(120px,0.8fr)_auto] gap-2">
-                <span className="label mb-0">{t("snd.addrCol")}</span>
-                <span className="label mb-0 text-right">
+              <div className="grid grid-cols-[1.6fr_minmax(120px,0.8fr)_auto] items-center gap-2">
+                <span className="label mb-0 pl-3.5">{t("snd.addrCol")}</span>
+                <span className="label mb-0 pr-3.5 text-right">
                   {t("snd.amountCol")}
                 </span>
-                <span className="w-7" aria-hidden />
+                <span className="h-7 w-7" aria-hidden />
               </div>
 
               {outputs.map((o, i) => (
@@ -349,7 +351,7 @@ export function Send() {
                 className="btn"
                 disabled={pending || sendable.length === 0}
               >
-                {pending ? t("snd.broadcasting") : t("snd.reviewBroadcast")}
+                {pending ? t("snd.broadcasting") : t("snd.broadcast")}
               </button>
             </div>
           </form>
@@ -484,7 +486,7 @@ function Receipt({
       </div>
 
       <div className="flex justify-end">
-        <button type="button" className="btn-ghost text-sm" onClick={onSendAnother}>
+        <button type="button" className="btn-ghost" onClick={onSendAnother}>
           {t("snd.sendAnother")}
         </button>
       </div>
@@ -495,9 +497,7 @@ function Receipt({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-        {label}
-      </div>
+      <div className="label">{label}</div>
       <div className="mt-1 font-mono text-sm font-semibold text-neutral-100 tabular-nums">
         {value}
       </div>

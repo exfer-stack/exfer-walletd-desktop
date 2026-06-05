@@ -45,6 +45,10 @@ const FEE_RATE = 1; // exfers/byte, matches Send
 // it must clear a safe gas floor (a few × the typical 21000-gas cost). Below
 // this the pool would auto-refund the deposit, so we block it up front instead.
 const MIN_BNB_LEG = 0.00001;
+// One precision for every BNB amount rendered on this page so columns align
+// across rows (and with the BnbAccount sibling). Display-only — never used for
+// the wei/amount we actually send.
+const BNB_DP = 4;
 
 interface PoolInfo {
   genesis_done: boolean;
@@ -389,21 +393,23 @@ export function Liquidity() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* ── LEFT RAIL — read-only context ── */}
-        <div className="lg:col-span-5">
-          <div className="card-padded space-y-4">
+        <div className="flex lg:col-span-5">
+          <div className="card-padded flex w-full flex-col space-y-4">
             {/* Pool */}
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 <Stat label={t("lp.poolValue")} value={`≈ ${usdNumber(poolUsd)}`} />
                 <Stat label={t("lp.providers")} value={String(pool.lp_count)} />
                 <Stat label={t("lp.reserveExfer")} value={sig(exferReserve)} />
-                <Stat label={t("lp.reserveBnb")} value={sig(bnbReserve, 6)} />
+                <Stat label={t("lp.reserveBnb")} value={sig(bnbReserve, BNB_DP)} />
               </div>
               <div className="flex items-baseline justify-between border-t border-neutral-800 pt-2 text-xs">
                 <span className="uppercase tracking-wide text-neutral-500">{t("lp.totalShares")}</span>
                 <span className="font-mono tabular-nums text-neutral-400">{pool.total_shares}</span>
               </div>
             </div>
+
+            <div className="flex-1" />
 
             {/* Your position */}
             <div className="space-y-2 border-t border-neutral-800 pt-4">
@@ -418,7 +424,7 @@ export function Liquidity() {
                   </div>
                   <div className="grid grid-cols-2 gap-3 font-mono text-sm tabular-nums text-neutral-300">
                     <span>{sig(Number(pos!.value_exfer ?? 0))} EXFER</span>
-                    <span className="text-right">{sig(Number(pos!.value_bnb ?? 0), 4)} BNB</span>
+                    <span className="text-right">{sig(Number(pos!.value_bnb ?? 0), BNB_DP)} BNB</span>
                   </div>
                   <div className="text-xs text-neutral-500">
                     {sig(pos!.pool_share_pct ?? 0, 3)}% {t("lp.ofPool")}
@@ -466,7 +472,7 @@ export function Liquidity() {
                     <div className="banner-error">{t("lp.noFunded")}</div>
                   ) : (
                     <select
-                      className="input"
+                      className="input cursor-pointer hover:border-neutral-600"
                       value={exferAddr}
                       onChange={(e) => setFromAddr(e.target.value)}
                       disabled={busy}
@@ -530,11 +536,12 @@ export function Liquidity() {
                 </div>
 
                 {/* Matched pair + total — one dense row */}
-                <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
+                <div className="space-y-1.5 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
+                  <label className="label mb-0">{t("lp.youAdd")}</label>
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-sm tabular-nums">
                     <span className="text-neutral-100">{amountValid ? sig(amtNum) : "0"} EXFER</span>
                     <span className="text-neutral-500">+</span>
-                    <span className="text-neutral-100">{amountValid ? sig(bnbNeeded, 4) : "0"} BNB</span>
+                    <span className="text-neutral-100">{amountValid ? sig(bnbNeeded, BNB_DP) : "0"} BNB</span>
                     <span className="text-neutral-500">=</span>
                     <span className="font-semibold text-neutral-100">
                       ≈ {amountValid ? usdNumber(addUsd) : "$0"}
@@ -542,18 +549,18 @@ export function Liquidity() {
                   </div>
                   <div
                     className={
-                      "mt-1.5 text-xs " + (amountValid && !enoughBnb ? "text-amber-300" : "text-neutral-500")
+                      "text-xs " + (amountValid && !enoughBnb ? "text-amber-300" : "text-neutral-500")
                     }
                   >
                     {t("lp.bnbSource", {
                       addr: bscAddr ? shortAddress(bscAddr) : "—",
-                      bnb: sig(bnbHuman, 4),
+                      bnb: sig(bnbHuman, BNB_DP),
                     })}
                   </div>
                 </div>
 
                 {amountValid && !enoughBnb && (
-                  <div className="banner-error">{t("lp.needBnb", { bnb: sig(bnbNeeded, 4) })}</div>
+                  <div className="banner-error">{t("lp.needBnb", { bnb: sig(bnbNeeded, BNB_DP) })}</div>
                 )}
                 {belowMin && (
                   <div className="banner-error">{t("lp.belowMin", { n: sig(Math.ceil(minExfer), 2) })}</div>
@@ -746,7 +753,7 @@ function DoneStrip({
           <span className="text-sm font-semibold">{heading}</span>
           {showAmt && (
             <span className="font-mono text-xs tabular-nums opacity-90">
-              {sig(Number(result.exfer))} EXFER + {sig(Number(result.bnb), 4)} BNB
+              {sig(Number(result.exfer))} EXFER + {sig(Number(result.bnb), BNB_DP)} BNB
             </span>
           )}
         </div>
@@ -810,9 +817,9 @@ function RemoveForm({
 
       {/* You receive back: amount line + payout addresses, one dense block. */}
       <div className="space-y-1.5 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
-        <div className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.youReceiveBack")}</div>
+        <label className="label mb-0">{t("lp.youReceiveBack")}</label>
         <div className="font-mono text-sm tabular-nums text-neutral-100">
-          {sig(outExfer)} EXFER + {sig(outBnb, 4)} BNB
+          {sig(outExfer)} EXFER + {sig(outBnb, BNB_DP)} BNB
         </div>
         <div className="font-mono text-xs text-neutral-500">
           → {shortAddress(exferAddr)} / {bscAddr ? shortAddress(bscAddr) : "—"}
@@ -821,7 +828,12 @@ function RemoveForm({
 
       {err && <div className="banner-error">{err}</div>}
 
-      <button type="button" className="btn w-full" disabled={busy} onClick={onConfirm}>
+      <button
+        type="button"
+        className="btn w-full"
+        disabled={busy || outExfer + outBnb <= 0}
+        onClick={onConfirm}
+      >
         {busy
           ? t("lp.working")
           : withdrawPct >= 100

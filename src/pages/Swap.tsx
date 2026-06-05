@@ -402,13 +402,27 @@ export function Swap() {
       : null;
 
   if (engineOn === false) {
+    // The pool is down, but the market chart doesn't depend on it — keep it
+    // visible and present the notice as a constrained, centered empty-state so
+    // the wide viewport reads as purposeful rather than a void.
     return (
-      <div className="mx-auto max-w-6xl space-y-6 p-6 fade-in">
+      <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
         <PageBar price={price} poolRate={null} />
-        <div className="card-padded text-sm text-neutral-400">
-          {t("swap.unavailablePre")}
-          <span className="text-neutral-200">{t("swap.unavailableSettings")}</span>
-          {t("swap.unavailablePost")}
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-12 lg:col-span-8">
+            <MarketHeader price={price} />
+          </div>
+          <div className="col-span-12 lg:col-span-4">
+            <div className="lg:sticky lg:top-6">
+              <div className="banner-info max-w-md text-sm leading-relaxed">
+                {t("swap.unavailablePre")}
+                <span className="font-medium text-cyan-50">
+                  {t("swap.unavailableSettings")}
+                </span>
+                {t("swap.unavailablePost")}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -419,20 +433,26 @@ export function Swap() {
       {/* Page bar: title left, live EXFER/USD + 24h change + pool rate right. */}
       <PageBar price={price} poolRate={poolRate} />
 
-      {/* Two fixed panes — market (left) stays put across all 3 steps, the swap
-          wizard (right) mutates in place so chart context never disappears. */}
+      {/* Two panes. The chart (left) is the SHORT column so it's the one we pin —
+          it stays under the taller wizard rail as that rail scrolls, instead of
+          scrolling out and leaving the left half blank. The wizard + BNB account
+          (right) is the tall column and scrolls naturally. The columns must
+          STRETCH (grid default — do NOT add items-start) so the left column's
+          box is as tall as the right rail; that tall box is what gives the
+          sticky chart room to stay pinned for the whole scroll. */}
       <div className="grid grid-cols-12 gap-6">
-        {/* LEFT — market chart + stats, plus the BNB account as a footer strip. */}
-        <div className="col-span-12 space-y-4 lg:col-span-7">
-          <MarketHeader price={price} />
-          <BnbAccount asset={bnbAsset} variant="compact" />
+        {/* LEFT — market chart + stats; the dominant width goes to the chart. */}
+        <div className="col-span-12 lg:col-span-8">
+          <div className="lg:sticky lg:top-6">
+            <MarketHeader price={price} />
+          </div>
         </div>
 
-        {/* RIGHT — the swap wizard, sticky so it tracks the chart on scroll. */}
-        <div className="col-span-12 lg:col-span-5">
-          <div className="lg:sticky lg:top-6">
+        {/* RIGHT — the swap wizard with the BNB account as its natural filler. */}
+        <div className="col-span-12 lg:col-span-4">
+          <div className="space-y-4">
             {step === 1 && (
-              <div className="card-padded space-y-4">
+              <div className="card p-5 space-y-3.5">
                 <DirectionToggle direction={direction} onChange={switchDirection} />
 
                 {/* Buy with no BNB yet: lead with the deposit card so the order
@@ -450,7 +470,7 @@ export function Swap() {
                     </p>
                   ) : (
                     <select
-                      className="input mt-1.5"
+                      className="input mt-1.5 cursor-pointer hover:border-neutral-600"
                       value={fromAddr}
                       onChange={(e) => setFrom(e.target.value)}
                       disabled={busy}
@@ -554,11 +574,15 @@ export function Swap() {
 
                 <button
                   type="button"
-                  className="btn w-full text-base"
-                  disabled={busy || !amountValid || !fromAddr}
+                  className="btn w-full"
+                  disabled={busy || engineOn === null || !amountValid || !fromAddr}
                   onClick={getQuote}
                 >
-                  {busy ? t("swap.gettingQuote") : t("swap.review")}
+                  {busy
+                    ? t("swap.gettingQuote")
+                    : engineOn === null
+                      ? t("act.pillChecking")
+                      : t("swap.review")}
                 </button>
               </div>
             )}
@@ -602,6 +626,10 @@ export function Swap() {
                 onDone={reset}
               />
             )}
+
+            {/* The in-wallet BNB account fills the rail below the wizard so the
+                right column tracks the chart pane's height. */}
+            <BnbAccount asset={bnbAsset} variant="compact" />
           </div>
         </div>
       </div>
@@ -943,8 +971,8 @@ function ReviewCard({
         ? shortAddress(quote.our_bsc_address, 6, 4)
         : null;
   return (
-    <div className="card-padded space-y-4">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+    <div className="card p-5 space-y-3.5">
+      <h2 className="text-sm font-semibold text-neutral-300">
         {t("swap.reviewTitle")}
       </h2>
 
@@ -1024,8 +1052,8 @@ function ProgressCard({
   ];
 
   return (
-    <div className="card-padded space-y-4">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+    <div className="card p-5 space-y-3.5">
+      <h2 className="text-sm font-semibold text-neutral-300">
         {t("swap.inProgressTitle")}
       </h2>
 

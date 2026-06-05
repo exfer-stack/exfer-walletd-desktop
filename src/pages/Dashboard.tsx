@@ -55,10 +55,6 @@ export function Dashboard() {
   // the dashboard tile stays a glanceable summary.
   const [bnbOpen, setBnbOpen] = useState(false);
 
-  async function refreshAll() {
-    await refresh();
-  }
-
   const allEntries = data?.entries ?? [];
   const hiddenEntries = allEntries.filter((e) => isHidden(e.address));
   const visibleEntries = showHidden
@@ -95,7 +91,7 @@ export function Dashboard() {
     setGenerating(true);
     try {
       const a = await rpc<GeneratedAddress>("generate_standard_address");
-      await refreshAll();
+      await refresh();
       toast.success(
         t("dash.addrCreatedTitle"),
         t("dash.addrCreatedBody", { addr: a.address.slice(0, 10) }),
@@ -114,9 +110,9 @@ export function Dashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-8 fade-in">
-      {/* Summary bar — total balance + ≈$ + addr count on one band, with the
-          live EXFER price + 24h pill on the right. */}
-      <section className="card flex flex-wrap items-center justify-between gap-4 px-6 py-4">
+      {/* Summary bar — total balance + ≈$ + addr count on one band. The live
+          EXFER price + 24h pill ride the rail's Market card. */}
+      <section className="card flex flex-wrap items-center gap-4 px-6 py-4">
         <div className="flex items-baseline gap-4">
           <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
             {t("dash.totalBalance")}
@@ -169,7 +165,7 @@ export function Dashboard() {
           </span>
           {/* ≈$ inline, muted — tracks the projected total above. */}
           {data && price && (
-            <span className="font-mono text-sm tabular-nums text-neutral-400">
+            <span className="font-mono text-sm tabular-nums text-neutral-500">
               ≈ {usdValue(visibleProjected, price.usd)}
             </span>
           )}
@@ -178,15 +174,6 @@ export function Dashboard() {
             {t("dash.addrCount", { n: visibleEntries.length })}
           </span>
         </div>
-        {price && (
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-sm tabular-nums text-neutral-300">
-              <span className="text-neutral-500">EXFER</span>{" "}
-              {usdValue(100_000_000, price.usd)}
-            </span>
-            <ChangePill pct={price.change24h} />
-          </div>
-        )}
       </section>
 
       {error && !data && (
@@ -207,12 +194,12 @@ export function Dashboard() {
             <h2 className="text-base font-semibold tracking-tight text-neutral-100">
               {t("dash.addresses")}
             </h2>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={refreshAll}
+                onClick={refresh}
                 disabled={loading}
-                className="rounded-md px-2 py-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50"
                 title={t("dash.refresh")}
                 aria-label={t("dash.refresh")}
               >
@@ -228,7 +215,7 @@ export function Dashboard() {
                 type="button"
                 onClick={generateAddress}
                 disabled={generating || atCap}
-                className="rounded-md px-2 py-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50"
                 title={
                   atCap
                     ? t("dash.cappedTitle", { n: MAX_ADDRESSES })
@@ -263,12 +250,12 @@ export function Dashboard() {
               </div>
             </div>
           ) : (
-            <table className="w-full">
+            <table className="w-full table-fixed">
               <thead className="bg-neutral-900 text-xs uppercase tracking-wide text-neutral-400">
                 <tr>
-                  <th className="px-5 py-2 text-left">{t("dash.colLabel")}</th>
-                  <th className="px-5 py-2 text-left">{t("dash.colAddress")}</th>
-                  <th className="px-5 py-2 text-right">{t("dash.colBalance")}</th>
+                  <th className="w-[34%] px-5 py-2 text-left">{t("dash.colLabel")}</th>
+                  <th className="w-[38%] px-5 py-2 text-left">{t("dash.colAddress")}</th>
+                  <th className="w-[28%] px-5 py-2 text-right">{t("dash.colBalance")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800">
@@ -318,10 +305,30 @@ export function Dashboard() {
           )}
         </section>
 
-        {/* Right rail: the BNB asset as a compact summary tile. The full
-            deposit/withdraw/export console opens in a modal. */}
+        {/* Right rail: a Market card (EXFER price + 24h) and the BNB asset as a
+            compact summary tile. The full BNB console opens in a modal. */}
         <aside className="space-y-6">
-          {bnbAsset.address && (
+          {/* Market card — gives the rail weight so it isn't a lone short tile,
+              and reuses the same numeric system + ChangePill as the balance total. */}
+          {price && (
+            <section className="card-padded space-y-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                {t("dash.marketTitle")}
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-xs text-neutral-500">EXFER</span>
+                <span className="font-mono text-sm tabular-nums text-neutral-100">
+                  {usdValue(100_000_000, price.usd)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-neutral-500">{t("dash.change24h")}</span>
+                <ChangePill pct={price.change24h} />
+              </div>
+            </section>
+          )}
+
+          {bnbAsset.address ? (
             <section className="card-padded space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="text-xs font-medium uppercase tracking-wide text-neutral-400">
@@ -345,6 +352,16 @@ export function Dashboard() {
               >
                 {t("dash.bnbManage")}
               </button>
+            </section>
+          ) : (
+            /* No derived BSC address yet (first poll / key still deriving):
+               a skeleton tile so the rail never collapses to a blank column. */
+            <section className="card-padded space-y-4" aria-hidden>
+              <div className="flex items-start justify-between gap-3">
+                <div className="h-4 w-20 animate-pulse rounded bg-neutral-800" />
+                <div className="h-4 w-24 animate-pulse rounded bg-neutral-800" />
+              </div>
+              <div className="h-9 w-full animate-pulse rounded-lg bg-neutral-800" />
             </section>
           )}
         </aside>
