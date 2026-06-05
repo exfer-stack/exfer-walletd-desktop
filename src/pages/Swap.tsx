@@ -45,6 +45,7 @@ import {
 import { recordSwapUsd } from "../lib/swapPrice";
 import { useBnbAsset } from "../lib/bnb";
 import { BnbAccount } from "../components/BnbAccount";
+import { StagedStepper, SuccessMark } from "../components/anim";
 import { PriceChart } from "../components/PriceChart";
 import { useResumeTarget } from "../lib/inflight";
 import logoUrl from "../assets/logo.png";
@@ -1504,7 +1505,15 @@ function ProgressCard({
       </h2>
 
       {status === "completed" ? (
-        <Banner kind="success" title={t("swap.completeTitle")} body={t("swap.completeBody", { amt: fmtAmt(live?.amount_out, 8), unit: recvUnit })} />
+        <div className="flex flex-col items-center gap-3 py-2 text-center pop">
+          <SuccessMark size={64} />
+          <div className="text-sm font-semibold text-emerald-200">
+            {t("swap.completeTitle")}
+          </div>
+          <div className="text-xs leading-relaxed text-neutral-400">
+            {t("swap.completeBody", { amt: fmtAmt(live?.amount_out, 8), unit: recvUnit })}
+          </div>
+        </div>
       ) : status === "refunded" ? (
         <Banner kind="info" title={t("swap.refundedTitle")} body={t("swap.refundedBody")} />
       ) : status === "failed" ? (
@@ -1517,33 +1526,14 @@ function ProgressCard({
           <div className="mt-0.5 text-xs opacity-90">{t("swap.statusRefunding")}</div>
         </div>
       ) : (
-        <ol className="space-y-2">
-          {nodes.map((n) => {
-            // In this branch status is non-terminal (the ternary above peeled
-            // off completed/refunded/failed), so progress is purely rank-based.
-            const done = rank >= n.at + 1;
-            const current = rank === n.at;
-            return (
-              <li key={n.key} className="flex items-center gap-3">
-                <span
-                  className={
-                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold " +
-                    (done
-                      ? "bg-emerald-500/15 text-emerald-300"
-                      : current
-                        ? "bg-cyan-500/15 text-cyan-300"
-                        : "bg-neutral-800 text-neutral-500")
-                  }
-                >
-                  {done ? "✓" : current ? "…" : ""}
-                </span>
-                <span className={done || current ? "text-neutral-100" : "text-neutral-500"}>
-                  {n.label}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
+        // Staged stepper: chevrons flow into the active (spinner) node. `rank`
+        // is 1-based (user_locked=1 …), so the active node index is rank − 1.
+        <div className="py-1">
+          <StagedStepper
+            labels={nodes.map((n) => n.label)}
+            doneCount={Math.max(0, rank - 1)}
+          />
+        </div>
       )}
 
       {!terminal && status !== "refunding" && elapsed > 20 && (

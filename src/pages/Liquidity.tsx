@@ -40,6 +40,7 @@ import { usePrice, useBnbUsd, usdNumber } from "../lib/market";
 import { addLpOp, removeLpOp } from "../lib/inflightLp";
 import { useResumeTarget } from "../lib/inflight";
 import { SetupBnbWalletModal } from "../components/SetupBnbWalletModal";
+import { StagedStepper, PairCoins } from "../components/anim";
 
 const FEE_RATE = 1; // exfers/byte, matches Send
 // The BNB leg is swept from a per-request address that pays its own BSC gas, so
@@ -433,10 +434,21 @@ export function Liquidity() {
               ) : !posScanned || !posLoaded ? (
                 <div className="text-sm text-neutral-500">{t("lp.loading")}</div>
               ) : (
-                <>
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.yourPosition")}</div>
-                  <div className="text-sm text-neutral-400">{t("lp.emptyOneLine")}</div>
-                </>
+                // Paired-coin hero — the pool's two assets overlapping, like
+                // every LP pair. Gives the empty state an identity instead of a
+                // lone line of text.
+                <div className="flex flex-col items-center py-6 text-center pop">
+                  <PairCoins size={54} />
+                  <div className="mt-4 text-xs font-bold uppercase tracking-[0.07em] text-neutral-500">
+                    EXFER · BNB
+                  </div>
+                  <div className="mt-1.5 text-base font-semibold text-neutral-100">
+                    {t("lp.emptyHeading")}
+                  </div>
+                  <div className="mx-auto mt-1.5 max-w-[18rem] text-xs leading-relaxed text-neutral-400">
+                    {t("lp.emptySub")}
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -712,32 +724,11 @@ function TabButton({
 
 /** Thin inline status strip while the add deposit is in flight: 3 dots in a row. */
 function ProgressStrip({ stage, labels }: { stage: number; labels: string[] }) {
+  // The active node is the current `stage`; chevrons flow into it (shared with
+  // the swap progress so the two read identically).
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3">
-      {labels.map((label, i) => {
-        const done = stage > i;
-        const current = stage === i;
-        return (
-          <div key={label} className="flex flex-1 items-center gap-2">
-            <span
-              className={
-                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold " +
-                (done
-                  ? "bg-emerald-500/15 text-emerald-300"
-                  : current
-                    ? "bg-cyan-500/15 text-cyan-300"
-                    : "bg-neutral-800 text-neutral-500")
-              }
-            >
-              {done ? "✓" : current ? "…" : ""}
-            </span>
-            <span className={"text-xs " + (done || current ? "text-neutral-200" : "text-neutral-500")}>
-              {label}
-            </span>
-            {i < labels.length - 1 && <span className="h-px flex-1 bg-neutral-800" />}
-          </div>
-        );
-      })}
+    <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-4">
+      <StagedStepper labels={labels} doneCount={stage} />
     </div>
   );
 }
