@@ -123,6 +123,12 @@ export function Swap() {
   const [direction, setDirection] = useState<SwapDirection>("exfer_to_bnb");
   const [from, setFrom] = useState("");
   const [amount, setAmount] = useState("");
+  // Which side the user is editing. "pay" = forward (type pay → estimate the
+  // receive). "receive" = reverse: the user types a desired receive amount and
+  // an effect back-computes the pay `amount`, so the rest of the sheet (quote,
+  // USD, Review) keeps working off `amount` as usual.
+  const [recvInput, setRecvInput] = useState("");
+  const [editSide, setEditSide] = useState<"pay" | "receive">("pay");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [quote, setQuote] = useState<SwapRec | null>(null);
@@ -226,6 +232,36 @@ export function Swap() {
     return net / poolInfo.mid;
   }, [estOut, sell, estNetFee, amount, poolInfo]);
 
+  // Reverse binding: when the user types a desired RECEIVE amount, back-compute
+  // the pay `amount` (constant-product inverse + the network fee). Mirrors mobile.
+  useEffect(() => {
+    if (editSide !== "receive" || !poolInfo) return;
+    const want = Number(recvInput);
+    if (!isFinite(want) || want <= 0) {
+      setAmount("");
+      return;
+    }
+    const reserveIn = sell ? poolInfo.exferReserve : poolInfo.bnbReserve;
+    const reserveOut = sell ? poolInfo.bnbReserve : poolInfo.exferReserve;
+    // Gross output the AMM must produce to NET `want`: a sell nets BNB (the fee
+    // is taken from the BNB output), a buy receives EXFER (fee is on the BNB in).
+    const grossOut = sell ? want + estNetFee : want;
+    if (!(reserveIn > 0 && reserveOut > 0) || grossOut >= reserveOut) return;
+    // Uniswap-v2 inverse: input needed for a desired output, incl. the fee.
+    const inHuman =
+      (reserveIn * grossOut) /
+      ((reserveOut - grossOut) * (1 - poolInfo.feeBps / 10_000));
+    const payHuman = sell ? inHuman : inHuman + estNetFee;
+    setAmount(
+      payHuman > 0 && isFinite(payHuman)
+        ? payHuman.toLocaleString("en-US", {
+            maximumSignificantDigits: 8,
+            useGrouping: false,
+          })
+        : "",
+    );
+  }, [editSide, recvInput, poolInfo, sell, estNetFee]);
+
   // ── Client-side minimum (item [6]) ──
   // A trade whose whole output is eaten by the settlement-gas fee is pointless
   // and the daemon 400s it. Mirror the pool: accept any trade whose output
@@ -317,6 +353,8 @@ export function Swap() {
     setQuote(null);
     setLive(null);
     setAmount("");
+    setRecvInput("");
+    setEditSide("pay");
     setErr(null);
     // Drop the resume hand-off so finishing a resumed swap returns to a fresh
     // form rather than re-entering the progress watcher.
@@ -328,6 +366,8 @@ export function Swap() {
     setDirection(d);
     setFrom("");
     setAmount("");
+    setRecvInput("");
+    setEditSide("pay");
     setErr(null);
     setQuote(null);
   }
@@ -546,7 +586,10 @@ export function Swap() {
                         value={amount}
                         onChange={(e) => {
                           const v = e.target.value;
-                          if (v === "" || AMOUNT_RE.test(v)) setAmount(v);
+                          if (v === "" || AMOUNT_RE.test(v)) {
+                            setEditSide("pay");
+                            setAmount(v);
+                          }
                         }}
                         disabled={busy || needsFunding}
                         inputMode="decimal"
@@ -577,7 +620,8 @@ export function Swap() {
                     {/* 25/50/75/Max quick-fill chips off the pay-side ceiling. */}
                     <PercentChips
                       max={sell ? sellMax : buyMax}
-                      onPick={(v) =>
+                      onPick={(v) => {
+                        setEditSide("pay");
                         setAmount(
                           // sell: v is in smallest units (exfers) and a %-chip
                           // makes it fractional — floor before formatExfer, which
@@ -585,8 +629,8 @@ export function Swap() {
                           sell
                             ? formatExfer(Math.floor(v)).replace(" EXFER", "")
                             : fmtAmt(String(v), 8),
-                        )
-                      }
+                        );
+                      }}
                     />
                   </div>
 
@@ -618,19 +662,35 @@ export function Swap() {
                     </button>
                   </div>
 
-                  {/* You receive (est.) — read-only; the firm quote lands on Review. */}
+                  {/* You receive (est.) — editable: type a desired receive amount
+                      and the pay side is back-computed. While editing the pay
+                      side it shows the live net estimate. The firm quote lands on
+                      Review. */}
                   <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
                     <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
                       {t("swap.youReceiveEst")}
                     </span>
                     <div className="mt-1.5 flex items-center gap-3">
-                      <span className="min-w-0 flex-1 text-2xl font-semibold tabular-nums text-neutral-100">
-                        {estOutNet != null
-                          ? fmtAmt(String(estOutNet), 6)
-                          : amountValid
-                            ? "—"
-                            : "0.0"}
-                      </span>
+                      <input
+                        className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-semibold tabular-nums text-neutral-100 outline-none placeholder:text-neutral-600"
+                        placeholder="0.0"
+                        value={
+                          editSide === "receive"
+                            ? recvInput
+                            : estOutNet != null
+                              ? fmtAmt(String(estOutNet), 6)
+                              : ""
+                        }
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "" || AMOUNT_RE.test(v)) {
+                            setEditSide("receive");
+                            setRecvInput(v);
+                          }
+                        }}
+                        disabled={busy || needsFunding}
+                        inputMode="decimal"
+                      />
                       <TokenChip unit={recvUnit} />
                     </div>
                   </div>
