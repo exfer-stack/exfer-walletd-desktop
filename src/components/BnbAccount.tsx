@@ -12,7 +12,7 @@
 // The balance/address come from a useBnbAsset() the parent owns (single poll),
 // so this component never spins up its own loop — pass the hook's result in.
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import QRCode from "qrcode";
 import { rpc, revealEvmPrivateKey } from "../lib/rpc";
 import { shortAddress } from "../lib/labels";
@@ -111,9 +111,11 @@ function DepositBlock({
 /** The withdraw form (to + amount + Max), shared by both variants. */
 function WithdrawBlock({
   bnbWei,
+  reserveWei,
   onSent,
 }: {
   bnbWei: string | null;
+  reserveWei: string | null;
   onSent: () => void;
 }) {
   const { t } = useT();
@@ -121,7 +123,28 @@ function WithdrawBlock({
   const [withdrawing, setWithdrawing] = useState(false);
   const [to, setTo] = useState("");
   const [amt, setAmt] = useState("");
+  // True while the amount field holds the auto-computed "send everything"
+  // figure. We then send the "max" sentinel (walletd sweeps the live balance)
+  // rather than the shown estimate, and keep the figure fresh as balance polls.
+  const [maxMode, setMaxMode] = useState(false);
   const [wErr, setWErr] = useState<string | null>(null);
+
+  // balance − gas reserve, the spendable ceiling shown when Max is tapped.
+  const maxSendWei = useMemo(() => {
+    if (bnbWei == null) return null;
+    try {
+      const bal = BigInt(bnbWei);
+      const res = reserveWei ? BigInt(reserveWei) : 0n;
+      return bal > res ? bal - res : 0n;
+    } catch {
+      return null;
+    }
+  }, [bnbWei, reserveWei]);
+
+  // Keep the auto-filled Max amount fresh as the balance re-polls.
+  useEffect(() => {
+    if (maxMode && maxSendWei != null) setAmt(fmtUnits(maxSendWei.toString(), 18, 8));
+  }, [maxMode, maxSendWei]);
 
   async function withdraw() {
     setWErr(null);
@@ -129,15 +152,18 @@ function WithdrawBlock({
       setWErr(t("swap.errBscAddress"));
       return;
     }
-    if (!(Number(amt) > 0) && amt.trim().toLowerCase() !== "max") {
+    if (!maxMode && !(Number(amt) > 0)) {
       setWErr(t("swap.errEnterAmountMax"));
       return;
     }
     setWithdrawing(true);
     try {
+      // In Max mode send the literal "max" so walletd sweeps from the live
+      // balance (the shown figure is an estimate); otherwise send the typed
+      // amount verbatim — what the user sees is what's sent.
       const r = await rpc<{ txhash: string }>("bsc_send_bnb", {
         to: to.trim(),
-        amount: amt.trim(),
+        amount: maxMode ? "max" : amt.trim(),
       });
       toast.success(
         t("swap.toastBnbSentTitle"),
@@ -145,6 +171,7 @@ function WithdrawBlock({
       );
       setTo("");
       setAmt("");
+      setMaxMode(false);
       onSent();
     } catch (e) {
       setWErr(humanizeError(e));
@@ -175,15 +202,18 @@ function WithdrawBlock({
             className="input pr-12"
             placeholder={t("swap.withdrawAmtPlaceholder")}
             value={amt}
-            onChange={(e) => setAmt(e.target.value)}
+            onChange={(e) => {
+              setMaxMode(false);
+              setAmt(e.target.value);
+            }}
             disabled={withdrawing}
             inputMode="decimal"
           />
           <button
             type="button"
             className="btn-ghost absolute right-1 top-1/2 -translate-y-1/2 text-xs"
-            onClick={() => setAmt("max")}
-            disabled={withdrawing}
+            onClick={() => setMaxMode(true)}
+            disabled={withdrawing || maxSendWei == null}
           >
             {t("swap.maxLabel")}
           </button>
@@ -227,7 +257,7 @@ export function BnbAccount({
 }) {
   const { t } = useT();
   const bnbUsd = useBnbUsd();
-  const { address: addr, created, bnbWei, refresh } = asset;
+  const { address: addr, created, bnbWei, reserveWei, refresh } = asset;
   const [open, setOpen] = useState(lead);
   const [exportOpen, setExportOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
@@ -342,7 +372,7 @@ export function BnbAccount({
         </div>
 
         <DepositBlock addr={addr} qrSize={140} waiting={waiting} isZero={isZero} />
-        <WithdrawBlock bnbWei={bnbWei} onSent={refresh} />
+        <WithdrawBlock bnbWei={bnbWei} reserveWei={reserveWei} onSent={refresh} />
         {exportButton}
 
         {exportOpen && <ExportBnbKeyModal onClose={() => setExportOpen(false)} />}
@@ -377,7 +407,7 @@ export function BnbAccount({
       {open && (
         <div className="space-y-5 border-t border-neutral-800 px-5 py-5">
           <DepositBlock addr={addr} qrSize={160} waiting={waiting} isZero={isZero} />
-          <WithdrawBlock bnbWei={bnbWei} onSent={refresh} />
+          <WithdrawBlock bnbWei={bnbWei} reserveWei={reserveWei} onSent={refresh} />
           {exportButton}
         </div>
       )}

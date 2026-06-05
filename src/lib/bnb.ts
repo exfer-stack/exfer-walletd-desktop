@@ -43,6 +43,9 @@ export interface BnbAsset {
   created: boolean;
   /** Live BNB balance in wei (string), or null until first poll succeeds. */
   bnbWei: string | null;
+  /** Wei walletd holds back for gas on a full sweep, or null until first poll.
+   *  The withdraw "Max" shows balance − reserve and sends the "max" sentinel. */
+  reserveWei: string | null;
   /** Force an immediate re-poll of address + balance. */
   refresh: () => void;
 }
@@ -61,6 +64,7 @@ export function useBnbAsset(opts: { announceDeposits?: boolean } = {}): BnbAsset
   const [address, setAddress] = useState<string | null>(null);
   const [created, setCreated] = useState<boolean>(false);
   const [bnbWei, setBnbWei] = useState<string | null>(null);
+  const [reserveWei, setReserveWei] = useState<string | null>(null);
   const lastWei = useRef<bigint | null>(null);
   // Keep the latest address in a ref so the poll closure stays stable.
   const addrRef = useRef<string | null>(null);
@@ -79,8 +83,11 @@ export function useBnbAsset(opts: { announceDeposits?: boolean } = {}): BnbAsset
         // bsc_get_balances call (which would error without a key).
         if (!a.created) return;
       }
-      const b = await rpc<{ bnb_wei: string }>("bsc_get_balances");
+      const b = await rpc<{ bnb_wei: string; gas_reserve_wei?: string }>(
+        "bsc_get_balances",
+      );
       setBnbWei(b.bnb_wei);
+      setReserveWei(b.gas_reserve_wei ?? null);
       const now = BigInt(b.bnb_wei);
       const prev = lastWei.current;
       if (announceDeposits && prev != null && now > prev) {
@@ -106,7 +113,7 @@ export function useBnbAsset(opts: { announceDeposits?: boolean } = {}): BnbAsset
     };
   }, [load]);
 
-  return { address, created, bnbWei, refresh: load };
+  return { address, created, bnbWei, reserveWei, refresh: load };
 }
 
 // ── typed RPC wrappers for the BNB key lifecycle ──────────────────────────
