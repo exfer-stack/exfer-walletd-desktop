@@ -385,7 +385,15 @@ export function BnbAccount({
   // No BNB key yet (seedless wallet): render a SETUP pane so this component is
   // self-contained — every consumer (Swap / Dashboard / Liquidity) gets the
   // "set up your BNB wallet" CTA for free, gating BNB actions before any form.
-  if (!created) {
+  //
+  // `|| setupOpen` keeps us in this branch while the setup modal is open EVEN
+  // AFTER the key is created: the background poll flips `created` to true the
+  // instant the key exists, and without this the component would swap to the
+  // live-account branch and UNMOUNT the SetupBnbWalletModal — tearing down the
+  // recovery-phrase screen before the user has written it down. Closing the
+  // modal (Done / back) clears setupOpen and lets us fall through to the
+  // created surfaces.
+  if (!created || setupOpen) {
     const setupModal = setupOpen && (
       <SetupBnbWalletModal
         onClose={() => setSetupOpen(false)}

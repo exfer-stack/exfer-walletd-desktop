@@ -59,12 +59,15 @@ export function SetupBnbWalletModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-6 fade-in"
+      // items-start + overflow-y-auto so a tall pane (the 24-word phrase) SCROLLS
+      // instead of overflowing the viewport top & bottom; my-auto re-centers it
+      // vertically whenever it does fit.
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-neutral-900/40 p-6 fade-in"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) guardedClose();
       }}
     >
-      <div className="card-padded w-full max-w-xl space-y-5">
+      <div className="card-padded my-auto w-full max-w-2xl space-y-4">
         <header>
           <h2 className="text-xl font-semibold text-neutral-100">{t("bnb.setupTitle")}</h2>
         </header>
@@ -197,14 +200,15 @@ function GeneratePane({
   return (
     <div className="space-y-4">
       <div className="banner-warn text-sm text-amber-200">{t("bnb.backupWarn")}</div>
-      <div className="grid grid-cols-2 gap-2">
+      {/* 6 across → 4 tidy rows, so a 4-char word doesn't sprawl half the modal. */}
+      <div className="grid grid-cols-6 gap-1.5">
         {result.words.map((w, i) => (
           <div
             key={i}
-            className="flex items-baseline gap-2 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2"
+            className="flex items-baseline gap-1 rounded-md border border-neutral-800 bg-neutral-900 px-1.5 py-1.5"
           >
-            <span className="w-4 text-right font-mono text-[11px] text-neutral-600">{i + 1}</span>
-            <span className="font-mono text-sm text-neutral-100">{w}</span>
+            <span className="w-3 shrink-0 text-right font-mono text-[10px] text-neutral-600">{i + 1}</span>
+            <span className="truncate font-mono text-xs text-neutral-100">{w}</span>
           </div>
         ))}
       </div>
