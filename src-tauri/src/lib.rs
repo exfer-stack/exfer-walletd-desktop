@@ -24,6 +24,26 @@ async fn bootstrap_status(ctx: State<'_, AppCtx>) -> Result<BootstrapStatus, Str
     Ok(ctx.inner.lock().await.status.clone())
 }
 
+/// Open an external URL in the user's default browser. The webview can't launch
+/// the system browser itself, and a bare `<a target="_blank">` is a no-op in the
+/// Tauri shell — so explorer links (Activity, etc.) route through here. Locked to
+/// http(s) so the frontend can never open arbitrary schemes or local files.
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("refusing to open a non-http(s) URL".into());
+    }
+    #[cfg(target_os = "windows")]
+    let spawned = std::process::Command::new("cmd")
+        .args(["/C", "start", "", &url])
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let spawned = std::process::Command::new("open").arg(&url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let spawned = std::process::Command::new("xdg-open").arg(&url).spawn();
+    spawned.map(|_| ()).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn submit_password(
     app: tauri::AppHandle,
@@ -539,6 +559,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             bootstrap_status,
+            open_external,
             submit_password,
             rpc,
             get_node_rpc,

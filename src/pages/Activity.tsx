@@ -8,6 +8,7 @@ import {
   type HistoryEntry,
 } from "../lib/history";
 import { getLabel, shortAddress } from "../lib/labels";
+import { openExternal } from "../lib/openExternal";
 import { CopyButton } from "../components/CopyButton";
 import { useT, type MsgKey } from "../lib/i18n";
 import { txExplorerUrl } from "../lib/format";
@@ -112,6 +113,12 @@ function HashLine({
         href={href}
         target="_blank"
         rel="noreferrer"
+        // In the Tauri shell a bare target="_blank" is a no-op — route the open
+        // through the system browser explicitly (works in browser-dev too).
+        onClick={(e) => {
+          e.preventDefault();
+          void openExternal(href);
+        }}
         className="inline-flex rounded-md p-1 text-cyan-400 hover:bg-neutral-800"
         title={t("act.viewExplorer")}
       >
