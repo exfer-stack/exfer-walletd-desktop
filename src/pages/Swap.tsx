@@ -46,6 +46,7 @@ import { useBnbAsset } from "../lib/bnb";
 import { BnbAccount } from "../components/BnbAccount";
 import { PriceChart } from "../components/PriceChart";
 import { useResumeTarget } from "../lib/inflight";
+import logoUrl from "../assets/logo.png";
 
 // Permissive decimal: BNB carries up to 18 fractional digits, EXFER up to 8.
 const AMOUNT_RE = /^\d*\.?\d*$/;
@@ -285,6 +286,15 @@ export function Swap() {
     const feeReserve = Math.max(2000, (e?.utxo_count ?? 1) * 500);
     return Math.max(0, bal - feeReserve);
   }, [sell, pickList, fromAddr]);
+  // BNB balance in human units — drives the buy-side "Balance:" line.
+  const bnbHuman = useMemo(() => {
+    if (!bnbWei) return 0;
+    try {
+      return Number(BigInt(bnbWei)) / 1e18;
+    } catch {
+      return 0;
+    }
+  }, [bnbWei]);
   const buyMax = useMemo(() => {
     if (sell || !bnbWei) return 0;
     let bnbHuman = 0;
@@ -510,84 +520,125 @@ export function Swap() {
           <div className="space-y-4">
             {step === 1 && (
               <div className="card p-5 space-y-3.5">
-                <DirectionToggle direction={direction} onChange={switchDirection} />
-
                 {/* Buy with no BNB yet: lead with the deposit card so the order
                     of operations reads top-to-bottom (1. Add BNB → 2. Enter). */}
                 {needsFunding && <BnbAccount asset={bnbAsset} lead waiting />}
 
-                {/* From / receive-to address — a compact dropdown, not a stack. */}
-                <div>
-                  <label className="label">
-                    {sell ? t("swap.swapFrom") : t("swap.receiveTo")}
-                  </label>
-                  {pickList.length === 0 ? (
-                    <p className="help">
-                      {sell ? t("swap.noFundedAddr") : t("swap.noAddrGenerate")}
-                    </p>
-                  ) : (
-                    <AddrPicker
-                      items={pickList}
-                      value={fromAddr}
-                      onChange={setFrom}
-                      disabled={busy}
+                {/* The canonical reversible pair: a "You pay" card over a "You
+                    receive" card with a circular ⇅ on the seam between them.
+                    Tapping ⇅ flips direction while keeping the typed amount and
+                    selected address. EXFER / BNB are token chips, not verbs. */}
+                <div className="relative flex flex-col gap-1">
+                  {/* You pay — de-emphasized until there's BNB to swap on buy. */}
+                  <div
+                    className={
+                      "rounded-xl border border-neutral-800 bg-neutral-950 p-4 " +
+                      (needsFunding ? "opacity-50 pointer-events-none" : "")
+                    }
+                  >
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+                      {t("swap.youSend")}
+                    </span>
+                    <div className="mt-1.5 flex items-center gap-3">
+                      <input
+                        className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-semibold tabular-nums text-neutral-100 outline-none placeholder:text-neutral-600"
+                        placeholder="0.0"
+                        value={amount}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "" || AMOUNT_RE.test(v)) setAmount(v);
+                        }}
+                        disabled={busy || needsFunding}
+                        inputMode="decimal"
+                      />
+                      <TokenChip unit={sendUnit} />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+                      <span className="text-neutral-500">
+                        {t("lp.balance")}:{" "}
+                        {sell
+                          ? formatBalanceCompact(sellMax)
+                          : `${fmtAmt(String(bnbHuman), 4)} BNB`}
+                      </span>
+                      {minAmount > 0 && (
+                        <span
+                          className={belowMin ? "text-amber-300" : "text-neutral-500"}
+                        >
+                          {t("swap.minAmount", {
+                            n: minAmount.toLocaleString("en-US", {
+                              maximumSignificantDigits: 3,
+                              useGrouping: false,
+                            }),
+                            unit: sendUnit,
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    {/* 25/50/75/Max quick-fill chips off the pay-side ceiling. */}
+                    <PercentChips
+                      max={sell ? sellMax : buyMax}
+                      onPick={(v) =>
+                        setAmount(
+                          // sell: v is in smallest units (exfers) and a %-chip
+                          // makes it fractional — floor before formatExfer, which
+                          // assumes an integer. buy: v is human BNB.
+                          sell
+                            ? formatExfer(Math.floor(v)).replace(" EXFER", "")
+                            : fmtAmt(String(v), 8),
+                        )
+                      }
                     />
-                  )}
+                  </div>
+
+                  {/* Reverse — sewn onto the seam between the two cards: a
+                      zero-height row so the cards stay tight, the button
+                      centered ON the seam, straddling both edges. */}
+                  <div className="relative z-[2] h-0">
+                    <button
+                      type="button"
+                      aria-label="Reverse direction"
+                      onClick={() =>
+                        switchDirection(sell ? "bnb_to_exfer" : "exfer_to_bnb")
+                      }
+                      disabled={busy}
+                      className="absolute left-1/2 top-1/2 grid h-[30px] w-[30px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-neutral-700 bg-neutral-800 text-neutral-200 shadow-md transition hover:border-cyan-400 hover:text-cyan-300 disabled:opacity-50"
+                    >
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2.2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M7 4v14M7 4L4 7M7 4l3 3M17 20V6m0 14l3-3m-3 3l-3-3" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* You receive (est.) — read-only; the firm quote lands on Review. */}
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+                      {t("swap.youReceiveEst")}
+                    </span>
+                    <div className="mt-1.5 flex items-center gap-3">
+                      <span className="min-w-0 flex-1 text-2xl font-semibold tabular-nums text-neutral-100">
+                        {estOutNet != null
+                          ? fmtAmt(String(estOutNet), 6)
+                          : amountValid
+                            ? "—"
+                            : "0.0"}
+                      </span>
+                      <TokenChip unit={recvUnit} />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Amount — de-emphasized until there's BNB to swap on buy. */}
-                <div className={needsFunding ? "opacity-50" : ""}>
-                  <div className="flex items-center justify-between">
-                    <label className="label mb-0">
-                      {needsFunding
-                        ? t("swap.amountStep")
-                        : t("swap.youSendUnit", { unit: sendUnit })}
-                    </label>
-                    {sell && sellMax > 0 && (
-                      <button
-                        type="button"
-                        className="btn-ghost text-xs"
-                        onClick={() =>
-                          setAmount(formatExfer(sellMax).replace(" EXFER", ""))
-                        }
-                        disabled={busy}
-                      >
-                        {t("swap.maxLabel")}
-                      </button>
-                    )}
-                    {!sell && buyMax > 0 && (
-                      <button
-                        type="button"
-                        className="btn-ghost text-xs"
-                        onClick={() => setAmount(fmtAmt(String(buyMax), 8))}
-                        disabled={busy}
-                      >
-                        {t("swap.maxLabel")}
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    className="input mt-1.5"
-                    placeholder="0.0"
-                    value={amount}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "" || AMOUNT_RE.test(v)) setAmount(v);
-                    }}
-                    disabled={busy}
-                    inputMode="decimal"
-                  />
-
-                  {/* Compact summary: est-out + ≈$ + impact in one tight block. */}
-                  <div className="mt-3 space-y-1.5 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2.5">
-                    <div className="flex items-baseline justify-between text-sm">
-                      <span className="text-neutral-500">{t("swap.youReceiveEst")}</span>
-                      <span className="font-mono tabular-nums text-neutral-200">
-                        {estOutNet != null
-                          ? `≈ ${fmtAmt(String(estOutNet), 6)} ${recvUnit}`
-                          : `— ${recvUnit}`}
-                      </span>
-                    </div>
+                {/* Quote detail: ≈$ + price impact, folded into one tight block. */}
+                {((exferUsd != null && estOutNet != null) || priceImpact > 0) && (
+                  <div className="space-y-1.5 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2.5">
                     {exferUsd != null && estOutNet != null && (
                       <div className="flex items-baseline justify-between text-xs">
                         <span className="text-neutral-600">{t("swap.usdValue")}</span>
@@ -610,16 +661,25 @@ export function Swap() {
                       </div>
                     )}
                   </div>
+                )}
 
-                  {/* Below-minimum guard: the whole output would be eaten by the
-                      network fee, so block Review with an inline floor hint. */}
-                  {belowMin && (
-                    <p className="mt-1.5 text-xs text-amber-300">
-                      {t("swap.minAmount", {
-                        n: fmtAmt(String(minAmount), 6),
-                        unit: sendUnit,
-                      })}
+                {/* From / receive-to address — moved below the pair, as mobile
+                    shows the FROM ADDRESS under the pay/receive cards. */}
+                <div>
+                  <label className="label">
+                    {sell ? t("swap.swapFrom") : t("swap.receiveTo")}
+                  </label>
+                  {pickList.length === 0 ? (
+                    <p className="help">
+                      {sell ? t("swap.noFundedAddr") : t("swap.noAddrGenerate")}
                     </p>
+                  ) : (
+                    <AddrPicker
+                      items={pickList}
+                      value={fromAddr}
+                      onChange={setFrom}
+                      disabled={busy}
+                    />
                   )}
                 </div>
 
@@ -1070,39 +1130,80 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
   );
 }
 
-function DirectionToggle({
-  direction,
-  onChange,
+/** A non-interactive token chip (icon + symbol) used in the pay / receive
+ *  cards. EXFER and BNB are tokens here, never verbs — the direction is owned
+ *  by the ⇅ reverse button, not by which word you tap. */
+function TokenChip({ unit }: { unit: "EXFER" | "BNB" }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100">
+      {unit === "EXFER" ? (
+        <img src={logoUrl} alt="" className="h-5 w-5 rounded-full" />
+      ) : (
+        <BnbMark size={20} />
+      )}
+      {unit}
+    </span>
+  );
+}
+
+/** The BNB rhombus on its gold disc — a small inline SVG so the chip carries
+ *  the right brand mark without an extra asset. */
+function BnbMark({ size = 20 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 126.61 126.61"
+      className="block shrink-0"
+      aria-hidden
+    >
+      <circle cx="63.3" cy="63.3" r="63.3" fill="#F0B90B" />
+      <g fill="#fff" transform="translate(63.3 63.3) scale(0.62) translate(-63.3 -63.3)">
+        <path d="M38.73 53.2 63.32 28.62 87.92 53.22 102.22 38.91 63.32 0 24.42 38.9z" />
+        <path d="M0 63.31 14.3 49l14.31 14.31L14.3 77.61z" />
+        <path d="M38.73 73.41 63.32 98l24.6-24.6 14.31 14.29-.01.01-38.9 38.91-38.91-38.88-.02-.02z" />
+        <path d="M98 63.31 112.3 49l14.31 14.3-14.31 14.32z" />
+        <path d="M77.83 63.3 63.32 48.78 52.59 59.51l-1.24 1.23-2.54 2.54-.02.02.02.03 14.51 14.5z" />
+      </g>
+    </svg>
+  );
+}
+
+/** 25/50/75/Max quick-fill chips. `max` is the spendable ceiling in the pay
+ *  unit; each chip sets the amount to that fraction (Max = the whole ceiling). */
+function PercentChips({
+  max,
+  onPick,
 }: {
-  direction: SwapDirection;
-  onChange: (d: SwapDirection) => void;
+  max: number;
+  onPick: (v: number) => void;
 }) {
   const { t } = useT();
-  const opts: { id: SwapDirection; label: string }[] = [
-    { id: "exfer_to_bnb", label: t("swap.sellDirection") },
-    { id: "bnb_to_exfer", label: t("swap.buyDirection") },
+  if (!(max > 0) || !isFinite(max)) return null;
+  const fracs: [number, string][] = [
+    [0.25, "25"],
+    [0.5, "50"],
+    [0.75, "75"],
   ];
-  // A single inline segmented control — one row, one bordered track.
   return (
-    <div className="flex rounded-lg border border-neutral-700 bg-neutral-950 p-1">
-      {opts.map((o) => {
-        const active = o.id === direction;
-        return (
-          <button
-            key={o.id}
-            type="button"
-            onClick={() => onChange(o.id)}
-            className={
-              "flex-1 rounded-md px-4 py-2 text-sm font-medium transition " +
-              (active
-                ? "bg-cyan-500/10 text-cyan-200"
-                : "text-neutral-400 hover:text-neutral-200")
-            }
-          >
-            {o.label}
-          </button>
-        );
-      })}
+    <div className="mt-2.5 flex gap-1.5">
+      {fracs.map(([f, lbl]) => (
+        <button
+          key={lbl}
+          type="button"
+          className="flex-1 rounded-md bg-neutral-800/60 py-1 text-xs font-semibold text-cyan-300 transition hover:bg-neutral-800"
+          onClick={() => onPick(max * f)}
+        >
+          {lbl}%
+        </button>
+      ))}
+      <button
+        type="button"
+        className="flex-1 rounded-md bg-neutral-800/60 py-1 text-xs font-semibold text-cyan-300 transition hover:bg-neutral-800"
+        onClick={() => onPick(max)}
+      >
+        {t("swap.maxLabel")}
+      </button>
     </div>
   );
 }
