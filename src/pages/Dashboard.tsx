@@ -62,10 +62,14 @@ export function Dashboard() {
   // the dashboard tile stays a glanceable summary.
   const [bnbOpen, setBnbOpen] = useState(false);
 
-  // Escape closes whichever overlay is open (parity with backdrop-click / ✕).
+  // Escape closes the create-address dialog. NOT the BNB console modal: it can
+  // host its OWN Escape-aware child modals (SetupBnbWalletModal's recovery-phrase
+  // screen locks Escape; ExportBnbKeyModal handles its own), and a window-level
+  // listener here would fire too and tear the whole BNB modal down out from under
+  // them — closing an unacknowledged recovery phrase. The BNB modal keeps its ✕
+  // and backdrop-click to close.
   useEscapeKey(() => {
-    if (bnbOpen) setBnbOpen(false);
-    else if (creatingOpen && !generating) setCreatingOpen(false);
+    if (creatingOpen && !generating) setCreatingOpen(false);
   });
 
   const allEntries = data?.entries ?? [];

@@ -173,15 +173,18 @@ function DepositBlock({
   );
 }
 
-/** The withdraw form (to + amount + Max), shared by both variants. */
+/** The withdraw VIEW (destination + amount, each on its own full-width row —
+ *  never crammed side by side). `onBack` returns to the deposit view. */
 function WithdrawBlock({
   bnbWei,
   reserveWei,
   onSent,
+  onBack,
 }: {
   bnbWei: string | null;
   reserveWei: string | null;
   onSent: () => void;
+  onBack?: () => void;
 }) {
   const { t } = useT();
   const toast = useToast();
@@ -245,27 +248,50 @@ function WithdrawBlock({
     }
   }
 
+  const toValid = HEX40.test(to.trim());
+  const amtPositive = maxMode || Number(amt) > 0;
+
   return (
-    <div className="space-y-2 border-t border-neutral-800 pt-4">
-      <div className="flex items-baseline justify-between">
-        <div className="label mb-0">{t("swap.withdrawBnb")}</div>
-        <span className="font-mono text-xs tabular-nums text-neutral-500">
-          {fmtUnits(bnbWei ?? undefined, 18, 5)} BNB
-        </span>
-      </div>
-      <div className="grid grid-cols-[1.3fr_1fr] gap-2">
-        <input
-          className="input font-mono text-xs"
-          placeholder={t("swap.withdrawToPlaceholder")}
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          disabled={withdrawing}
-          autoComplete="off"
-        />
+    <div className="space-y-4">
+      {/* ── Destination — its OWN full-width row, with an inline validity ✓. ── */}
+      <div>
+        <label className="label">{t("swap.wdToLabel")}</label>
         <div className="relative">
           <input
-            className="input pr-14"
-            placeholder={t("swap.withdrawAmtPlaceholder")}
+            className="input pr-10 font-mono text-sm"
+            placeholder={t("swap.withdrawToPlaceholder")}
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            disabled={withdrawing}
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+          />
+          {toValid && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 13l4 4L19 7" />
+              </svg>
+            </span>
+          )}
+        </div>
+        {to.trim() !== "" && !toValid && (
+          <div className="help text-red-300">{t("swap.errBscAddress")}</div>
+        )}
+      </div>
+
+      {/* ── Amount — its OWN full-width row; the input, unit, and Max share it. ── */}
+      <div>
+        <div className="flex items-baseline justify-between">
+          <label className="label mb-1.5">{t("swap.wdAmountLabel")}</label>
+          <span className="font-mono text-xs tabular-nums text-neutral-500">
+            {t("lp.balance")}: {fmtUnits(bnbWei ?? undefined, 18, 5)} BNB
+          </span>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-950 px-3.5 py-2.5 transition focus-within:border-cyan-400">
+          <input
+            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-lg font-semibold tabular-nums text-neutral-100 outline-none placeholder:text-neutral-600"
+            placeholder="0.0"
             value={amt}
             onChange={(e) => {
               setMaxMode(false);
@@ -274,9 +300,10 @@ function WithdrawBlock({
             disabled={withdrawing}
             inputMode="decimal"
           />
+          <span className="shrink-0 text-sm font-medium text-neutral-500">BNB</span>
           <button
             type="button"
-            className="btn-ghost absolute right-1 top-1/2 -translate-y-1/2 text-xs"
+            className="shrink-0 rounded-md bg-neutral-800 px-2.5 py-1 text-xs font-semibold text-cyan-300 transition hover:bg-neutral-700 disabled:opacity-50"
             onClick={() => setMaxMode(true)}
             disabled={withdrawing || maxSendWei == null}
           >
@@ -284,17 +311,29 @@ function WithdrawBlock({
           </button>
         </div>
       </div>
+
       {/* Gas-reserve + irreversible-address warning. */}
       <div className="banner-info text-xs">{t("swap.withdrawNote")}</div>
       {wErr && <div className="banner-error">{wErr}</div>}
+
       <button
         type="button"
-        className="btn-secondary w-full"
-        disabled={withdrawing}
+        className="btn w-full"
+        disabled={withdrawing || !toValid || !amtPositive}
         onClick={withdraw}
       >
         {withdrawing ? t("swap.sending") : t("swap.withdraw")}
       </button>
+      {onBack && (
+        <button
+          type="button"
+          className="btn-ghost w-full text-neutral-400"
+          disabled={withdrawing}
+          onClick={onBack}
+        >
+          {t("swap.wdBackDeposit")}
+        </button>
+      )}
     </div>
   );
 }
@@ -327,6 +366,9 @@ export function BnbAccount({
   const { address: addr, created, bnbWei, reserveWei, refresh } = asset;
   const [exportOpen, setExportOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
+  // The full console is two views: deposit (QR + address) and withdraw — never
+  // both crammed together. Mirrors the mobile wallet's BNB modal.
+  const [view, setView] = useState<"deposit" | "withdraw">("deposit");
 
   // Human BNB balance + its ≈$ value (best-effort; hidden when BNB/USD absent).
   const bnbHuman = (() => {
@@ -489,16 +531,32 @@ export function BnbAccount({
   return (
     <section className="card overflow-hidden">
       <header className="flex items-start justify-between gap-4 border-b border-neutral-800 px-5 py-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h2 className="text-base font-semibold text-neutral-100">
-              {t("swap.bnbAccountTitle")}
-            </h2>
-            <AddrHelp />
+        <div className="flex min-w-0 items-start gap-2">
+          {view === "withdraw" && (
+            <button
+              type="button"
+              onClick={() => setView("deposit")}
+              aria-label={t("swap.wdBackDeposit")}
+              className="-ml-1 mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-200"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-base font-semibold text-neutral-100">
+                {view === "withdraw" ? t("swap.withdrawBnb") : t("swap.bnbAccountTitle")}
+              </h2>
+              {view === "deposit" && <AddrHelp />}
+            </div>
+            {view === "deposit" && (
+              <p className="mt-0.5 text-xs leading-relaxed text-neutral-500">
+                {t("swap.bnbAccountSubtitle")}
+              </p>
+            )}
           </div>
-          <p className="mt-0.5 text-xs leading-relaxed text-neutral-500">
-            {t("swap.bnbAccountSubtitle")}
-          </p>
         </div>
         <div className="flex shrink-0 items-start gap-3">
           <div className="text-right">
@@ -527,10 +585,36 @@ export function BnbAccount({
         </div>
       </header>
 
-      <div className="space-y-5 px-5 py-5">
-        <DepositBlock addr={addr} qrSize={168} waiting={waiting} isZero={isZero} />
-        <WithdrawBlock bnbWei={bnbWei} reserveWei={reserveWei} onSent={refresh} />
-        {exportButton}
+      <div className="px-5 py-5">
+        {view === "deposit" ? (
+          <div className="space-y-5">
+            <DepositBlock addr={addr} qrSize={168} waiting={waiting} isZero={isZero} />
+            <button
+              type="button"
+              className="btn-secondary w-full"
+              onClick={() => setView("withdraw")}
+            >
+              {t("swap.withdrawBnb")}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost w-full border-t border-neutral-800 pt-4 text-neutral-400"
+              onClick={() => setExportOpen(true)}
+            >
+              {t("swap.exportBnbKey")}
+            </button>
+          </div>
+        ) : (
+          <WithdrawBlock
+            bnbWei={bnbWei}
+            reserveWei={reserveWei}
+            onSent={() => {
+              refresh();
+              setView("deposit");
+            }}
+            onBack={() => setView("deposit")}
+          />
+        )}
       </div>
 
       {exportOpen && <ExportBnbKeyModal onClose={() => setExportOpen(false)} />}

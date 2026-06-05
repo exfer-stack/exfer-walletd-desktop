@@ -10,7 +10,7 @@
 // IMPORT: a raw private key (0x + 64 hex) via bsc_import_key, or a 12/24-word
 // BIP-39 phrase via bsc_import_mnemonic. Both MetaMask-compatible.
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
@@ -46,13 +46,22 @@ export function SetupBnbWalletModal({
 }) {
   const { t } = useT();
   const [mode, setMode] = useState<Mode>("choose");
-  useEscapeKey(onClose);
+  // While a freshly-generated BNB recovery phrase is on screen but not yet
+  // acknowledged, neither Escape nor a backdrop click may dismiss the modal —
+  // the key already exists in the keystore, so a careless close could leave the
+  // user funding an address whose phrase they never wrote down. Done (after the
+  // "I backed it up" check) is the only way out of that screen.
+  const [locked, setLocked] = useState(false);
+  const guardedClose = useCallback(() => {
+    if (!locked) onClose();
+  }, [locked, onClose]);
+  useEscapeKey(guardedClose);
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-6 fade-in"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) guardedClose();
       }}
     >
       <div className="card-padded w-full max-w-xl space-y-5">
@@ -66,6 +75,7 @@ export function SetupBnbWalletModal({
             onClose={onClose}
             onCreated={onCreated}
             onBack={() => setMode("choose")}
+            onLockChange={setLocked}
           />
         )}
         {mode === "import" && (
@@ -129,16 +139,25 @@ function GeneratePane({
   onClose,
   onCreated,
   onBack,
+  onLockChange,
 }: {
   onClose: () => void;
   onCreated: (address: string) => void;
   onBack: () => void;
+  onLockChange: (locked: boolean) => void;
 }) {
   const { t } = useT();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ address: string; words: string[] } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+
+  // Lock the modal (no Escape / backdrop dismiss) while the recovery phrase is
+  // shown but not yet acknowledged. Release on unmount (e.g. Back to choose).
+  useEffect(() => {
+    onLockChange(!!result && !confirmed);
+    return () => onLockChange(false);
+  }, [result, confirmed, onLockChange]);
 
   async function generate() {
     setBusy(true);
