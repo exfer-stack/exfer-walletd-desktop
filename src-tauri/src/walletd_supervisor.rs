@@ -233,11 +233,15 @@ fn build_walletd_config(datadir: &std::path::Path, desktop_cfg: &DesktopConfig) 
         // Pin the pool's self-signed cert so enabling swap "just works" against
         // the official pool. Only used once a pool URL is set (swap on).
         swap_pool_ca: Some(POOL_CA_PEM.to_string()),
+        // NOT bsc-dataseed: it rejects eth_getLogs (-32005) which the swap engine
+        // needs to detect on-chain HTLC locks/claims, and rate-limits the withdraw
+        // flow's rapid calls (nonce/gasPrice/estimateGas/send) into "network busy".
+        // publicnode handles getLogs and is far more reliable. Same node mobile uses.
         bsc_rpc_url: desktop_cfg
             .bsc_rpc_url
             .clone()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "https://bsc-dataseed1.binance.org".to_string()),
+            .unwrap_or_else(|| "https://bsc-rpc.publicnode.com".to_string()),
         bsc_chain_id: desktop_cfg.bsc_chain_id.unwrap_or(56),
     }
 }
