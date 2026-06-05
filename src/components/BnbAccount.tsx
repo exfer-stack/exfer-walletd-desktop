@@ -20,7 +20,7 @@ import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
 import { useBnbUsd, usdNumber } from "../lib/market";
-import { fmtUnits, revealBscMnemonic, type BnbAsset } from "../lib/bnb";
+import { fmtUnits, type BnbAsset } from "../lib/bnb";
 import { CopyButton } from "./CopyButton";
 import { SetupBnbWalletModal } from "./SetupBnbWalletModal";
 
@@ -429,7 +429,6 @@ export function ExportBnbKeyModal({ onClose }: { onClose: () => void }) {
   const [data, setData] = useState<{
     address: string;
     key: string;
-    mnemonic: string[] | null;
   } | null>(null);
 
   async function reveal(e: FormEvent) {
@@ -441,17 +440,11 @@ export function ExportBnbKeyModal({ onClose }: { onClose: () => void }) {
     }
     setBusy(true);
     try {
+      // Desktop exports the BNB PRIVATE KEY only — never a recovery phrase
+      // (the BNB key is seed-derived on seeded wallets; the per-key phrase is a
+      // raw-key encoding, not a standard BIP-39 HD seed, so it's misleading).
       const res = await revealEvmPrivateKey(pw);
-      // Also fetch the recovery phrase so the user can view/back it up again —
-      // not just the private key. Raw-key-imported BNB wallets have no phrase
-      // (bsc_reveal_mnemonic errors); show only the key in that case.
-      let mnemonic: string[] | null = null;
-      try {
-        mnemonic = (await revealBscMnemonic(pw)).mnemonic;
-      } catch {
-        mnemonic = null;
-      }
-      setData({ address: res.address, key: res.private_key_hex, mnemonic });
+      setData({ address: res.address, key: res.private_key_hex });
       setPw("");
     } catch (e) {
       setErr(humanizeError(e));
@@ -510,27 +503,6 @@ export function ExportBnbKeyModal({ onClose }: { onClose: () => void }) {
                 {data.address}
               </code>
             </div>
-            {data.mnemonic && (
-              <div>
-                <div className="label">{t("swap.bnbRecoveryPhrase")}</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {data.mnemonic.map((w, i) => (
-                    <div
-                      key={i}
-                      className="flex items-baseline gap-2 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2"
-                    >
-                      <span className="w-4 text-right font-mono text-[11px] text-neutral-600">
-                        {i + 1}
-                      </span>
-                      <span className="font-mono text-sm text-neutral-100">{w}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-2 flex justify-end">
-                  <CopyButton text={data.mnemonic.join(" ")} className="btn-secondary" />
-                </div>
-              </div>
-            )}
             <div>
               <div className="label">{t("swap.expPrivKey")}</div>
               <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 font-mono text-sm break-all text-red-200">

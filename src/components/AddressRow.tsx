@@ -2,7 +2,7 @@ import { useEffect, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { CopyButton } from "./CopyButton";
 import { ExportKeyModal } from "./ExportKeyModal";
-import { RecoveryPhraseModal, DeleteAddressModal } from "./KeyringModals";
+import { DeleteAddressModal } from "./KeyringModals";
 import { getLabel, setLabel, shortAddress } from "../lib/labels";
 import { hide } from "../lib/hidden";
 import { formatExfer, formatBalanceCompact } from "../lib/rpc";
@@ -37,7 +37,6 @@ export function AddressRow({
   const [draft, setDraft] = useState(() => getLabel(address) ?? "");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [showExport, setShowExport] = useState(false);
-  const [showPhrase, setShowPhrase] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const label = getLabel(address);
 
@@ -144,13 +143,6 @@ export function AddressRow({
           onClose={() => setMenu(null)}
           items={[
             {
-              label: t("adr.menuShowPhrase"),
-              onClick: () => {
-                setMenu(null);
-                setShowPhrase(true);
-              },
-            },
-            {
               label: t("adr.menuExportKey"),
               onClick: () => {
                 setMenu(null);
@@ -211,13 +203,6 @@ export function AddressRow({
           address={address}
           index={index}
           onClose={() => setShowExport(false)}
-        />
-      )}
-
-      {showPhrase && (
-        <RecoveryPhraseModal
-          address={address}
-          onClose={() => setShowPhrase(false)}
         />
       )}
 

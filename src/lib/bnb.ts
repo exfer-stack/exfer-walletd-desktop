@@ -150,9 +150,3 @@ export function importBscMnemonic(
   });
 }
 
-/** Reveal the BNB wallet's recovery phrase (passphrase- + Spend-gated). */
-export function revealBscMnemonic(
-  passphrase: string,
-): Promise<{ mnemonic: string[] }> {
-  return rpc("bsc_reveal_mnemonic", { passphrase });
-}

@@ -1,21 +1,15 @@
-// Keyring-model lifecycle modals: per-address recovery phrase, address
-// deletion, and whole-wallet encrypted-vault backup / restore.
-//
-// These replace the HD-seed-era "one mnemonic for the whole wallet" mental
-// model: every address is its own key, so backup is either a single sealed
-// vault file (all keys) or a per-address recovery phrase / private key.
+// Keyring-model lifecycle modals: address deletion and whole-wallet
+// encrypted-vault backup / restore. (The desktop does NOT expose recovery
+// phrases — backup is the sealed vault file or a per-address PRIVATE KEY only.)
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { rpc, exportVaultFile, importVaultFile } from "../lib/rpc";
 import { devmock } from "../lib/devmock";
 import { useToast } from "../lib/toast";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
-import { CopyButton } from "./CopyButton";
 import { shortAddress } from "../lib/labels";
-
-const AUTO_HIDE_MS = 30_000;
 
 // ---------------------------------------------------------------------------
 // Shared backdrop
@@ -41,141 +35,6 @@ function Backdrop({
       {children}
     </div>,
     document.body,
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Per-address recovery phrase (this address's OWN 24 words)
-// ---------------------------------------------------------------------------
-
-export function RecoveryPhraseModal({
-  address,
-  onClose,
-}: {
-  address: string;
-  onClose: () => void;
-}) {
-  const { t } = useT();
-  const [password, setPassword] = useState("");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [words, setWords] = useState<string[] | null>(null);
-  const [hidden, setHidden] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  async function reveal(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setPending(true);
-    try {
-      const res = await rpc<{ address: string; mnemonic: string[] }>(
-        "reveal_address_mnemonic",
-        { address, passphrase: password },
-      );
-      setWords(res.mnemonic);
-      setPassword("");
-      timerRef.current = setTimeout(() => setHidden(true), AUTO_HIDE_MS);
-    } catch (e) {
-      setError(humanizeError(e));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <Backdrop onClose={onClose}>
-      <div className="card-padded w-full max-w-xl space-y-5">
-        <header>
-          <h2 className="text-xl font-semibold text-neutral-100">
-            {t("kr.rpHeading")}
-          </h2>
-          <p className="mt-1 text-sm text-neutral-400">
-            {t("kr.rpDescPre")}(<span className="font-mono">{shortAddress(address)}</span>)
-            {t("kr.rpDescPost")}
-          </p>
-        </header>
-
-        {!words ? (
-          <form onSubmit={reveal} className="space-y-4">
-            <div className="banner-warn space-y-1 text-sm text-amber-200">
-              <div className="font-semibold">{t("kr.beforeContinue")}</div>
-              <ul className="ml-4 list-disc space-y-1">
-                <li>{t("kr.rpTip1")}</li>
-                <li>{t("kr.rpTip2")}</li>
-              </ul>
-            </div>
-            <div>
-              <label className="label" htmlFor="rec-pw">
-                {t("kr.walletPassword")}
-              </label>
-              <input
-                id="rec-pw"
-                type="password"
-                className="input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={pending}
-                autoComplete="current-password"
-              />
-            </div>
-            {error && <div className="banner-error">{error}</div>}
-            <div className="flex justify-end gap-2">
-              <button type="button" className="btn-secondary" onClick={onClose} disabled={pending}>
-                {t("kr.cancel")}
-              </button>
-              <button type="submit" className="btn-danger" disabled={pending || password === ""}>
-                {pending ? t("kr.verifying") : t("kr.showPhrase")}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div className="space-y-4">
-            <div className="banner-error text-sm">{t("kr.writeDown")}</div>
-            <ol
-              className={
-                "grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-4 sm:grid-cols-3 " +
-                (hidden ? "blur-md select-none pointer-events-none" : "")
-              }
-            >
-              {words.map((w, i) => (
-                <li key={i} className="flex gap-2 font-mono text-sm">
-                  <span className="w-5 text-right text-neutral-600">{i + 1}.</span>
-                  <span className="text-neutral-100">{w}</span>
-                </li>
-              ))}
-            </ol>
-            {hidden && (
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => {
-                    setHidden(false);
-                    if (timerRef.current) clearTimeout(timerRef.current);
-                    timerRef.current = setTimeout(() => setHidden(true), AUTO_HIDE_MS);
-                  }}
-                >
-                  {t("kr.showAgain")}
-                </button>
-              </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <CopyButton text={words.join(" ")} className="btn-secondary" />
-              <button type="button" className="btn" onClick={onClose}>
-                {t("kr.done")}
-              </button>
-            </div>
-            <p className="text-xs text-neutral-400">{t("kr.autoHide")}</p>
-          </div>
-        )}
-      </div>
-    </Backdrop>
   );
 }
 
