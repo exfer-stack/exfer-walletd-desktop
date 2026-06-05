@@ -385,11 +385,25 @@ export function BnbAccount({
     return (
       <section className="card overflow-hidden">
         <div className="px-5 py-4">
-          <div className="mb-4">
-            <div className="text-sm font-semibold text-neutral-100">
-              {t("swap.bnbAccountTitle")}
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-neutral-100">
+                {t("swap.bnbAccountTitle")}
+              </div>
+              <div className="text-xs text-neutral-500">{t("swap.bnbAccountSubtitle")}</div>
             </div>
-            <div className="text-xs text-neutral-500">{t("swap.bnbAccountSubtitle")}</div>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={t("dash.bnbClose")}
+                className="-mr-1 -mt-0.5 grid h-7 w-7 flex-none place-items-center rounded-md text-neutral-500 transition hover:bg-neutral-800 hover:text-neutral-200"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            )}
           </div>
           {setupPane}
         </div>

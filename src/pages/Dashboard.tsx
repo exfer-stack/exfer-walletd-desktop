@@ -349,7 +349,18 @@ export function Dashboard() {
             </section>
           )}
 
-          {bnbAsset.address ? (
+          {!bnbAsset.ready ? (
+            /* First poll still in flight — a skeleton so the rail never
+               collapses to a blank column. Resolves to one of the two states
+               below once bsc_get_address answers. */
+            <section className="card-padded space-y-4" aria-hidden>
+              <div className="flex items-start justify-between gap-3">
+                <div className="h-4 w-20 animate-pulse rounded bg-neutral-800" />
+                <div className="h-4 w-24 animate-pulse rounded bg-neutral-800" />
+              </div>
+              <div className="h-9 w-full animate-pulse rounded-lg bg-neutral-800" />
+            </section>
+          ) : bnbAsset.address ? (
             <section className="card-padded space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-neutral-400">
@@ -376,14 +387,23 @@ export function Dashboard() {
               </button>
             </section>
           ) : (
-            /* No derived BSC address yet (first poll / key still deriving):
-               a skeleton tile so the rail never collapses to a blank column. */
-            <section className="card-padded space-y-4" aria-hidden>
-              <div className="flex items-start justify-between gap-3">
-                <div className="h-4 w-20 animate-pulse rounded bg-neutral-800" />
-                <div className="h-4 w-24 animate-pulse rounded bg-neutral-800" />
+            /* Loaded, but this wallet has no BSC key (a seedless / imported
+               wallet — nothing to derive a BNB address from). Offer to set one
+               up instead of sitting on a forever skeleton with no affordance. */
+            <section className="card-padded space-y-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                {t("dash.bnbTileTitle")}
               </div>
-              <div className="h-9 w-full animate-pulse rounded-lg bg-neutral-800" />
+              <p className="text-xs leading-relaxed text-neutral-500">
+                {t("bnb.setupBody")}
+              </p>
+              <button
+                type="button"
+                className="btn-secondary w-full"
+                onClick={() => setBnbOpen(true)}
+              >
+                {t("bnb.notCreatedTitle")}
+              </button>
             </section>
           )}
         </aside>

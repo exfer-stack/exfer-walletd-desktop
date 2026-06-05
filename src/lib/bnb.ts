@@ -41,6 +41,11 @@ export interface BnbAsset {
   /** Whether a BNB key exists yet. Seedless wallets start with `created:false`
    *  (and `address:null`) — consumers route the user to set one up first. */
   created: boolean;
+  /** True once the first `bsc_get_address` has resolved, so consumers can tell
+   *  "still loading" (show a skeleton) apart from "loaded, but no BSC key yet"
+   *  (a seedless wallet — show a "set up your BNB wallet" CTA, not a forever
+   *  skeleton). Without this, `address == null` conflates the two. */
+  ready: boolean;
   /** Live BNB balance in wei (string), or null until first poll succeeds. */
   bnbWei: string | null;
   /** Wei walletd holds back for gas on a full sweep, or null until first poll.
@@ -63,6 +68,7 @@ export function useBnbAsset(opts: { announceDeposits?: boolean } = {}): BnbAsset
   const { t } = useT();
   const [address, setAddress] = useState<string | null>(null);
   const [created, setCreated] = useState<boolean>(false);
+  const [ready, setReady] = useState<boolean>(false);
   const [bnbWei, setBnbWei] = useState<string | null>(null);
   const [reserveWei, setReserveWei] = useState<string | null>(null);
   const lastWei = useRef<bigint | null>(null);
@@ -79,6 +85,10 @@ export function useBnbAsset(opts: { announceDeposits?: boolean } = {}): BnbAsset
         addrRef.current = a.address;
         setAddress(a.address);
         setCreated(a.created);
+        // The address question is answered (created true or false) — mark ready
+        // so consumers stop showing a skeleton and, when !created, can offer the
+        // "set up your BNB wallet" CTA instead of a forever-loading tile.
+        setReady(true);
         // No BNB key yet — there's no balance to poll; bail before the
         // bsc_get_balances call (which would error without a key).
         if (!a.created) return;
@@ -113,7 +123,7 @@ export function useBnbAsset(opts: { announceDeposits?: boolean } = {}): BnbAsset
     };
   }, [load]);
 
-  return { address, created, bnbWei, reserveWei, refresh: load };
+  return { address, created, ready, bnbWei, reserveWei, refresh: load };
 }
 
 // ── typed RPC wrappers for the BNB key lifecycle ──────────────────────────
