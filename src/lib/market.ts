@@ -97,15 +97,52 @@ function mapCandles(items: RawCandle[]): Candle[] {
     .sort((a, b) => a.time - b.time);
 }
 
+/** Rolling 24h pool activity the pool appends to swap_price_klines responses.
+ *  Older pools don't send it — callers get null and hide the figures. */
+export interface KlineStats {
+  swaps24h: number;
+  volExfer24h: number;
+  volBnb24h: number;
+}
+
+type RawStats = {
+  swaps_24h?: number;
+  vol_exfer_24h?: number;
+  vol_bnb_24h?: number;
+};
+
 /** OHLC candles for the chart, from THIS pool's own price history
  *  (swap_price_klines: seeded once from OTC server-side, then grown from the
- *  pool's mid). Empty array on failure — the chart shows its empty state. */
-export async function getKlines(interval = "1d", limit = 120): Promise<Candle[]> {
+ *  pool's mid), plus the pool's appended 24h `stats` when the pool is new
+ *  enough to send it. Empty candles / null stats on failure. */
+export async function getKlinesWithStats(
+  interval = "1d",
+  limit = 120,
+): Promise<{ candles: Candle[]; stats: KlineStats | null }> {
   try {
-    const res = await rpc<{ items?: RawCandle[] }>("swap_price_klines", { interval, limit });
-    if (Array.isArray(res?.items)) return mapCandles(res.items);
-  } catch { /* fall through to empty */ }
-  return [];
+    const res = await rpc<{ items?: RawCandle[]; stats?: RawStats }>("swap_price_klines", {
+      interval,
+      limit,
+    });
+    const candles = Array.isArray(res?.items) ? mapCandles(res.items) : [];
+    const s = res?.stats;
+    const stats =
+      s && typeof s.swaps_24h === "number"
+        ? {
+            swaps24h: s.swaps_24h,
+            volExfer24h: Number(s.vol_exfer_24h) || 0,
+            volBnb24h: Number(s.vol_bnb_24h) || 0,
+          }
+        : null;
+    return { candles, stats };
+  } catch {
+    return { candles: [], stats: null };
+  }
+}
+
+/** Candles only — the original shape; existing callers keep working. */
+export async function getKlines(interval = "1d", limit = 120): Promise<Candle[]> {
+  return (await getKlinesWithStats(interval, limit)).candles;
 }
 
 // ── circulating supply ───────────────────────────────────────────────────

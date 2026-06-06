@@ -37,10 +37,12 @@ import {
   useBnbUsd,
   usdNumber,
   getKlines,
+  getKlinesWithStats,
   circulatingSupplyExfer,
   getBlockHeight,
   type MarketPrice,
   type Candle,
+  type KlineStats,
 } from "../lib/market";
 import { recordSwapUsd } from "../lib/swapPrice";
 import {
@@ -620,7 +622,7 @@ export function Swap() {
         <PageBar poolRate={null} />
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 lg:col-span-8">
-            <MarketHeader price={price} />
+            <MarketHeader price={price} poolInfo={poolInfo} />
           </div>
           <div className="col-span-12 lg:col-span-4">
             <div className="lg:sticky lg:top-6">
@@ -653,8 +655,12 @@ export function Swap() {
       <div className="grid grid-cols-12 gap-6">
         {/* LEFT — market chart + stats; the dominant width goes to the chart. */}
         <div className="col-span-12 lg:col-span-8">
-          <div className="lg:sticky lg:top-6">
-            <MarketHeader price={price} />
+          <div className="lg:sticky lg:top-6 space-y-2">
+            <MarketHeader price={price} poolInfo={poolInfo} />
+            {/* Pool depth / fee / size-cap strip — the pool_info fields that
+                had no surface. One muted line under the chart card; the ≈$
+                TVL needs both spot prices and hides when either is missing. */}
+            <PoolStrip poolInfo={poolInfo} exferUsd={exferUsd} bnbUsd={bnbUsd} />
           </div>
         </div>
 
@@ -1094,6 +1100,10 @@ const INTERVALS: { key: string; label: string; timeVisible: boolean }[] = [
 // instead of popping in after their async fetches (mirrors mobile's caches).
 const candlesCache: Record<string, Candle[]> = {};
 let supplyCache: number | null = null;
+// 24h high/low (from a fixed 1h×25 fetch, independent of the interval toggle)
+// and the pool's appended 24h volume/trade stats — cached for the same reason.
+let h24Cache: { hi: number; lo: number } | null = null;
+let tradeStatsCache: KlineStats | null = null;
 
 /** A compact 24h-change pill — green up / red down / muted flat. */
 function ChangePill({ pct }: { pct: number }) {
@@ -1128,28 +1138,62 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MarketHeader({ price }: { price: MarketPrice | null }) {
+function MarketHeader({
+  price,
+  poolInfo,
+}: {
+  price: MarketPrice | null;
+  poolInfo: PoolInfo | null;
+}) {
   const { t } = useT();
   const [interval, setIntervalKey] = useState("1d");
   const [candles, setCandles] = useState<Candle[]>(candlesCache["1d"] ?? []);
   const [loadingChart, setLoadingChart] = useState(false);
   const [supply, setSupply] = useState<number | null>(supplyCache);
+  const [h24, setH24] = useState(h24Cache);
+  const [tradeStats, setTradeStats] = useState<KlineStats | null>(tradeStatsCache);
   // The bar under the crosshair — when set, the price cells show THAT bar's
   // high/low/close instead of the whole-period stats (TradingView-style legend).
   const [hovered, setHovered] = useState<Candle | null>(null);
 
-  // Circulating supply from the tip height (no supply RPC). Fetched once —
-  // it barely moves (1 EXFER / 10s on ~69M). Failure just leaves mcap hidden.
+  // The 60s market tick, in step with the price poll:
+  //  · 24h high/low off a dedicated 1h×25 fetch — deterministic regardless of
+  //    the interval toggle — whose response also carries the pool's 24h
+  //    volume/trade stats (any interval fetch does; we reuse this one).
+  //  · circulating supply from the tip height (no supply RPC) for the mcap.
+  // Failures just leave the stale (or hidden) figures.
   useEffect(() => {
     let cancelled = false;
-    void getBlockHeight().then((h) => {
-      if (cancelled || h == null) return;
-      const s = circulatingSupplyExfer(h);
-      supplyCache = s;
-      setSupply(s);
-    });
+    const tick = () => {
+      void getKlinesWithStats("1h", 25).then(({ candles: c, stats }) => {
+        if (cancelled) return;
+        if (c.length) {
+          let hi = -Infinity;
+          let lo = Infinity;
+          for (const b of c) {
+            if (b.high > hi) hi = b.high;
+            if (b.low < lo) lo = b.low;
+          }
+          h24Cache = { hi, lo };
+          setH24(h24Cache);
+        }
+        if (stats) {
+          tradeStatsCache = stats;
+          setTradeStats(stats);
+        }
+      });
+      void getBlockHeight().then((h) => {
+        if (cancelled || h == null) return;
+        const s = circulatingSupplyExfer(h);
+        supplyCache = s;
+        setSupply(s);
+      });
+    };
+    tick();
+    const id = window.setInterval(tick, 60_000);
     return () => {
       cancelled = true;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -1204,6 +1248,37 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
 
   const activeIv = INTERVALS.find((i) => i.key === interval);
 
+  // The dot-separated 24h stats row under the headline price. Each segment is
+  // independent — anything still unknown is simply absent, never a dash.
+  const midStr =
+    poolInfo && poolInfo.mid > 0
+      ? // ~1.6e-6 — significant digits in plain decimal, never exponent.
+        poolInfo.mid.toLocaleString("en-US", {
+          maximumSignificantDigits: 4,
+          useGrouping: false,
+        })
+      : null;
+  const statSegs: string[] = [];
+  if (h24) {
+    statSegs.push(`${t("swap.statHigh")} $${fp(h24.hi)}`);
+    statSegs.push(`${t("swap.statLow")} $${fp(h24.lo)}`);
+  }
+  if (tradeStats) {
+    statSegs.push(
+      `${t("swap.statVol")} ${tradeStats.volExfer24h.toLocaleString("en-US", {
+        maximumFractionDigits: 0,
+      })} EXFER (${t("swap.statTrades", { n: tradeStats.swaps24h })})`,
+    );
+  }
+  if (midStr) statSegs.push(t("swap.poolRateValue", { rate: midStr }));
+  if (marketCap != null) statSegs.push(`${t("swap.statMcap")} ≈ $${compact(marketCap)}`);
+
+  // Per-bar Δ for the hover OHLC legend: (close − open) / open of THAT bar.
+  const hoverDelta =
+    hovered && hovered.open > 0
+      ? ((hovered.close - hovered.open) / hovered.open) * 100
+      : 0;
+
   return (
     <div className="card-padded space-y-3">
       {/* Headline price — big and FIRST so the swap price is unmissable. The
@@ -1220,6 +1295,18 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
               {hovered ? `$${fp(hovered.close)}` : exferUsd != null ? `$${fp(exferUsd)}` : "—"}
             </span>
             {!hovered && price && <ChangePill pct={price.change24h} />}
+            {/* Hovered bar's full OHLC + its own Δ, riding the headline's
+                baseline (TradingView-legend style). Gone when not hovering. */}
+            {hovered && (
+              <span className="font-mono text-xs tabular-nums text-neutral-400">
+                O ${fp(hovered.open)} H ${fp(hovered.high)} L ${fp(hovered.low)} C $
+                {fp(hovered.close)}{" "}
+                <span className={hoverDelta >= 0 ? "text-emerald-300" : "text-red-300"}>
+                  Δ{hoverDelta >= 0 ? "+" : ""}
+                  {hoverDelta.toFixed(1)}%
+                </span>
+              </span>
+            )}
           </div>
         </div>
         <div
@@ -1249,6 +1336,19 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
           })}
         </div>
       </div>
+
+      {/* 24h stats row: high/low (fixed 1h window, independent of the toggle),
+          pool volume/trades, BNB rate, mcap. Wraps; unknowns are absent. */}
+      {statSegs.length > 0 && (
+        <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 font-mono text-xs tabular-nums text-neutral-500">
+          {statSegs.map((seg, i) => (
+            <span key={i}>
+              {i > 0 && <span className="mr-1.5 text-neutral-700">·</span>}
+              {seg}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Chart with empty / loading states — taller to use reclaimed space.
           Reset the crosshair-hover on mouse-leave too: the lightweight-charts
@@ -1301,6 +1401,45 @@ function MarketHeader({ price }: { price: MarketPrice | null }) {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/** One-line muted pool-info strip: reserves (≈$ TVL), fee and per-swap size
+ *  cap — the swap_pool_info fields that previously had no surface. Renders
+ *  nothing until the pool info has loaded. */
+function PoolStrip({
+  poolInfo,
+  exferUsd,
+  bnbUsd,
+}: {
+  poolInfo: PoolInfo | null;
+  exferUsd: number | null;
+  bnbUsd: number | null;
+}) {
+  const { t } = useT();
+  if (!poolInfo || poolInfo.exferReserve <= 0) return null;
+  // TVL needs both spot prices — hide the ≈$ part when either is missing.
+  const tvl =
+    exferUsd != null && bnbUsd != null
+      ? poolInfo.exferReserve * exferUsd + poolInfo.bnbReserve * bnbUsd
+      : null;
+  const depth =
+    `${t("swap.poolDepth")} ${Math.round(poolInfo.exferReserve).toLocaleString("en-US")} EXFER + ` +
+    `${fmtAmt(String(poolInfo.bnbReserve), 4)} BNB` +
+    (tvl != null ? ` (≈ ${usdNumber(tvl)})` : "");
+  const fee = `${t("swap.poolFeeLabel")} ${(poolInfo.feeBps / 100).toFixed(2)}%`;
+  const cap = `${t("swap.poolMax")} ~${Math.round(
+    (poolInfo.exferReserve * poolInfo.maxSwapBps) / 10_000,
+  ).toLocaleString("en-US")} EXFER`;
+  return (
+    <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 px-1 font-mono text-xs tabular-nums text-neutral-500">
+      {[depth, fee, cap].map((seg, i) => (
+        <span key={i}>
+          {i > 0 && <span className="mr-1.5 text-neutral-700">·</span>}
+          {seg}
+        </span>
+      ))}
     </div>
   );
 }
@@ -1407,6 +1546,24 @@ function ReviewCard({
   onConfirm: () => void;
 }) {
   const { t } = useT();
+  // 1s wall clock for the quote-validity countdown. The quote carries
+  // expires_at (unix sec); past it the daemon rejects execute, so we say so
+  // up front and disable Confirm instead of letting it fail server-side.
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const id = window.setInterval(
+      () => setNowSec(Math.floor(Date.now() / 1000)),
+      1000,
+    );
+    return () => window.clearInterval(id);
+  }, []);
+  const remaining =
+    quote.expires_at != null ? quote.expires_at - nowSec : null;
+  const expired = remaining != null && remaining <= 0;
+  const countdown =
+    remaining != null && remaining > 0
+      ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`
+      : null;
   const rate =
     Number(quote.amount_in) > 0
       ? Number(quote.amount_out) / Number(quote.amount_in)
@@ -1414,10 +1571,8 @@ function ReviewCard({
   // ≈$ of the EXFER leg: sell sends EXFER (amount_in), buy receives it (amount_out).
   const exferAmt = sell ? Number(quote.amount_in) : Number(quote.amount_out);
   const usd = exferUsd != null && isFinite(exferAmt) ? exferAmt * exferUsd : null;
-  // Rate + impact folded onto one line; fee + BNB account onto another.
-  const rateImpact =
-    `1 ${sendUnit} ≈ ${fmtAmt(String(rate), 8)} ${recvUnit}` +
-    (priceImpact > 0 ? ` · ${(priceImpact * 100).toFixed(2)}%` : "");
+  // Rate on its own line — impact moved to its own labeled row below.
+  const rateLine = `1 ${sendUnit} ≈ ${fmtAmt(String(rate), 8)} ${recvUnit}`;
   const feeAcct =
     quote.fee_bps != null
       ? `${(quote.fee_bps / 100).toFixed(2)}%` +
@@ -1464,25 +1619,43 @@ function ReviewCard({
             )}
           </span>
         </div>
-        {/* Rate + impact on one line (impact amber when high). */}
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-sm text-neutral-400">{t("swap.rate")}</span>
-          <span
-            className={
-              "font-mono text-sm tabular-nums " +
-              (highImpact ? "text-amber-300" : "text-neutral-200")
-            }
-          >
-            {rateImpact}
+          <span className="font-mono text-sm tabular-nums text-neutral-200">
+            {rateLine}
           </span>
         </div>
         {/* Fee + BNB account on one line. */}
         {feeAcct && <Row label={t("swap.poolFee")} value={feeAcct} mono />}
         {/* Settlement-gas fee disclosure — already deducted from amount_out. */}
         <Row label={t("swap.networkFee")} value={netFeeValue} mono />
+        {/* Price impact — always disclosed, amber past the warning threshold. */}
+        <div
+          className={
+            "font-mono text-xs tabular-nums " +
+            (highImpact ? "text-amber-300" : "text-neutral-500")
+          }
+        >
+          {t("swap.priceImpactLine", { pct: `${(priceImpact * 100).toFixed(2)}%` })}
+        </div>
       </div>
 
       {err && <div className="banner-error">{err}</div>}
+
+      {/* Live quote-validity countdown; once it hits zero the quote is dead —
+          say so (amber) and disable Confirm rather than failing server-side. */}
+      {remaining != null && (
+        <div
+          className={
+            "font-mono text-xs tabular-nums " +
+            (expired ? "text-amber-300" : "text-neutral-500")
+          }
+        >
+          {expired
+            ? t("swap.quoteExpired")
+            : t("swap.quoteValidFor", { t: countdown ?? "0:00" })}
+        </div>
+      )}
 
       {/* HTLC safety note — what "confirm" actually does (locks funds in an
           on-chain HTLC) and the built-in escape hatch (auto-refund at the
@@ -1495,7 +1668,12 @@ function ReviewCard({
         <button type="button" className="btn-secondary flex-1" disabled={busy} onClick={onBack}>
           {t("swap.back")}
         </button>
-        <button type="button" className="btn flex-1" disabled={busy} onClick={onConfirm}>
+        <button
+          type="button"
+          className="btn flex-1"
+          disabled={busy || expired}
+          onClick={onConfirm}
+        >
           {busy ? t("swap.confirming") : t("swap.confirmSwap")}
         </button>
       </div>

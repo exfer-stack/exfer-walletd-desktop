@@ -743,6 +743,17 @@ const EN = {
     "Your EXFER was sent. If this deposit doesn't complete it auto-returns to your address when it expires.",
   "lp.withdrawQueuedTitle": "Withdrawal submitted",
   "lp.withdrawQueuedBody": "Both assets are paid out automatically — check your balances shortly.",
+  "swap.statHigh": "24h High",
+  "swap.statLow": "24h Low",
+  "swap.statVol": "24h Vol",
+  "swap.statTrades": "{n} trades",
+  "swap.statMcap": "Mcap",
+  "swap.poolDepth": "Pool depth",
+  "swap.poolFeeLabel": "Fee",
+  "swap.poolMax": "Max per swap",
+  "swap.quoteValidFor": "Quote valid {t}",
+  "swap.quoteExpired": "Quote expired — go back and re-quote",
+  "swap.priceImpactLine": "Price impact {pct}",
 };
 
 export type MsgKey = keyof typeof EN;
@@ -1454,6 +1465,17 @@ const ZH: Record<MsgKey, string> = {
   "lp.sentPartialBody": "你的 EXFER 已发出。若本次添加未完成，到期会自动退回你的地址。",
   "lp.withdrawQueuedTitle": "撤资已提交",
   "lp.withdrawQueuedBody": "两笔资产会自动到账，稍后请在余额中确认。",
+  "swap.statHigh": "24h 最高",
+  "swap.statLow": "24h 最低",
+  "swap.statVol": "24h 量",
+  "swap.statTrades": "{n} 笔",
+  "swap.statMcap": "市值",
+  "swap.poolDepth": "池子深度",
+  "swap.poolFeeLabel": "费率",
+  "swap.poolMax": "单笔上限",
+  "swap.quoteValidFor": "报价有效期 {t}",
+  "swap.quoteExpired": "报价已过期——请返回重新获取",
+  "swap.priceImpactLine": "价格影响 {pct}",
 };
 
 const DICT: Record<Lang, Record<MsgKey, string>> = { en: EN, zh: ZH };
