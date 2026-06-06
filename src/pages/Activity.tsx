@@ -14,6 +14,14 @@ import { useT, type MsgKey } from "../lib/i18n";
 import { txExplorerUrl } from "../lib/format";
 import { getSwapUsd } from "../lib/swapPrice";
 import { swapStatusText } from "../lib/inflight";
+import {
+  derivePhase,
+  refundEta,
+  formatEta,
+  GRACE_SEC,
+  type SwapPhase,
+} from "../lib/swapPhase";
+import { getBlockHeight } from "../lib/market";
 
 const EXPLORER = "https://explorer.exfer.dev";
 const txUrl = (h: string) => `${EXPLORER}/tx/${h}`;
@@ -153,6 +161,12 @@ interface SwapRow {
   claim_tx?: string | null;
   refund_tx?: string | null;
   error?: string | null;
+  // Phase-derivation inputs (swap_list returns the full record): the quote
+  // deadline plus the HTLC timeouts — sell side a block HEIGHT on EXFER, buy
+  // side wall-clock seconds on BSC.
+  expires_at?: number | null;
+  exfer_timeout_height?: number | null;
+  bsc_timeout_sec?: number | null;
 }
 
 // Statuses that are terminal — anything else is still in flight.
@@ -245,7 +259,9 @@ export function Activity({
 
   // Cross-chain swaps live in walletd's journal, not the EXFER history log —
   // surface them as their own labeled records. swap_list throws when the swap
-  // engine isn't configured, so a failure just clears the swap section.
+  // engine isn't configured; a failed poll KEEPS the previous list (clearing
+  // it would also clear the lock-leg tx-id filter, flashing raw swap legs into
+  // the transfer feed as "sent to unknown address").
   const [swaps, setSwaps] = useState<SwapRow[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -266,7 +282,7 @@ export function Activity({
         real.sort((a, b) => b.created_at - a.created_at);
         setSwaps(real);
       } catch {
-        if (!cancelled) setSwaps([]);
+        /* transient poll failure — keep the previous list */
       }
     };
     load();
@@ -276,6 +292,48 @@ export function Activity({
       window.clearInterval(id);
     };
   }, []);
+
+  // A coarse wall clock for the swap-phase derivation. 30s is plenty: the
+  // phases move on hour-scale HTLC timeouts, not seconds.
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const id = window.setInterval(
+      () => setNowSec(Math.floor(Date.now() / 1000)),
+      30_000,
+    );
+    return () => window.clearInterval(id);
+  }, []);
+
+  // EXFER tip height — needed only to turn a SELL-side HTLC timeout HEIGHT
+  // into a refund ETA, so it's polled lazily: only while at least one sell
+  // sits user_locked past its quote expiry + grace. A null height degrades
+  // the unmatched copy to "a few hours".
+  const [tipHeight, setTipHeight] = useState<number | null>(null);
+  const needHeight = useMemo(
+    () =>
+      swaps.some(
+        (s) =>
+          s.direction === "exfer_to_bnb" &&
+          s.status === "user_locked" &&
+          s.expires_at != null &&
+          nowSec > s.expires_at + GRACE_SEC,
+      ),
+    [swaps, nowSec],
+  );
+  useEffect(() => {
+    if (!needHeight) return;
+    let cancelled = false;
+    const poll = async () => {
+      const h = await getBlockHeight();
+      if (!cancelled && h != null) setTipHeight(h);
+    };
+    void poll();
+    const id = window.setInterval(() => void poll(), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [needHeight]);
 
   // Hide the EXFER legs that belong to a swap — they're already represented by
   // the unified swap record, so showing the raw transfer too would double-count.
@@ -514,6 +572,12 @@ export function Activity({
                     <SwapRowItem
                       key={it.id}
                       s={it.swap}
+                      phase={derivePhase(it.swap, nowSec, tipHeight)}
+                      etaSec={
+                        it.swap.status === "user_locked"
+                          ? refundEta(it.swap, nowSec, tipHeight)
+                          : null
+                      }
                       selected={selected === it.id}
                       onSelect={() => setSelected(it.id)}
                     />
@@ -537,7 +601,16 @@ export function Activity({
           {selItem == null ? (
             <p className="px-1 py-2 text-sm text-neutral-500">{t("act.emptyState")}</p>
           ) : selItem.kind === "swap" ? (
-            <SwapDetail s={selItem.swap} onResume={onResumeSwap} />
+            <SwapDetail
+              s={selItem.swap}
+              phase={derivePhase(selItem.swap, nowSec, tipHeight)}
+              etaSec={
+                selItem.swap.status === "user_locked"
+                  ? refundEta(selItem.swap, nowSec, tipHeight)
+                  : null
+              }
+              onResume={onResumeSwap}
+            />
           ) : (
             <TransferDetail
               entry={selItem.entry}
@@ -568,19 +641,35 @@ function rowCls(selected: boolean, accent: boolean): string {
 
 function SwapRowItem({
   s,
+  phase,
+  etaSec,
   selected,
   onSelect,
 }: {
   s: SwapRow;
+  phase: SwapPhase;
+  etaSec: number | null;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const inflight = !SWAP_TERMINAL.has(s.status);
   const sell = s.direction === "exfer_to_bnb";
+  const inUnit = sell ? "EXFER" : "BNB";
   const outUnit = sell ? "BNB" : "EXFER";
   const pill = swapPill(s.status);
   const created = new Date(s.created_at * 1000);
+
+  // Unmatched: quote expired, the pool never matched — headed for auto-refund,
+  // not "in progress". Refundable (or a countdown that hit zero): the HTLC
+  // timeout has passed, the refund can run any moment.
+  const unmatched = phase === "unmatched" || phase === "refundable";
+  const etaText =
+    phase === "refundable" || (etaSec != null && etaSec <= 0)
+      ? t("swap.etaMoments")
+      : etaSec != null
+        ? formatEta(etaSec, lang)
+        : t("swap.etaFewHours");
 
   return (
     <tr className={rowCls(selected, inflight)} onClick={onSelect}>
@@ -594,15 +683,39 @@ function SwapRowItem({
         <span className="block truncate text-sm text-neutral-200">
           {sell ? t("act.soldExfer") : t("act.boughtExfer")}
         </span>
+        {unmatched && (
+          <span className="block truncate text-xs text-amber-300/90">
+            {t("swap.cardUnmatched", { eta: etaText })}
+          </span>
+        )}
       </td>
       <td className="w-28 py-2 pr-2 text-right align-middle">
-        <span className="amount text-sm text-emerald-400">
-          +{fmtAmt(s.amount_out)}
-          <span className="ml-0.5 text-xs font-medium text-neutral-500">{outUnit}</span>
-        </span>
+        {phase === "completed" ? (
+          // Only a completed swap actually credited the output.
+          <span className="amount text-sm text-emerald-400">
+            +{fmtAmt(s.amount_out)}
+            <span className="ml-0.5 text-xs font-medium text-neutral-500">{outUnit}</span>
+          </span>
+        ) : phase === "refunded" ? (
+          // The refund returned the INPUT — show what came back, not a
+          // phantom output credit.
+          <span className="amount text-sm text-neutral-400">
+            {fmtAmt(s.amount_in)}
+            <span className="ml-0.5 text-xs font-medium text-neutral-500">{inUnit}</span>
+          </span>
+        ) : (
+          // In flight (or failed): the expected outcome, not a credit — keep
+          // it muted and unsigned.
+          <span className="amount text-sm text-neutral-400">
+            {fmtAmt(s.amount_out)}
+            <span className="ml-0.5 text-xs font-medium text-neutral-500">{outUnit}</span>
+          </span>
+        )}
       </td>
       <td className="w-24 py-2 pr-3 text-right align-middle">
-        {inflight ? (
+        {unmatched ? (
+          <span className="pill pill-warn">{t("swap.unmatchedTitle")}</span>
+        ) : inflight ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-neutral-600 border-t-cyan-400" />
             <span className="text-xs text-neutral-400">{t("act.swapInProgress")}</span>
@@ -665,12 +778,16 @@ function TransferRowItem({
 
 function SwapDetail({
   s,
+  phase,
+  etaSec,
   onResume,
 }: {
   s: SwapRow;
+  phase: SwapPhase;
+  etaSec: number | null;
   onResume?: (swapId: string) => void;
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const tx = (key: AnyKey, vars?: Record<string, string | number>) =>
     t(key as MsgKey, vars);
 
@@ -680,6 +797,16 @@ function SwapDetail({
   const inflight = !SWAP_TERMINAL.has(s.status);
   const pill = swapPill(s.status);
   const created = new Date(s.created_at * 1000);
+
+  // Unmatched/refundable: the swap isn't "locking your funds" anymore — it's
+  // headed for an automatic refund. No spinner; say where this is going.
+  const unmatched = phase === "unmatched" || phase === "refundable";
+  const etaText =
+    phase === "refundable" || (etaSec != null && etaSec <= 0)
+      ? t("swap.etaMoments")
+      : etaSec != null
+        ? formatEta(etaSec, lang)
+        : t("swap.etaFewHours");
 
   const exferAmt = sell ? Number(s.amount_in) : Number(s.amount_out);
   const bnbAmt = sell ? Number(s.amount_out) : Number(s.amount_in);
@@ -705,7 +832,9 @@ function SwapDetail({
         <div className="text-sm font-semibold text-neutral-100">
           {sell ? tx("act.soldExfer") : tx("act.boughtExfer")}
         </div>
-        {inflight ? (
+        {unmatched ? (
+          <span className="pill pill-warn">{t("swap.unmatchedTitle")}</span>
+        ) : inflight ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-neutral-600 border-t-cyan-400" />
             <span className="text-xs text-neutral-400">{swapStatusText(t, s.status)}</span>
@@ -715,9 +844,34 @@ function SwapDetail({
         )}
       </div>
 
+      {unmatched && (
+        <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-amber-200">
+          <div className="text-xs leading-relaxed opacity-90">
+            {t("swap.unmatchedBody", { eta: etaText })}
+          </div>
+          {phase === "refundable" ? (
+            <div className="mt-2 text-xs font-semibold">
+              {t("swap.refundingAuto")}
+            </div>
+          ) : (
+            <div className="mt-2 font-mono text-xs font-semibold tabular-nums">
+              {t("swap.autoRefundIn", { eta: etaText })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <Row label={tx("act.youSent") } value={`${fmtAmt(s.amount_in)} ${inUnit}`} />
-        <Row label={tx("act.youReceived")} value={`${fmtAmt(s.amount_out)} ${outUnit}`} />
+        {/* A refund returns the INPUT — don't assert the output was received. */}
+        <Row
+          label={tx("act.youReceived")}
+          value={
+            phase === "refunded"
+              ? `${fmtAmt(s.amount_in)} ${inUnit}`
+              : `${fmtAmt(s.amount_out)} ${outUnit}`
+          }
+        />
         {rate != null && (
           <Row label={tx("act.swapRate")} value={`1 EXFER ≈ ${sig(rate)} BNB`} />
         )}

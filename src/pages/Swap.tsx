@@ -575,8 +575,12 @@ export function Swap() {
   // doesn't read it. Unavailable height just degrades the copy to "a few
   // hours" via eta = null.
   const [chainHeight, setChainHeight] = useState<number | null>(null);
+  // Buy swaps (bnb_to_exfer) lock on BSC with a wall-clock timeout — the EXFER
+  // tip height contributes nothing there, so don't poll it for them.
   const needHeight =
-    step === 3 && (live == null || live.status === "user_locked");
+    step === 3 &&
+    (live == null ||
+      (live.status === "user_locked" && live.direction !== "bnb_to_exfer"));
   useEffect(() => {
     if (!needHeight) return;
     let cancelled = false;
@@ -1540,9 +1544,15 @@ function ProgressCard({
   const rank = STATUS_RANK[status] ?? 1;
   const terminal = ["completed", "refunded", "failed"].includes(phase);
   // Already-formatted ETA for the unmatched copy: a live countdown when the
-  // timeout is known, else the "a few hours" degradation.
+  // timeout is known, else the "a few hours" degradation. Once the phase is
+  // refundable the timeout has passed — say "any moment now", not a clamped
+  // "~1 min" countdown that never reaches zero.
   const etaText =
-    etaSec != null ? formatEta(etaSec, lang) : t("swap.etaFewHours");
+    phase === "refundable"
+      ? t("swap.etaMoments")
+      : etaSec != null
+        ? formatEta(etaSec, lang)
+        : t("swap.etaFewHours");
 
   // A "quoted" swap was never confirmed — no funds moved. Be honest instead of
   // rendering the locked-step checklist (which would imply funds are locked).

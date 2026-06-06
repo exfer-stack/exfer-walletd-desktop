@@ -114,10 +114,14 @@ export function SwapWatcher() {
         s.direction === "exfer_to_bnb" ? await getBlockHeight() : null;
       if (cancelled) return;
       const eta = refundEta(s, nowSec, height);
+      // eta <= 0 means the HTLC timeout already passed — the refund can run
+      // any moment, so don't claim "a few hours" (that's the unknown-eta copy).
       const etaText =
-        eta != null && eta > 0
-          ? formatEta(eta, readLang())
-          : tStatic("swap.etaFewHours");
+        eta == null
+          ? tStatic("swap.etaFewHours")
+          : eta > 0
+            ? formatEta(eta, readLang())
+            : tStatic("swap.etaMoments");
       const title = tStatic("swap.nudgeTitle");
       const body = tStatic("swap.nudgeBody", { eta: etaText });
       toast.info(title, body);

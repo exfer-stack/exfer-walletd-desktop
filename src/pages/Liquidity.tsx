@@ -822,7 +822,9 @@ function DoneStrip({
           ? t("lp.refundedTitle")
           : k === "stillProcessing"
             ? t("lp.stillProcessingTitle")
-            : t("lp.failedHeading"); // failed + sentPartial
+            : k === "sentPartial"
+              ? t("lp.sentPartialTitle") // funds moved — not a failure heading
+              : t("lp.failedHeading"); // failed
   const body =
     k === "removed"
       ? t("lp.withdrawQueuedBody")

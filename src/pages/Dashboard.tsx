@@ -97,7 +97,8 @@ export function Dashboard({ onOpenSwap }: { onOpenSwap?: () => void }) {
   // EXFER currently locked in non-terminal swaps (the sell side locks EXFER on
   // the user's chain). The headline total quietly drops while a swap is in
   // flight; this line says where the funds are so the drop isn't a mystery.
-  // Reuses the shared swap_list/LP polling — no extra RPC traffic here.
+  // useInflight runs its own light swap_list/LP poll for this consumer — a
+  // cheap walletd journal lookup, not a node-RPC hit, but not free either.
   const inflight = useInflight();
   const lockedExfer = inflight.swaps.reduce(
     (a, s) =>
