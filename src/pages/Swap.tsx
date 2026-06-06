@@ -170,11 +170,11 @@ export function Swap() {
   const [busy, setBusy] = useState(false);
   const [quote, setQuote] = useState<SwapRec | null>(null);
   const [live, setLive] = useState<SwapRec | null>(null);
-  const [poolInfo, setPoolInfo] = useState<PoolInfo | null>(null);
+  const [poolInfo, setPoolInfo] = useState<PoolInfo | null>(poolInfoCache);
   // Gate: a high-impact trade must be explicitly confirmed before execute.
   const [showImpactConfirm, setShowImpactConfirm] = useState(false);
   // null = unknown yet; false = engine confirmed off (pool_info threw).
-  const [engineOn, setEngineOn] = useState<boolean | null>(null);
+  const [engineOn, setEngineOn] = useState<boolean | null>(engineOnCache);
 
   // The wallet's BSC address + balance — single poll, owned by useBnbAsset and
   // shared with the <BnbAccount> panel below. `bnbWei` drives the buy-side
@@ -205,17 +205,21 @@ export function Swap() {
     rpc<PoolInfoRaw>("swap_pool_info")
       .then((p) => {
         if (cancelled) return;
-        setPoolInfo({
+        poolInfoCache = {
           mid: p.mid_price_bnb_per_exfer,
           feeBps: p.fee_bps,
           exferReserve: Number(p.exfer_reserve) || 0,
           bnbReserve: Number(p.bnb_reserve) || 0,
           maxSwapBps: Number(p.max_swap_bps) || 500,
-        });
+        };
+        engineOnCache = true;
+        setPoolInfo(poolInfoCache);
         setEngineOn(true);
       })
       .catch(() => {
-        if (!cancelled) setEngineOn(false);
+        if (cancelled) return;
+        engineOnCache = false;
+        setEngineOn(false);
       });
     return () => {
       cancelled = true;
@@ -607,11 +611,6 @@ export function Swap() {
       ? refundEta(live, nowSec, chainHeight)
       : null;
 
-  // Pool rate metadata for the page bar (rendered once, replaces the step-1 strip).
-  const poolRate =
-    poolInfo && poolInfo.mid > 0
-      ? `${t("swap.poolRateValue", { rate: fmtAmt(String(poolInfo.mid), 6) })} · ${t("swap.poolFeeShort", { pct: (poolInfo.feeBps / 100).toFixed(2) })}`
-      : null;
 
   if (engineOn === false) {
     // The pool is down, but the market chart doesn't depend on it — keep it
@@ -619,10 +618,10 @@ export function Swap() {
     // the wide viewport reads as purposeful rather than a void.
     return (
       <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
-        <PageBar poolRate={null} />
+        <PageBar />
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 lg:col-span-8">
-            <MarketHeader price={price} poolInfo={poolInfo} />
+            <MarketHeader price={price} poolInfo={poolInfo} bnbUsd={bnbUsd} />
           </div>
           <div className="col-span-12 lg:col-span-4">
             <div className="lg:sticky lg:top-6">
@@ -643,7 +642,7 @@ export function Swap() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
       {/* Page bar: title left, live EXFER/USD + 24h change + pool rate right. */}
-      <PageBar poolRate={poolRate} />
+      <PageBar />
 
       {/* Two panes. The chart (left) is the SHORT column so it's the one we pin —
           it stays under the taller wizard rail as that rail scrolls, instead of
@@ -656,11 +655,7 @@ export function Swap() {
         {/* LEFT — market chart + stats; the dominant width goes to the chart. */}
         <div className="col-span-12 lg:col-span-8">
           <div className="lg:sticky lg:top-6 space-y-2">
-            <MarketHeader price={price} poolInfo={poolInfo} />
-            {/* Pool depth / fee / size-cap strip — the pool_info fields that
-                had no surface. One muted line under the chart card; the ≈$
-                TVL needs both spot prices and hides when either is missing. */}
-            <PoolStrip poolInfo={poolInfo} exferUsd={exferUsd} bnbUsd={bnbUsd} />
+            <MarketHeader price={price} poolInfo={poolInfo} bnbUsd={bnbUsd} />
           </div>
         </div>
 
@@ -1060,23 +1055,16 @@ function AddrPicker({
   );
 }
 
-/** Single compact page bar: title left; live EXFER/USD + 24h change + pool rate
- *  pulled right as muted mono metadata (the only place the price/rate render). */
-function PageBar({ poolRate }: { poolRate: string | null }) {
+/** Page bar: just the title. The raw EXFER↔BNB rate earned its retirement
+ *  (nobody converts in their head) and the fee composition shows dynamically
+ *  in the Review breakdown (pool fee / network fee / price impact). */
+function PageBar() {
   const { t } = useT();
-  // The live EXFER/USD price + 24h change now headline the chart card (big and
-  // unmissable), so the page bar carries only the title and the muted pool rate
-  // (EXFER↔BNB + fee) — the swap-specific metadata that has no other home.
   return (
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       <h1 className="text-xl font-semibold tracking-tight text-neutral-100">
         {t("swap.title")}
       </h1>
-      {poolRate && (
-        <div className="font-mono text-sm tabular-nums text-neutral-500">
-          {poolRate}
-        </div>
-      )}
     </header>
   );
 }
@@ -1102,8 +1090,13 @@ const candlesCache: Record<string, Candle[]> = {};
 let supplyCache: number | null = null;
 // 24h high/low (from a fixed 1h×25 fetch, independent of the interval toggle)
 // and the pool's appended 24h volume/trade stats — cached for the same reason.
-let h24Cache: { hi: number; lo: number } | null = null;
 let tradeStatsCache: KlineStats | null = null;
+// Last-known pool info — swap_pool_info round-trips through walletd to the
+// remote pool over HTTPS, which takes long enough that the POOL section used
+// to pop in visibly late on every tab entry. Paint the cached values
+// immediately; the mount fetch then freshens them.
+let poolInfoCache: PoolInfo | null = null;
+let engineOnCache: boolean | null = null;
 
 /** A compact 24h-change pill — green up / red down / muted flat. */
 function ChangePill({ pct }: { pct: number }) {
@@ -1126,13 +1119,18 @@ function ChangePill({ pct }: { pct: number }) {
   );
 }
 
-/** One market-stat cell: a small muted label over a tabular value. */
-function Stat({ label, value }: { label: string; value: string }) {
+/** One market-stat cell: a small muted label over a tabular value. An optional
+ *  `sub` rides the same baseline as a quiet qualifier (unit / count) so a
+ *  composite figure still reads as ONE strong number, never a wrapped dump. */
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[11px] font-medium text-neutral-500">{label}</span>
-      <span className="font-mono text-sm font-semibold tabular-nums text-neutral-200">
+      <span className="whitespace-nowrap font-mono text-sm font-semibold tabular-nums text-neutral-200">
         {value}
+        {sub && (
+          <span className="ml-1.5 text-xs font-normal text-neutral-500">{sub}</span>
+        )}
       </span>
     </div>
   );
@@ -1141,46 +1139,32 @@ function Stat({ label, value }: { label: string; value: string }) {
 function MarketHeader({
   price,
   poolInfo,
+  bnbUsd,
 }: {
   price: MarketPrice | null;
   poolInfo: PoolInfo | null;
+  bnbUsd: number | null;
 }) {
   const { t } = useT();
   const [interval, setIntervalKey] = useState("1d");
   const [candles, setCandles] = useState<Candle[]>(candlesCache["1d"] ?? []);
   const [loadingChart, setLoadingChart] = useState(false);
   const [supply, setSupply] = useState<number | null>(supplyCache);
-  const [h24, setH24] = useState(h24Cache);
   const [tradeStats, setTradeStats] = useState<KlineStats | null>(tradeStatsCache);
   // The bar under the crosshair — when set, the price cells show THAT bar's
   // high/low/close instead of the whole-period stats (TradingView-style legend).
   const [hovered, setHovered] = useState<Candle | null>(null);
 
-  // The 60s market tick, in step with the price poll:
-  //  · 24h high/low off a dedicated 1h×25 fetch — deterministic regardless of
-  //    the interval toggle — whose response also carries the pool's 24h
-  //    volume/trade stats (any interval fetch does; we reuse this one).
-  //  · circulating supply from the tip height (no supply RPC) for the mcap.
-  // Failures just leave the stale (or hidden) figures.
+  // The 60s market tick: the pool's rolling 24h volume/trade stats (they ride
+  // any klines response) + circulating supply from the tip height for the
+  // mcap. Failures just leave the stale (or hidden) figures.
   useEffect(() => {
     let cancelled = false;
     const tick = () => {
-      void getKlinesWithStats("1h", 25).then(({ candles: c, stats }) => {
-        if (cancelled) return;
-        if (c.length) {
-          let hi = -Infinity;
-          let lo = Infinity;
-          for (const b of c) {
-            if (b.high > hi) hi = b.high;
-            if (b.low < lo) lo = b.low;
-          }
-          h24Cache = { hi, lo };
-          setH24(h24Cache);
-        }
-        if (stats) {
-          tradeStatsCache = stats;
-          setTradeStats(stats);
-        }
+      void getKlinesWithStats("1h", 2).then(({ stats }) => {
+        if (cancelled || !stats) return;
+        tradeStatsCache = stats;
+        setTradeStats(stats);
       });
       void getBlockHeight().then((h) => {
         if (cancelled || h == null) return;
@@ -1248,37 +1232,6 @@ function MarketHeader({
 
   const activeIv = INTERVALS.find((i) => i.key === interval);
 
-  // The dot-separated 24h stats row under the headline price. Each segment is
-  // independent — anything still unknown is simply absent, never a dash.
-  const midStr =
-    poolInfo && poolInfo.mid > 0
-      ? // ~1.6e-6 — significant digits in plain decimal, never exponent.
-        poolInfo.mid.toLocaleString("en-US", {
-          maximumSignificantDigits: 4,
-          useGrouping: false,
-        })
-      : null;
-  const statSegs: string[] = [];
-  if (h24) {
-    statSegs.push(`${t("swap.statHigh")} $${fp(h24.hi)}`);
-    statSegs.push(`${t("swap.statLow")} $${fp(h24.lo)}`);
-  }
-  if (tradeStats) {
-    statSegs.push(
-      `${t("swap.statVol")} ${tradeStats.volExfer24h.toLocaleString("en-US", {
-        maximumFractionDigits: 0,
-      })} EXFER (${t("swap.statTrades", { n: tradeStats.swaps24h })})`,
-    );
-  }
-  if (midStr) statSegs.push(t("swap.poolRateValue", { rate: midStr }));
-  if (marketCap != null) statSegs.push(`${t("swap.statMcap")} ≈ $${compact(marketCap)}`);
-
-  // Per-bar Δ for the hover OHLC legend: (close − open) / open of THAT bar.
-  const hoverDelta =
-    hovered && hovered.open > 0
-      ? ((hovered.close - hovered.open) / hovered.open) * 100
-      : 0;
-
   return (
     <div className="card-padded space-y-3">
       {/* Headline price — big and FIRST so the swap price is unmissable. The
@@ -1295,18 +1248,6 @@ function MarketHeader({
               {hovered ? `$${fp(hovered.close)}` : exferUsd != null ? `$${fp(exferUsd)}` : "—"}
             </span>
             {!hovered && price && <ChangePill pct={price.change24h} />}
-            {/* Hovered bar's full OHLC + its own Δ, riding the headline's
-                baseline (TradingView-legend style). Gone when not hovering. */}
-            {hovered && (
-              <span className="font-mono text-xs tabular-nums text-neutral-400">
-                O ${fp(hovered.open)} H ${fp(hovered.high)} L ${fp(hovered.low)} C $
-                {fp(hovered.close)}{" "}
-                <span className={hoverDelta >= 0 ? "text-emerald-300" : "text-red-300"}>
-                  Δ{hoverDelta >= 0 ? "+" : ""}
-                  {hoverDelta.toFixed(1)}%
-                </span>
-              </span>
-            )}
           </div>
         </div>
         <div
@@ -1337,18 +1278,6 @@ function MarketHeader({
         </div>
       </div>
 
-      {/* 24h stats row: high/low (fixed 1h window, independent of the toggle),
-          pool volume/trades, BNB rate, mcap. Wraps; unknowns are absent. */}
-      {statSegs.length > 0 && (
-        <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 font-mono text-xs tabular-nums text-neutral-500">
-          {statSegs.map((seg, i) => (
-            <span key={i}>
-              {i > 0 && <span className="mr-1.5 text-neutral-700">·</span>}
-              {seg}
-            </span>
-          ))}
-        </div>
-      )}
 
       {/* Chart with empty / loading states — taller to use reclaimed space.
           Reset the crosshair-hover on mouse-leave too: the lightweight-charts
@@ -1399,54 +1328,49 @@ function MarketHeader({
             label={t("swapTab.supply")}
             value={supply != null ? compact(supply) : "—"}
           />
+          {tradeStats && (
+            <Stat
+              label={t("swap.statVol")}
+              value={compact(tradeStats.volExfer24h)}
+              sub={`EXFER · ${t("swap.statTrades", { n: tradeStats.swaps24h })}`}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Pool — the liquidity behind the quoted price, one quiet line: label
+          left, the two reserve clusters (coin mark + grouped amount) right. */}
+      {poolInfo && poolInfo.exferReserve > 0 && (
+        <div className="flex items-center gap-6 border-t border-neutral-800 pt-3">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+            {t("swap.poolTitle")}
+          </span>
+          {/* Total value — the row's headline figure; the two reserve clusters
+              that compose it follow, slightly muted. */}
+          {exferUsd != null && exferUsd > 0 && bnbUsd != null && bnbUsd > 0 && (
+            <span className="font-mono text-sm font-bold tabular-nums text-neutral-100">
+              ≈ ${compact(poolInfo.exferReserve * exferUsd + poolInfo.bnbReserve * bnbUsd)}
+            </span>
+          )}
+          <span className="flex-1" />
+          <span className="flex items-center gap-2">
+            <ExferMark size={18} />
+            <span className="font-mono text-sm font-semibold tabular-nums text-neutral-400">
+              {Math.round(poolInfo.exferReserve).toLocaleString("en-US")}
+            </span>
+          </span>
+          <span className="flex items-center gap-2">
+            <BnbMark size={18} />
+            <span className="font-mono text-sm font-semibold tabular-nums text-neutral-400">
+              {fmtAmt(String(poolInfo.bnbReserve), 4)}
+            </span>
+          </span>
         </div>
       )}
     </div>
   );
 }
 
-/** One-line muted pool-info strip: reserves (≈$ TVL), fee and per-swap size
- *  cap — the swap_pool_info fields that previously had no surface. Renders
- *  nothing until the pool info has loaded. */
-function PoolStrip({
-  poolInfo,
-  exferUsd,
-  bnbUsd,
-}: {
-  poolInfo: PoolInfo | null;
-  exferUsd: number | null;
-  bnbUsd: number | null;
-}) {
-  const { t } = useT();
-  if (!poolInfo || poolInfo.exferReserve <= 0) return null;
-  // TVL needs both spot prices — hide the ≈$ part when either is missing.
-  const tvl =
-    exferUsd != null && bnbUsd != null
-      ? poolInfo.exferReserve * exferUsd + poolInfo.bnbReserve * bnbUsd
-      : null;
-  const depth =
-    `${t("swap.poolDepth")} ${Math.round(poolInfo.exferReserve).toLocaleString("en-US")} EXFER + ` +
-    `${fmtAmt(String(poolInfo.bnbReserve), 4)} BNB` +
-    (tvl != null ? ` (≈ ${usdNumber(tvl)})` : "");
-  const fee = `${t("swap.poolFeeLabel")} ${(poolInfo.feeBps / 100).toFixed(2)}%`;
-  const cap = `${t("swap.poolMax")} ~${Math.round(
-    (poolInfo.exferReserve * poolInfo.maxSwapBps) / 10_000,
-  ).toLocaleString("en-US")} EXFER`;
-  return (
-    <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 px-1 font-mono text-xs tabular-nums text-neutral-500">
-      {[depth, fee, cap].map((seg, i) => (
-        <span key={i}>
-          {i > 0 && <span className="mr-1.5 text-neutral-700">·</span>}
-          {seg}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-/** A non-interactive token chip (icon + symbol) used in the pay / receive
- *  cards. EXFER and BNB are tokens here, never verbs — the direction is owned
- *  by the ⇅ reverse button, not by which word you tap. */
 function TokenChip({ unit }: { unit: "EXFER" | "BNB" }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100">

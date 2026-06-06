@@ -47,6 +47,13 @@ const FEE_RATE = 1; // exfers/byte, matches Send
 // it must clear a safe gas floor (a few × the typical 21000-gas cost). Below
 // this the pool would auto-refund the deposit, so we block it up front instead.
 const MIN_BNB_LEG = 0.00001;
+// The wallet's OWN bsc_send_bnb burns gas on top of the leg amount (BNB is the
+// gas token). The "enough BNB" gate must budget it: checking the leg alone once
+// let a 0.000173032 balance pass a 0.00017293 leg, and the send died on
+// "insufficient funds for gas * price + value" AFTER the EXFER leg had already
+// broadcast — stranding a single-leg deposit. ~21000 gas at a few gwei is
+// ≤0.0001 BNB; same idea as Swap's GAS_RESERVE (HTLC locks cost more).
+const BNB_GAS_HEADROOM = 0.0001;
 // One precision for every BNB amount rendered on this page so columns align
 // across rows (and with the BnbAccount sibling). Display-only — never used for
 // the wei/amount we actually send.
@@ -74,6 +81,14 @@ interface Position {
   deposited_bnb?: string;
   earn_exfer?: string;
   earn_bnb?: string;
+  /** Pure fee earnings since entry (sqrt(k)/share growth) — monotone, never
+   *  negative apart from accounting noise; isolates pool performance from
+   *  market price drift. */
+  fee_growth_pct?: number | null;
+  /** A withdrawal is awaiting payout. Shares burn only after both legs are
+   *  sent, so the position still shows its full balance during that window —
+   *  Remove must be locked or the unchanged numbers invite a doomed resubmit. */
+  pending_withdrawal?: boolean;
 }
 // "stillProcessing" — the deposit poll outlived its window but nothing failed:
 // it finishes (or refunds) in the background, so it must NOT render as an
@@ -283,7 +298,7 @@ export function Liquidity() {
 
   // exferBal is in exfers (1e8 smallest-units); amtNum is human EXFER.
   const enoughExfer = amountValid && parseExferAmountSafe(amount) <= exferBal;
-  const enoughBnb = bnbNeeded <= bnbHuman;
+  const enoughBnb = bnbNeeded + BNB_GAS_HEADROOM <= bnbHuman;
   const belowMin = amountValid && minExfer > 0 && amtNum < minExfer;
   // The BNB leg is funded from the BSC key — gate the whole Add until it exists
   // (seedless wallets have none). Without it there's no BNB to send and no
@@ -392,7 +407,7 @@ export function Liquidity() {
   }
 
   async function confirmWithdraw() {
-    if (!pos?.has_position) return;
+    if (!pos?.has_position || pos.pending_withdrawal) return;
     const pct = withdrawPct;
     const shares = pct >= 100 ? "all" : ((BigInt(pos.shares) * BigInt(pct)) / 100n).toString();
     const owed = {
@@ -440,7 +455,7 @@ export function Liquidity() {
   if (unavailable) {
     return (
       <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
-        <Header mid={0} exferUsd={0} ready={false} />
+        <Header />
         <div className="card-padded text-sm text-neutral-400">{t("lp.unavailable")}</div>
       </div>
     );
@@ -448,18 +463,24 @@ export function Liquidity() {
   if (!pool) {
     return (
       <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
-        <Header mid={0} exferUsd={0} ready={false} />
+        <Header />
         <div className="card-padded text-sm text-neutral-500">{t("lp.loading")}</div>
       </div>
     );
   }
 
   const posValueUsd = hasPosition ? Number(pos!.value_exfer ?? 0) * exferUsd * 2 : 0;
-  const maxAdd = Math.min(exferBal / 1e8, mid > 0 ? bnbHuman / mid : Infinity);
+  // Max must mirror the gates or it fills an amount they instantly reject:
+  // hold back the EXFER transfer's own fee (same 0.05 cushion as Swap's sell
+  // Max) and the BNB leg's gas headroom.
+  const maxAdd = Math.min(
+    Math.max(0, exferBal / 1e8 - 0.05),
+    mid > 0 ? Math.max(0, bnbHuman - BNB_GAS_HEADROOM) / mid : Infinity,
+  );
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
-      <Header mid={mid} exferUsd={exferUsd} ready={mid > 0} />
+      <Header />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* ── LEFT RAIL — read-only context. self-start so the card sizes to
@@ -657,7 +678,7 @@ export function Liquidity() {
                 </div>
 
                 {amountValid && !enoughBnb && (
-                  <div className="banner-error">{t("lp.needBnb", { bnb: sig(bnbNeeded, BNB_DP) })}</div>
+                  <div className="banner-error">{t("lp.needBnb", { bnb: sig(bnbNeeded + BNB_GAS_HEADROOM, BNB_DP) })}</div>
                 )}
                 {belowMin && (
                   <div className="banner-error">{t("lp.belowMin", { n: sig(Math.ceil(minExfer), 2) })}</div>
@@ -670,6 +691,14 @@ export function Liquidity() {
               </div>
             ) : (
               /* ── REMOVE ── */
+              hasPosition && pos?.pending_withdrawal ? (
+                /* Payout window: shares aren't burned until both legs are sent,
+                   so the balance still reads "intact" — without this lock the
+                   page invites a second submit the pool will reject. */
+                <div className="rounded-lg border border-amber-900/50 bg-amber-950/30 p-4 text-sm text-amber-200">
+                  {t("lp.removePendingNote")}
+                </div>
+              ) : (
               hasPosition && (
                 <RemoveForm
                   pos={pos!}
@@ -682,7 +711,7 @@ export function Liquidity() {
                   onConfirm={confirmWithdraw}
                 />
               )
-            )}
+            ))}
           </div>
 
           {/* Other-address positions — tight list, folds picking into the pane. */}
@@ -779,10 +808,28 @@ function EarningsBlock({
   const basisUsd = haveSpot ? depExfer * exferUsd + depBnb * bnbUsd : 0;
   const pct = haveSpot && basisUsd > 0 ? (earnUsd / basisUsd) * 100 : null;
   const fmtExfer = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  // Pure fee earnings: clamp tiny negative accounting noise (dust write-offs
+  // are socialized into k) to zero — fees themselves can only accrue.
+  const feePct =
+    pos.fee_growth_pct != null ? Math.max(0, pos.fee_growth_pct) * 100 : null;
+  // The ≈$ suffix only once it clears display precision — micro-dust reads
+  // as noise, not information.
+  const feeUsdRaw = feePct != null && haveSpot && basisUsd > 0 ? (basisUsd * feePct) / 100 : null;
+  const feeUsd = feeUsdRaw != null && feeUsdRaw >= 0.01 ? feeUsdRaw : null;
   return (
     <div className="space-y-1 border-t border-neutral-800 pt-2.5">
+      {feePct != null && (
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-xs uppercase tracking-wide text-neutral-500">
+            {t("lp.feeEarned")}
+          </span>
+          <span className="font-mono text-sm font-semibold tabular-nums text-emerald-300">
+            +{feePct.toFixed(2)}%{feeUsd != null && ` (≈ +${usdNumber(feeUsd)})`}
+          </span>
+        </div>
+      )}
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.earnings")}</span>
+        <span className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.totalPnl")}</span>
         {haveSpot && (
           <span
             className={
@@ -796,29 +843,36 @@ function EarningsBlock({
           </span>
         )}
       </div>
-      <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-xs tabular-nums">
-        <span className={toneFor(earnExfer)}>{signed(earnExfer, fmtExfer)} EXFER</span>
-        <span className="text-neutral-600">·</span>
-        <span className={toneFor(earnBnb)}>{signed(earnBnb, (a) => sig(a))} BNB</span>
-      </div>
+      {/* Per-leg deltas. A leg below display precision (float dust like
+          -6e-16 BNB) is hidden rather than printed as noise. */}
+      {(Math.abs(earnExfer) >= 0.01 || Math.abs(earnBnb) >= 1e-8) && (
+        <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-xs tabular-nums">
+          {Math.abs(earnExfer) >= 0.01 && (
+            <span className={toneFor(earnExfer)}>{signed(earnExfer, fmtExfer)} EXFER</span>
+          )}
+          {Math.abs(earnExfer) >= 0.01 && Math.abs(earnBnb) >= 1e-8 && (
+            <span className="text-neutral-600">·</span>
+          )}
+          {Math.abs(earnBnb) >= 1e-8 && (
+            <span className={toneFor(earnBnb)}>{signed(earnBnb, (a) => sig(a))} BNB</span>
+          )}
+        </div>
+      )}
       <div className="font-mono text-xs tabular-nums text-neutral-500">
         {t("lp.depositedLine", { exfer: fmtExfer(depExfer), bnb: sig(depBnb) })}
       </div>
-      <p className="text-xs leading-relaxed text-neutral-500">{t("lp.earningsNote")}</p>
     </div>
   );
 }
 
-function Header({ mid, exferUsd, ready }: { mid: number; exferUsd: number; ready: boolean }) {
+/** Page bar: just the title — the raw EXFER↔BNB rate line was retired with
+ *  the Swap page's (nobody converts in their head; amounts in the form carry
+ *  their own ≈$ conversions). */
+function Header() {
   const { t } = useT();
   return (
     <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
       <h1 className="text-xl font-semibold tracking-tight text-neutral-100">{t("lp.title")}</h1>
-      {ready && (
-        <span className="font-mono text-xs tabular-nums text-neutral-500">
-          {t("lp.midPrice", { mid: sig(mid, 6), usd: sig(exferUsd, 4) })}
-        </span>
-      )}
     </header>
   );
 }
