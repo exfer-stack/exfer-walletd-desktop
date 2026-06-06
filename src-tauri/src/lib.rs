@@ -405,10 +405,10 @@ async fn set_indexer_config(
     restart(&ctx).await.map_err(|e| e.to_user_string())
 }
 
-/// Cross-chain swap engine config. An empty `pool_url` means swap is OFF
-/// (the default). `bsc_rpc_url` empty ⇒ walletd's mainnet dataseed default;
-/// `bsc_chain_id` 0/absent ⇒ 56 (mainnet). The current public pool runs on
-/// BSC testnet, so enabling it means pool_url + bsc_rpc_url(testnet) + chain 97.
+/// Cross-chain swap engine config. An empty `pool_url` ⇒ the bundled official
+/// pool default; `bsc_rpc_url` empty ⇒ walletd's mainnet RPC default;
+/// `bsc_chain_id` 0/absent ⇒ 56 (mainnet). The public pool runs on BSC
+/// mainnet — set bsc_chain_id=97 + a testnet RPC only for a Chapel test pool.
 #[derive(serde::Serialize)]
 struct SwapConfig {
     pool_url: String,
