@@ -91,6 +91,17 @@ export interface SwapRec {
   network_fee_bnb?: string | null;
   our_bsc_address?: string | null;
   error?: string | null;
+  /** Quote validity deadline (unix sec) — past this + grace, an unmatched
+   *  user_locked swap is headed for auto-refund, not for matching. */
+  expires_at?: number;
+  /** Sell side (exfer_to_bnb): the EXFER HTLC's timeout height — the refund
+   *  unlocks when the chain reaches it. Null on the buy side. */
+  exfer_timeout_height?: number | null;
+  /** Buy side (bnb_to_exfer): the BSC HTLC's timeout (unix sec). Null on the
+   *  sell side. */
+  bsc_timeout_sec?: number | null;
+  created_at?: number;
+  updated_at?: number;
 }
 
 /** Lighter row returned by swap_list — used by the SwapWatcher. */
@@ -99,6 +110,9 @@ export interface SwapLite {
   direction: SwapDirection;
   status: string;
   amount_out: string;
+  expires_at?: number;
+  exfer_timeout_height?: number | null;
+  bsc_timeout_sec?: number | null;
 }
 
 /** Raw wire shape of swap_pool_info (reserves may be string|number|null). */

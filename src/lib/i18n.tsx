@@ -218,7 +218,7 @@ const EN = {
   "swap.takingLonger": "On-chain settlement can take a minute or two. You can leave this screen — we'll notify you when it's done.",
   "swap.done": "Done",
   "swap.requestingRefund": "Requesting refund…",
-  "swap.takingTooLong": "Taking too long — refund now",
+  "swap.takingTooLong": "Refund now",
   "swap.depositReceived": "Deposit received",
   "swap.errBscAddress": "Enter a valid BSC address (0x + 40 hex).",
   "swap.errEnterAmountMax": "Enter an amount, or \"max\".",
@@ -723,6 +723,23 @@ const EN = {
   "na.nameOptional": "Name (optional)",
   "na.namePlaceholder": "e.g. deposits, savings…",
   "na.createdNamed": "“{name}” is ready to receive.",
+  "swap.loadingStatus": "Loading swap status…",
+  "swap.unmatchedTitle": "Swap didn't match",
+  "swap.unmatchedBody":
+    "The pool didn't respond in time. Your funds are locked safely on-chain and will return to your address automatically in {eta} — nothing to do; you can close this page.",
+  "swap.autoRefundIn": "Auto-refund in {eta}",
+  "swap.etaFewHours": "a few hours",
+  "swap.refundingAuto": "Refunding automatically — this completes on its own.",
+  "swap.nudgeTitle": "Swap not matched yet",
+  "swap.nudgeBody": "Funds are safe — auto-refund in {eta} if it doesn't complete.",
+  "swap.lockedLine": "{amt} EXFER in an active swap — locked on-chain, handled automatically",
+  "lp.stillProcessingTitle": "Still processing",
+  "lp.stillProcessingBody":
+    "This is taking longer than usual. It finishes in the background — check back here shortly.",
+  "lp.sentPartialBody":
+    "Your EXFER was sent. If this deposit doesn't complete it auto-returns to your address when it expires.",
+  "lp.withdrawQueuedTitle": "Withdrawal submitted",
+  "lp.withdrawQueuedBody": "Both assets are paid out automatically — check your balances shortly.",
 };
 
 export type MsgKey = keyof typeof EN;
@@ -911,7 +928,7 @@ const ZH: Record<MsgKey, string> = {
   "swap.takingLonger": "链上结算可能需要一两分钟。你可以离开此页面——完成后我们会通知你。",
   "swap.done": "完成",
   "swap.requestingRefund": "申请退款中…",
-  "swap.takingTooLong": "耗时过长——立即退款",
+  "swap.takingTooLong": "立即退款",
   "swap.depositReceived": "已收到充值",
   "swap.errBscAddress": "请输入有效的 BSC 地址（0x + 40 位十六进制）。",
   "swap.errEnterAmountMax": "请输入金额，或填 “max”。",
@@ -1416,6 +1433,21 @@ const ZH: Record<MsgKey, string> = {
   "na.nameOptional": "名称（可选）",
   "na.namePlaceholder": "例如：收款、储蓄…",
   "na.createdNamed": "「{name}」已可接收。",
+  "swap.loadingStatus": "正在读取兑换状态…",
+  "swap.unmatchedTitle": "兑换未匹配",
+  "swap.unmatchedBody":
+    "兑换池未在有效期内响应。你的资金已安全锁定在链上，将在{eta}后自动原路退回——无需任何操作，可关闭此页面。",
+  "swap.autoRefundIn": "自动退款：{eta}后",
+  "swap.etaFewHours": "数小时",
+  "swap.refundingAuto": "正在自动退款——会自动完成。",
+  "swap.nudgeTitle": "兑换尚未匹配",
+  "swap.nudgeBody": "资金安全——若未完成，将在{eta}后自动退回。",
+  "swap.lockedLine": "{amt} EXFER 正在兑换中——已锁定在链上，自动跟进",
+  "lp.stillProcessingTitle": "仍在处理",
+  "lp.stillProcessingBody": "比平时慢一些。会在后台完成，稍后回来查看即可。",
+  "lp.sentPartialBody": "你的 EXFER 已发出。若本次添加未完成，到期会自动退回你的地址。",
+  "lp.withdrawQueuedTitle": "撤资已提交",
+  "lp.withdrawQueuedBody": "两笔资产会自动到账，稍后请在余额中确认。",
 };
 
 const DICT: Record<Lang, Record<MsgKey, string>> = { en: EN, zh: ZH };

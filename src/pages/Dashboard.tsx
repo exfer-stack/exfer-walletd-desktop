@@ -18,6 +18,7 @@ import { setLabel } from "../lib/labels";
 import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
 import { useEscapeKey } from "../lib/useEscapeKey";
+import { useInflight } from "../lib/inflight";
 
 /** A 24h-change pill: green ▲ up, red ▼ down, grey • flat. Best-effort — the
  *  caller only renders it when a live price (and so a change) is available. */
@@ -41,7 +42,7 @@ function ChangePill({ pct }: { pct: number }) {
   );
 }
 
-export function Dashboard() {
+export function Dashboard({ onOpenSwap }: { onOpenSwap?: () => void }) {
   const { balance: data, loading, error, refresh } = useWallet();
   const toast = useToast();
   const { t } = useT();
@@ -92,6 +93,19 @@ export function Dashboard() {
   // funds only).
   const visibleProjected = visibleTotal + visiblePendingIn - visiblePendingOut;
   const hasPending = visiblePendingIn > 0 || visiblePendingOut > 0;
+
+  // EXFER currently locked in non-terminal swaps (the sell side locks EXFER on
+  // the user's chain). The headline total quietly drops while a swap is in
+  // flight; this line says where the funds are so the drop isn't a mystery.
+  // Reuses the shared swap_list/LP polling — no extra RPC traffic here.
+  const inflight = useInflight();
+  const lockedExfer = inflight.swaps.reduce(
+    (a, s) =>
+      s.direction === "exfer_to_bnb" && isFinite(Number(s.amount_in))
+        ? a + Number(s.amount_in)
+        : a,
+    0,
+  );
 
   // BNB tile: human balance + its ≈$ (best-effort; hidden when BNB/USD absent).
   const bnbHuman = (() => {
@@ -206,6 +220,21 @@ export function Dashboard() {
             {t("dash.addrCount", { n: visibleEntries.length })}
           </span>
         </div>
+        {/* Funds locked in an active swap — a quiet plain-text pointer so the
+            headline total dropping mid-swap isn't a mystery. Click → Swap. */}
+        {lockedExfer > 0 && (
+          <button
+            type="button"
+            onClick={onOpenSwap}
+            className="w-full text-left text-xs text-neutral-500 transition hover:text-neutral-300"
+          >
+            {t("swap.lockedLine", {
+              amt: lockedExfer.toLocaleString("en-US", {
+                maximumFractionDigits: 4,
+              }),
+            })}
+          </button>
+        )}
       </section>
 
       {error && !data && (

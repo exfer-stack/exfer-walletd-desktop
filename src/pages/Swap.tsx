@@ -43,6 +43,12 @@ import {
   type Candle,
 } from "../lib/market";
 import { recordSwapUsd } from "../lib/swapPrice";
+import {
+  derivePhase,
+  refundEta,
+  formatEta,
+  type SwapPhase,
+} from "../lib/swapPhase";
 import { useBnbAsset } from "../lib/bnb";
 import { BnbAccount } from "../components/BnbAccount";
 import { StagedStepper, SuccessMark, ExferMark } from "../components/anim";
@@ -541,19 +547,59 @@ export function Swap() {
     return () => window.clearTimeout(id);
   }, [step, live?.status]);
 
-  // Elapsed seconds on the progress screen, for the "taking longer" hint + the
-  // manual-refund escape hatch after 90s.
-  const [elapsed, setElapsed] = useState(0);
+  // A 1s wall clock while the progress screen is up: it re-derives the phase
+  // and the auto-refund countdown every second, and feeds the swap's age. Age
+  // is anchored on the record's own created_at (not a local timer), so leaving
+  // and re-entering the tab no longer resets "elapsed" to zero; the mount time
+  // is only the fallback for records predating the field.
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  const enteredAtRef = useRef(Math.floor(Date.now() / 1000));
   useEffect(() => {
     if (step !== 3) return;
-    const t0 = Date.now();
-    setElapsed(0);
+    enteredAtRef.current = Math.floor(Date.now() / 1000);
+    setNowSec(Math.floor(Date.now() / 1000));
     const id = window.setInterval(
-      () => setElapsed(Math.floor((Date.now() - t0) / 1000)),
+      () => setNowSec(Math.floor(Date.now() / 1000)),
       1000,
     );
     return () => window.clearInterval(id);
   }, [step]);
+  const elapsed = Math.max(
+    0,
+    nowSec - (live?.created_at ?? quote?.created_at ?? enteredAtRef.current),
+  );
+
+  // EXFER tip height — needed to turn a sell-side HTLC timeout HEIGHT into a
+  // refund countdown. Polled lazily (every 30s) only while a swap sits in
+  // user_locked (matching/unmatched) or is still loading; any other phase
+  // doesn't read it. Unavailable height just degrades the copy to "a few
+  // hours" via eta = null.
+  const [chainHeight, setChainHeight] = useState<number | null>(null);
+  const needHeight =
+    step === 3 && (live == null || live.status === "user_locked");
+  useEffect(() => {
+    if (!needHeight) return;
+    let cancelled = false;
+    const poll = async () => {
+      const h = await getBlockHeight();
+      if (!cancelled && h != null) setChainHeight(h);
+    };
+    void poll();
+    const id = window.setInterval(() => void poll(), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [needHeight]);
+
+  // The derived UI phase — the honest state machine over the raw status. An
+  // unmatched swap (quote expired, pool never matched) is its own state headed
+  // for auto-refund, not a "settling" progress bar.
+  const phase: SwapPhase = derivePhase(live, nowSec, chainHeight);
+  const etaSec =
+    live && live.status === "user_locked"
+      ? refundEta(live, nowSec, chainHeight)
+      : null;
 
   // Pool rate metadata for the page bar (rendered once, replaces the step-1 strip).
   const poolRate =
@@ -854,6 +900,8 @@ export function Swap() {
             {step === 3 && (
               <ProgressCard
                 live={live}
+                phase={phase}
+                etaSec={etaSec}
                 recvUnit={recvUnit}
                 elapsed={elapsed}
                 busy={busy}
@@ -1432,6 +1480,13 @@ function ReviewCard({
 
       {err && <div className="banner-error">{err}</div>}
 
+      {/* HTLC safety note — what "confirm" actually does (locks funds in an
+          on-chain HTLC) and the built-in escape hatch (auto-refund at the
+          timeout). Said up front, before any funds lock. */}
+      <p className="text-xs leading-relaxed text-neutral-500">
+        {t("swap.htlcExplain")}
+      </p>
+
       <div className="flex gap-3">
         <button type="button" className="btn-secondary flex-1" disabled={busy} onClick={onBack}>
           {t("swap.back")}
@@ -1446,6 +1501,8 @@ function ReviewCard({
 
 function ProgressCard({
   live,
+  phase,
+  etaSec,
   recvUnit,
   elapsed,
   busy,
@@ -1453,16 +1510,39 @@ function ProgressCard({
   onDone,
 }: {
   live: SwapRec | null;
+  phase: SwapPhase;
+  etaSec: number | null;
   recvUnit: string;
   elapsed: number;
   busy: boolean;
   onRefund: () => void;
   onDone: () => void;
 }) {
-  const { t } = useT();
-  const status = live?.status ?? "user_locked";
+  const { t, lang } = useT();
+
+  // No record yet (resuming a swap, first poll in flight): say so instead of
+  // pretending a default status — the old `?? "user_locked"` rendered a fake
+  // progress stepper before we knew anything.
+  if (phase === "loading" || !live) {
+    return (
+      <div className="card p-5 space-y-3.5">
+        <h2 className="text-sm font-semibold text-neutral-300">
+          {t("swap.inProgressTitle")}
+        </h2>
+        <div className="flex items-center gap-2 py-2 text-sm text-neutral-400">
+          <Spinner /> {t("swap.loadingStatus")}
+        </div>
+      </div>
+    );
+  }
+
+  const status = live.status;
   const rank = STATUS_RANK[status] ?? 1;
-  const terminal = ["completed", "refunded", "failed"].includes(status);
+  const terminal = ["completed", "refunded", "failed"].includes(phase);
+  // Already-formatted ETA for the unmatched copy: a live countdown when the
+  // timeout is known, else the "a few hours" degradation.
+  const etaText =
+    etaSec != null ? formatEta(etaSec, lang) : t("swap.etaFewHours");
 
   // A "quoted" swap was never confirmed — no funds moved. Be honest instead of
   // rendering the locked-step checklist (which would imply funds are locked).
@@ -1506,7 +1586,7 @@ function ProgressCard({
         {t("swap.inProgressTitle")}
       </h2>
 
-      {status === "completed" ? (
+      {phase === "completed" ? (
         <div className="flex flex-col items-center gap-3 py-2 text-center pop">
           <SuccessMark size={64} />
           <div className="text-sm font-semibold text-emerald-200">
@@ -1516,20 +1596,40 @@ function ProgressCard({
             {t("swap.completeBody", { amt: fmtAmt(live?.amount_out, 8), unit: recvUnit })}
           </div>
         </div>
-      ) : status === "refunded" ? (
+      ) : phase === "refunded" ? (
         <Banner kind="info" title={t("swap.refundedTitle")} body={t("swap.refundedBody")} />
-      ) : status === "failed" ? (
+      ) : phase === "failed" ? (
         <Banner kind="error" title={t("swap.failedTitle")} body={live?.error ?? t("swap.failedBody")} />
-      ) : status === "refunding" ? (
+      ) : phase === "refunding" ? (
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-amber-200">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Spinner /> {t("swap.refundingTitle")}
           </div>
           <div className="mt-0.5 text-xs opacity-90">{t("swap.statusRefunding")}</div>
         </div>
+      ) : phase === "unmatched" || phase === "refundable" ? (
+        // The quote expired and the pool never matched — a real state with a
+        // real destination (auto-refund at the HTLC timeout), NOT a stuck
+        // progress bar. No spinner, no progress framing.
+        <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-amber-200">
+          <div className="text-sm font-semibold">{t("swap.unmatchedTitle")}</div>
+          <div className="mt-1 text-xs leading-relaxed opacity-90">
+            {t("swap.unmatchedBody", { eta: etaText })}
+          </div>
+          {phase === "unmatched" ? (
+            <div className="mt-2 font-mono text-xs font-semibold tabular-nums">
+              {t("swap.autoRefundIn", { eta: etaText })}
+            </div>
+          ) : (
+            <div className="mt-2 text-xs font-semibold">
+              {t("swap.refundingAuto")}
+            </div>
+          )}
+        </div>
       ) : (
-        // Staged stepper: chevrons flow into the active (spinner) node. `rank`
-        // is 1-based (user_locked=1 …), so the active node index is rank − 1.
+        // matching / settling — the staged stepper: chevrons flow into the
+        // active (spinner) node. `rank` is 1-based (user_locked=1 …), so the
+        // active node index is rank − 1.
         <div className="py-1">
           <StagedStepper
             labels={nodes.map((n) => n.label)}
@@ -1538,7 +1638,7 @@ function ProgressCard({
         </div>
       )}
 
-      {!terminal && status !== "refunding" && elapsed > 20 && (
+      {phase === "settling" && elapsed > 20 && (
         <p className="text-xs text-neutral-500">
           {t("swap.settlingHint")}
         </p>
@@ -1549,10 +1649,10 @@ function ProgressCard({
           {t("swap.done")}
         </button>
       ) : (
-        // Manual refund is only meaningful while the user's leg is still locked
-        // (user_locked / pool_locked) and after a long wait.
-        ["user_locked", "pool_locked"].includes(status) &&
-        elapsed > 90 && (
+        // Manual refund exists ONLY once the HTLC timeout has passed — before
+        // that a refund is protocol-impossible and the countdown line above is
+        // the honest answer. Here it's just a backup to the automatic refund.
+        phase === "refundable" && (
           <button
             type="button"
             className="btn-secondary w-full"

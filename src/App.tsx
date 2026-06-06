@@ -151,7 +151,7 @@ function Ready({
 
   return (
     <Layout activeTab={tab} onTabChange={setTab}>
-      {tab === "dashboard" && <Dashboard />}
+      {tab === "dashboard" && <Dashboard onOpenSwap={() => setTab("swap")} />}
       {tab === "receive" && <Receive />}
       {tab === "send" && <Send />}
       {tab === "swap" && <Swap />}

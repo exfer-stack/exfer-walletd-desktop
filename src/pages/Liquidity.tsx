@@ -67,7 +67,12 @@ interface Position {
   value_bnb?: string;
   value_exfer?: string;
 }
-type ResultKind = "added" | "refunded" | "removed" | "failed";
+// "stillProcessing" — the deposit poll outlived its window but nothing failed:
+// it finishes (or refunds) in the background, so it must NOT render as an
+// error. "sentPartial" — the EXFER leg already left the wallet when a later
+// step threw: the deposit either completes or auto-returns at expiry, so the
+// copy must not invite a retry (that would double-send).
+type ResultKind = "added" | "refunded" | "removed" | "failed" | "stillProcessing" | "sentPartial";
 // `tab` is the persistent right-pane view; `phase` overlays a transient status
 // strip (progress / done) on top of it without leaving the two-pane layout.
 type Tab = "add" | "remove";
@@ -215,12 +220,22 @@ export function Liquidity() {
       try {
         const status = await pollDeposit(id);
         if (cancelled) return;
+        if (status === "stillProcessing") {
+          // Not terminal — leave the op tracked; it resolves in the background.
+          setResult({ kind: "stillProcessing" });
+          setPhase("done");
+          return;
+        }
         removeLpOp(id);
         await load();
         await refresh();
         if (status === "completed") {
           const pp = await rpc<Position>("lp_position", { address: exferAddr.toLowerCase() }).catch(() => null);
           setResult({ kind: "added", exfer: pp?.value_exfer, bnb: pp?.value_bnb });
+        } else if (status === "failed") {
+          // A resumed deposit means the EXFER already left the wallet — same
+          // no-retry framing as the live flow.
+          setResult({ kind: "sentPartial" });
         } else {
           setResult({ kind: "refunded" });
         }
@@ -268,8 +283,18 @@ export function Liquidity() {
   const hasBscWallet = bscCreated && !!bscAddr;
   const canAdd = hasBscWallet && amountValid && enoughExfer && enoughBnb && !belowMin;
 
-  function pollDeposit(id: string): Promise<"completed" | "expired"> {
-    return new Promise((resolve, reject) => {
+  // Terminal deposit outcomes plus "stillProcessing": the 5-minute watch
+  // window closing is NOT a failure (the pool finishes or auto-refunds in the
+  // background), so the poll resolves a neutral outcome instead of rejecting
+  // into the error path.
+  type DepositOutcome =
+    | "completed"
+    | "expired"
+    | "refunded"
+    | "failed"
+    | "stillProcessing";
+  function pollDeposit(id: string): Promise<DepositOutcome> {
+    return new Promise((resolve) => {
       const t0 = Date.now();
       const tick = async () => {
         try {
@@ -278,11 +303,12 @@ export function Liquidity() {
             setStage(2);
             return resolve("completed");
           }
-          if (s.status === "expired") return resolve("expired");
+          if (s.status === "expired" || s.status === "refunded" || s.status === "failed")
+            return resolve(s.status);
         } catch {
           /* transient */
         }
-        if (Date.now() - t0 > 5 * 60_000) return reject(new Error(t("lp.timedOut")));
+        if (Date.now() - t0 > 5 * 60_000) return resolve("stillProcessing");
         window.setTimeout(tick, 4000);
       };
       tick();
@@ -295,6 +321,10 @@ export function Liquidity() {
     setErr(null);
     setStage(0);
     setPhase("progress");
+    // Once the EXFER transfer broadcasts, funds have left the wallet — a later
+    // failure must NOT read as a retryable "failed" (a retry would double-send;
+    // the deposit either completes or auto-returns at expiry).
+    let exferSent = false;
     try {
       const intent = await rpc<{ id: string; deposit_exfer_address: string; deposit_bsc_address: string }>(
         "lp_deposit_start",
@@ -309,9 +339,18 @@ export function Liquidity() {
         outputs: [{ to: intent.deposit_exfer_address, amount: parseExferAmount(amount) }],
         fee_rate: FEE_RATE,
       });
+      exferSent = true;
       await rpc("bsc_send_bnb", { to: intent.deposit_bsc_address, amount: sig(bnbNeeded, 8) });
       setStage(1);
       const status = await pollDeposit(intent.id);
+      if (status === "stillProcessing") {
+        // Not terminal — keep the in-flight op tracked (it resolves in the
+        // background) and show the neutral strip, not a failure.
+        setResult({ kind: "stillProcessing" });
+        setPhase("done");
+        setAmount("");
+        return;
+      }
       removeLpOp(intent.id);
       await load();
       await refresh();
@@ -319,15 +358,25 @@ export function Liquidity() {
         const pp = await rpc<Position>("lp_position", { address: exferAddr.toLowerCase() }).catch(() => null);
         setResult({ kind: "added", exfer: pp?.value_exfer, bnb: pp?.value_bnb });
         toast.success(t("lp.addedTitle"), t("lp.addedBody"));
+      } else if (status === "failed") {
+        setResult({ kind: "sentPartial" });
       } else {
+        // expired / refunded — both legs come back automatically.
         setResult({ kind: "refunded" });
         toast.info(t("lp.refundedTitle"), t("lp.refundedBody"));
       }
       setPhase("done");
       setAmount("");
     } catch (e) {
-      setErr(humanizeError(e));
-      setResult({ kind: "failed" });
+      if (exferSent) {
+        // The EXFER leg is already on-chain: say so honestly (it auto-returns
+        // at expiry if the deposit can't complete) instead of "failed — try
+        // again".
+        setResult({ kind: "sentPartial" });
+      } else {
+        setErr(humanizeError(e));
+        setResult({ kind: "failed" });
+      }
       setPhase("done");
     } finally {
       setBusy(false);
@@ -733,7 +782,10 @@ function ProgressStrip({ stage, labels }: { stage: number; labels: string[] }) {
   );
 }
 
-/** One-line success / return / failed banner with the amount inline + a Done. */
+/** One-line result banner with the amount inline + a Done. Tones are honest:
+ *  only a CREDITED add is green; a queued withdrawal and a returned deposit are
+ *  neutral (the assets arrive on their own); "still processing" and "EXFER
+ *  already sent" are amber (in progress / hands-off), never the red failure. */
 function DoneStrip({
   result,
   err,
@@ -746,21 +798,41 @@ function DoneStrip({
   const { t } = useT();
   const k = result.kind;
   const tone =
-    k === "added" || k === "removed" ? "success" : k === "refunded" ? "info" : "error";
+    k === "added"
+      ? "success"
+      : k === "failed"
+        ? "error"
+        : k === "stillProcessing" || k === "sentPartial"
+          ? "warn"
+          : "info"; // removed (queued) / refunded
   const cls =
     tone === "success"
       ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
       : tone === "error"
         ? "border-red-500/25 bg-red-500/10 text-red-200"
-        : "border-cyan-500/25 bg-cyan-500/10 text-cyan-200";
+        : tone === "warn"
+          ? "border-amber-500/25 bg-amber-500/10 text-amber-200"
+          : "border-cyan-500/25 bg-cyan-500/10 text-cyan-200";
   const heading =
     k === "added"
       ? t("lp.addedHeading")
       : k === "removed"
-        ? t("lp.removedHeading")
+        ? t("lp.withdrawQueuedTitle")
         : k === "refunded"
           ? t("lp.refundedTitle")
-          : t("lp.failedHeading");
+          : k === "stillProcessing"
+            ? t("lp.stillProcessingTitle")
+            : t("lp.failedHeading"); // failed + sentPartial
+  const body =
+    k === "removed"
+      ? t("lp.withdrawQueuedBody")
+      : k === "stillProcessing"
+        ? t("lp.stillProcessingBody")
+        : k === "sentPartial"
+          ? t("lp.sentPartialBody")
+          : k === "failed" && err
+            ? err
+            : null;
   const showAmt = (k === "added" || k === "removed") && result.exfer;
   return (
     <div className="space-y-3">
@@ -773,7 +845,7 @@ function DoneStrip({
             </span>
           )}
         </div>
-        {k === "failed" && err && <div className="mt-0.5 text-xs opacity-90">{err}</div>}
+        {body && <div className="mt-0.5 text-xs leading-relaxed opacity-90">{body}</div>}
       </div>
       <button type="button" className="btn w-full" onClick={onDone}>
         {t("lp.done")}
