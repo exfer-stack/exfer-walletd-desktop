@@ -66,6 +66,14 @@ interface Position {
   pool_share_pct?: number;
   value_bnb?: string;
   value_exfer?: string;
+  // Newer pools also report the cost basis of the current shares and the
+  // per-leg earnings (value minus basis; CAN be negative — AMM price drift
+  // routinely shrinks one leg while growing the other). Optional: older pools
+  // omit them and the earnings block simply doesn't render.
+  deposited_exfer?: string;
+  deposited_bnb?: string;
+  earn_exfer?: string;
+  earn_bnb?: string;
 }
 // "stillProcessing" — the deposit poll outlived its window but nothing failed:
 // it finishes (or refunds) in the background, so it must NOT render as an
@@ -479,6 +487,9 @@ export function Liquidity() {
                     <span>{sig(Number(pos!.value_exfer ?? 0))} EXFER</span>
                     <span className="text-right">{sig(Number(pos!.value_bnb ?? 0), BNB_DP)} BNB</span>
                   </div>
+                  {pos!.deposited_exfer != null && (
+                    <EarningsBlock pos={pos!} exferUsd={exferUsd} bnbUsd={bnbUsd} />
+                  )}
                 </>
               ) : !posScanned || !posLoaded ? (
                 <div className="text-sm text-neutral-500">{t("lp.loading")}</div>
@@ -732,6 +743,70 @@ function parseExferAmountSafe(s: string): number {
   } catch {
     return Infinity;
   }
+}
+
+/** Sign-prefixed number: explicit "+" / "-" so each leg reads as a delta. */
+function signed(n: number, fmt: (abs: number) => string): string {
+  return (n < 0 ? "-" : n > 0 ? "+" : "") + fmt(Math.abs(n));
+}
+
+/** Tint by sign — emerald gain / red loss / neutral zero. */
+function toneFor(n: number): string {
+  return n > 0 ? "text-emerald-300" : n < 0 ? "text-red-300" : "text-neutral-400";
+}
+
+/** Earnings vs cost basis — only on pools that report deposited_* and earn_*.
+ *  Leads with the combined ≈$ figure: per-leg signs routinely DIFFER (AMM
+ *  price drift shrinks one leg while growing the other), so neither leg alone
+ *  tells the story. Legs and the deposited basis come second. When either
+ *  spot price is missing the ≈$ headline is dropped and only the legs show. */
+function EarningsBlock({
+  pos,
+  exferUsd,
+  bnbUsd,
+}: {
+  pos: Position;
+  exferUsd: number;
+  bnbUsd: number | null;
+}) {
+  const { t } = useT();
+  const earnExfer = Number(pos.earn_exfer ?? 0);
+  const earnBnb = Number(pos.earn_bnb ?? 0);
+  const depExfer = Number(pos.deposited_exfer ?? 0);
+  const depBnb = Number(pos.deposited_bnb ?? 0);
+  const haveSpot = exferUsd > 0 && bnbUsd != null && bnbUsd > 0;
+  const earnUsd = haveSpot ? earnExfer * exferUsd + earnBnb * bnbUsd : 0;
+  const basisUsd = haveSpot ? depExfer * exferUsd + depBnb * bnbUsd : 0;
+  const pct = haveSpot && basisUsd > 0 ? (earnUsd / basisUsd) * 100 : null;
+  const fmtExfer = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return (
+    <div className="space-y-1 border-t border-neutral-800 pt-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.earnings")}</span>
+        {haveSpot && (
+          <span
+            className={
+              "font-mono text-sm font-semibold tabular-nums " +
+              (earnUsd >= 0 ? "text-emerald-300" : "text-red-300")
+            }
+          >
+            ≈ {earnUsd < 0 ? "-" : "+"}
+            {usdNumber(Math.abs(earnUsd))}
+            {pct != null && ` (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-xs tabular-nums">
+        <span className={toneFor(earnExfer)}>{signed(earnExfer, fmtExfer)} EXFER</span>
+        <span className="text-neutral-600">·</span>
+        <span className={toneFor(earnBnb)}>{signed(earnBnb, (a) => sig(a))} BNB</span>
+      </div>
+      <div className="font-mono text-xs tabular-nums text-neutral-500">
+        {t("lp.depositedLine", { exfer: fmtExfer(depExfer), bnb: sig(depBnb) })}
+      </div>
+      <p className="text-xs leading-relaxed text-neutral-500">{t("lp.earningsNote")}</p>
+    </div>
+  );
 }
 
 function Header({ mid, exferUsd, ready }: { mid: number; exferUsd: number; ready: boolean }) {

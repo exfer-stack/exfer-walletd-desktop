@@ -557,6 +557,10 @@ const EN = {
   "lp.yourPosition": "Your position",
   "lp.poolShare": "Pool share",
   "lp.ofPool": "of pool",
+  "lp.earnings": "Earnings",
+  "lp.depositedLine": "Deposited {exfer} EXFER + {bnb} BNB",
+  "lp.earningsNote":
+    "Earnings come from the 0.30% swap fee. Price moves shift the EXFER/BNB ratio (one leg can shrink while the other grows) — judge by the combined value.",
   "lp.add": "Add liquidity",
   "lp.remove": "Remove",
   "lp.emptyHeading": "Provide liquidity",
@@ -1281,6 +1285,10 @@ const ZH: Record<MsgKey, string> = {
   "lp.yourPosition": "你的份额",
   "lp.poolShare": "池子占比",
   "lp.ofPool": "占池子",
+  "lp.earnings": "收益",
+  "lp.depositedLine": "累计投入 {exfer} EXFER + {bnb} BNB",
+  "lp.earningsNote":
+    "收益来自 0.30% 兑换手续费分成。价格波动会改变两腿比例（一腿可能减少而另一腿增加），请以合计价值为准。",
   "lp.add": "添加流动性",
   "lp.remove": "撤出",
   "lp.emptyHeading": "提供流动性",
