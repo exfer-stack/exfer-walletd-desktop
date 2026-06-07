@@ -504,9 +504,26 @@ export function Liquidity() {
                   <div className="font-mono text-3xl font-semibold tabular-nums text-neutral-100">
                     ≈ {usdNumber(posValueUsd)}
                   </div>
+                  {/* Per-leg P&L rides each asset's amount (legs below display
+                      precision — float dust like -6e-16 BNB — stay hidden);
+                      the cost-basis line in EarningsBlock is the reference. */}
                   <div className="grid grid-cols-2 gap-3 font-mono text-sm tabular-nums text-neutral-300">
-                    <span>{sig(Number(pos!.value_exfer ?? 0))} EXFER</span>
-                    <span className="text-right">{sig(Number(pos!.value_bnb ?? 0), BNB_DP)} BNB</span>
+                    <span>
+                      <span className="block">{sig(Number(pos!.value_exfer ?? 0))} EXFER</span>
+                      {pos!.deposited_exfer != null && Math.abs(Number(pos!.earn_exfer ?? 0)) >= 0.01 && (
+                        <span className={"block text-xs " + toneFor(Number(pos!.earn_exfer ?? 0))}>
+                          {signed(Number(pos!.earn_exfer ?? 0), (n) => n.toLocaleString("en-US", { maximumFractionDigits: 2 }))}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-right">
+                      <span className="block">{sig(Number(pos!.value_bnb ?? 0), BNB_DP)} BNB</span>
+                      {pos!.deposited_exfer != null && Math.abs(Number(pos!.earn_bnb ?? 0)) >= 1e-8 && (
+                        <span className={"block text-xs " + toneFor(Number(pos!.earn_bnb ?? 0))}>
+                          {signed(Number(pos!.earn_bnb ?? 0), (a) => sig(a))}
+                        </span>
+                      )}
+                    </span>
                   </div>
                   {pos!.deposited_exfer != null && (
                     <EarningsBlock pos={pos!} exferUsd={exferUsd} bnbUsd={bnbUsd} />
@@ -816,49 +833,43 @@ function EarningsBlock({
   // as noise, not information.
   const feeUsdRaw = feePct != null && haveSpot && basisUsd > 0 ? (basisUsd * feePct) / 100 : null;
   const feeUsd = feeUsdRaw != null && feeUsdRaw >= 0.01 ? feeUsdRaw : null;
+  // Two quiet stat cells + one faint cost-basis reference line — the per-leg
+  // deltas live on the asset rows above, not in a text dump here.
   return (
-    <div className="space-y-1 border-t border-neutral-800 pt-2.5">
-      {feePct != null && (
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs uppercase tracking-wide text-neutral-500">
-            {t("lp.feeEarned")}
-          </span>
-          <span className="font-mono text-sm font-semibold tabular-nums text-emerald-300">
-            +{feePct.toFixed(2)}%{feeUsd != null && ` (≈ +${usdNumber(feeUsd)})`}
-          </span>
-        </div>
-      )}
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-xs uppercase tracking-wide text-neutral-500">{t("lp.totalPnl")}</span>
+    <div className="border-t border-neutral-800 pt-2.5">
+      <div className="grid grid-cols-2 gap-3">
+        {feePct != null && (
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-neutral-500">{t("lp.feeEarned")}</div>
+            <div className="mt-0.5 whitespace-nowrap font-mono text-sm font-semibold tabular-nums text-emerald-300">
+              +{feePct.toFixed(2)}%
+              {feeUsd != null && (
+                <span className="ml-1.5 text-xs font-normal text-neutral-500">≈ {usdNumber(feeUsd)}</span>
+              )}
+            </div>
+          </div>
+        )}
         {haveSpot && (
-          <span
-            className={
-              "font-mono text-sm font-semibold tabular-nums " +
-              (earnUsd >= 0 ? "text-emerald-300" : "text-red-300")
-            }
-          >
-            ≈ {earnUsd < 0 ? "-" : "+"}
-            {usdNumber(Math.abs(earnUsd))}
-            {pct != null && ` (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`}
-          </span>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-neutral-500">{t("lp.totalPnl")}</div>
+            <div
+              className={
+                "mt-0.5 whitespace-nowrap font-mono text-sm font-semibold tabular-nums " +
+                (earnUsd >= 0 ? "text-emerald-300" : "text-red-300")
+              }
+            >
+              {earnUsd < 0 ? "-" : "+"}
+              {usdNumber(Math.abs(earnUsd))}
+              {pct != null && (
+                <span className="ml-1.5 text-xs font-normal text-neutral-500">
+                  {pct >= 0 ? "+" : ""}{pct.toFixed(1)}%
+                </span>
+              )}
+            </div>
+          </div>
         )}
       </div>
-      {/* Per-leg deltas. A leg below display precision (float dust like
-          -6e-16 BNB) is hidden rather than printed as noise. */}
-      {(Math.abs(earnExfer) >= 0.01 || Math.abs(earnBnb) >= 1e-8) && (
-        <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-xs tabular-nums">
-          {Math.abs(earnExfer) >= 0.01 && (
-            <span className={toneFor(earnExfer)}>{signed(earnExfer, fmtExfer)} EXFER</span>
-          )}
-          {Math.abs(earnExfer) >= 0.01 && Math.abs(earnBnb) >= 1e-8 && (
-            <span className="text-neutral-600">·</span>
-          )}
-          {Math.abs(earnBnb) >= 1e-8 && (
-            <span className={toneFor(earnBnb)}>{signed(earnBnb, (a) => sig(a))} BNB</span>
-          )}
-        </div>
-      )}
-      <div className="font-mono text-xs tabular-nums text-neutral-500">
+      <div className="mt-2 font-mono text-xs tabular-nums text-neutral-500">
         {t("lp.depositedLine", { exfer: fmtExfer(depExfer), bnb: sig(depBnb) })}
       </div>
     </div>
