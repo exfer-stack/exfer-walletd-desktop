@@ -72,20 +72,20 @@ export async function downloadAndApply(onProgress?: ProgressFn): Promise<void> {
   await relaunch();
 }
 
-/** Pull the changelog bullets for one language out of the update notes.
+/** Pull the changelog bullets out of the update notes (English-only by convention).
  *  Convention (RELEASE_NOTES.md, baked into latest.json by CI): a
- *  "## What's new" section followed by a "## 更新内容" section. Returns plain
+ *  "## What's new" section. Returns plain
  *  lines with markdown bullets stripped (wrapped continuation lines are merged
  *  into their entry); [] when the notes don't follow the convention (old
  *  releases carry the "Auto-built from vX" boilerplate — showing that as a
  *  changelog would be worse than showing nothing). */
-export function changelogLines(notes: string | undefined, lang: "en" | "zh"): string[] {
+export function changelogLines(notes: string | undefined): string[] {
   if (!notes) return [];
   for (const sec of notes.split(/^##\s+/m)) {
     const nl = sec.indexOf("\n");
     if (nl < 0) continue;
     const heading = sec.slice(0, nl).trim().toLowerCase();
-    const hit = lang === "zh" ? heading.includes("更新内容") : heading.startsWith("what's new");
+    const hit = heading.startsWith("what's new");
     if (!hit) continue;
     const out: string[] = [];
     for (const raw of sec.slice(nl + 1).split("\n")) {

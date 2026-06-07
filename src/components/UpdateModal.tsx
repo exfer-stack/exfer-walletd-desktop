@@ -20,11 +20,11 @@ declare const __APP_VERSION__: string | undefined;
 const CURRENT = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "";
 
 export function UpdateModal({ info, onClose }: { info: UpdateInfo; onClose: () => void }) {
-  const { lang, t } = useT();
+  const { t } = useT();
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const lines = changelogLines(info.notes, lang);
+  const lines = changelogLines(info.notes);
   const version = info.version ?? "";
 
   function later() {
