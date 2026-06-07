@@ -72,6 +72,27 @@ jobs:
 
       - run: npm ci
 
+      # The release body = the changelog (RELEASE_NOTES.md, updated in the
+      # release commit). tauri-action bakes it into latest.json's `notes`,
+      # which the in-app update modal renders — so it MUST be right at build
+      # time (editing the GitHub release afterwards doesn't touch latest.json).
+      - name: Compose release body from RELEASE_NOTES.md
+        id: notes
+        shell: bash
+        run: |
+          set -eu
+          {
+            echo "body<<NOTES_EOF"
+            # sed range-delete strips the leading HTML comment block
+            [ -f RELEASE_NOTES.md ] && sed '/^<!--/,/-->$/d' RELEASE_NOTES.md || true
+            echo ""
+            echo "---"
+            echo ""
+            echo "Includes the in-process exfer-walletd, no separate install needed."
+            echo "In-app auto-update: install once, future versions update themselves."
+            echo "NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Tauri build
         uses: tauri-apps/tauri-action@v0
         env:
@@ -84,12 +105,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "exfer-wallet ${{ github.ref_name }}"
-          releaseBody: |
-            Auto-built from ${{ github.ref_name }}.
-            Includes the in-process exfer-walletd, no separate install needed.
-
-            In-app auto-update is enabled from v0.4.0 onward: install this
-            once, and future versions update themselves from within the app.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           # Emit + attach latest.json so the updater plugin can find it.

@@ -49,6 +49,14 @@ const EN = {
     "Check the app log (stderr) for details. If the password in your OS keychain is wrong (e.g. you moved data between machines), you may need to clear it and re-enter.",
   "app.updateAvailableTitle": "Update available — v{v}",
   "app.updateAvailableBody": "Open Settings → Check for updates to install.",
+  "upd.modalTitle": "New version v{v}",
+  "upd.modalSub": "You're on v{v}",
+  "upd.whatsNew": "What's new",
+  "upd.later": "Later",
+  "upd.installRestart": "Update and restart",
+  "upd.installing": "Updating…",
+  "upd.downloading": "Downloading…",
+  "upd.downloadingPct": "Downloading… {pct}%",
 
   // ── errors (humanizeError) ─────────────────────────────────────────
   "err.busy": "The network is busy right now. Wait a few seconds and try again.",
@@ -770,6 +778,14 @@ const ZH: Record<MsgKey, string> = {
     "请查看应用日志（stderr）了解详情。如果系统钥匙串里的密码不对（例如你在不同机器间迁移了数据），可能需要清除后重新输入。",
   "app.updateAvailableTitle": "有新版本可用 — v{v}",
   "app.updateAvailableBody": "打开 设置 → 检查更新 即可安装。",
+  "upd.modalTitle": "新版本 v{v}",
+  "upd.modalSub": "当前版本 v{v}",
+  "upd.whatsNew": "更新内容",
+  "upd.later": "稍后",
+  "upd.installRestart": "更新并重启",
+  "upd.installing": "更新中…",
+  "upd.downloading": "正在下载…",
+  "upd.downloadingPct": "正在下载… {pct}%",
 
   // ── errors ─────────────────────────────────────────────────────────
   "err.busy": "网络正忙，请过几秒再试。",

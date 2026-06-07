@@ -71,3 +71,45 @@ export async function downloadAndApply(onProgress?: ProgressFn): Promise<void> {
   const { relaunch } = await import("@tauri-apps/plugin-process");
   await relaunch();
 }
+
+/** Pull the changelog bullets for one language out of the update notes.
+ *  Convention (RELEASE_NOTES.md, baked into latest.json by CI): a
+ *  "## What's new" section followed by a "## 更新内容" section. Returns plain
+ *  lines with markdown bullets stripped (wrapped continuation lines are merged
+ *  into their entry); [] when the notes don't follow the convention (old
+ *  releases carry the "Auto-built from vX" boilerplate — showing that as a
+ *  changelog would be worse than showing nothing). */
+export function changelogLines(notes: string | undefined, lang: "en" | "zh"): string[] {
+  if (!notes) return [];
+  for (const sec of notes.split(/^##\s+/m)) {
+    const nl = sec.indexOf("\n");
+    if (nl < 0) continue;
+    const heading = sec.slice(0, nl).trim().toLowerCase();
+    const hit = lang === "zh" ? heading.includes("更新内容") : heading.startsWith("what's new");
+    if (!hit) continue;
+    const out: string[] = [];
+    for (const raw of sec.slice(nl + 1).split("\n")) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      // A horizontal rule ends the changelog: everything after it is release-
+      // page boilerplate (install blurb), not change entries.
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(line)) break;
+      if (/^[-*•]\s+/.test(line)) out.push(line.replace(/^[-*•]\s+/, ""));
+      else if (out.length > 0) out[out.length - 1] += ` ${line}`;
+      else out.push(line);
+    }
+    return out;
+  }
+  return [];
+}
+
+// "Later" memory: one launch prompt per VERSION, not per launch. Dismissing
+// v0.16.6 silences the modal until v0.16.7 ships; Settings keeps its manual
+// check + install path the whole time.
+const DISMISS_KEY = "exfer-desktop-update-dismissed";
+export function dismissedVersion(): string {
+  try { return localStorage.getItem(DISMISS_KEY) || ""; } catch { return ""; }
+}
+export function dismissUpdate(version: string): void {
+  try { localStorage.setItem(DISMISS_KEY, version); } catch { /* ignore */ }
+}

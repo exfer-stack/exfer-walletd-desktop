@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { bootstrapStatus } from "./lib/rpc";
 import type { BootstrapStatus } from "./lib/types";
-import { ToastProvider, useToast } from "./lib/toast";
+import { ToastProvider } from "./lib/toast";
 import { WalletProvider } from "./lib/wallet";
-import { checkForUpdate } from "./lib/updater";
+import { checkForUpdate, dismissedVersion, type UpdateInfo } from "./lib/updater";
+import { UpdateModal } from "./components/UpdateModal";
 import {
   I18nProvider,
   useT,
@@ -43,7 +44,6 @@ function App() {
 }
 
 function AppInner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
-  const toast = useToast();
   const { t } = useT();
   const [status, setStatus] = useState<BootstrapStatus | null>(null);
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -65,15 +65,15 @@ function AppInner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void })
     return () => clearInterval(interval);
   }, []);
 
-  // One-shot update check on launch. If a newer version is published,
-  // nudge the user toward Settings → Check for updates.
+  // One-shot update check on launch. A newer version the user hasn't
+  // dismissed opens the update modal (version + changelog + install-and-
+  // restart); "Later" silences THAT version only, and Settings keeps the
+  // manual check + install path.
+  const [updatePrompt, setUpdatePrompt] = useState<UpdateInfo | null>(null);
   useEffect(() => {
     checkForUpdate().then((u) => {
-      if (u.available) {
-        toast.info(
-          t("app.updateAvailableTitle", { v: u.version ?? "" }),
-          t("app.updateAvailableBody"),
-        );
+      if (u.available && u.version && u.version !== dismissedVersion()) {
+        setUpdatePrompt(u);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -117,6 +117,9 @@ function AppInner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void })
           lang={lang}
           setLang={setLang}
         />
+        {/* Launch update prompt — rendered only once the wallet is ready, so
+            it never covers the password gate or a failed-boot screen. */}
+        {updatePrompt && <UpdateModal info={updatePrompt} onClose={() => setUpdatePrompt(null)} />}
       </InflightProvider>
     </WalletProvider>
   );

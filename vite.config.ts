@@ -1,5 +1,12 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
+
+// App version, baked in at build time from package.json so the update prompt
+// can show "You're on vX". Exposed as __APP_VERSION__ (same as mobile).
+const APP_VERSION: string = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+).version;
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -15,6 +22,10 @@ export default defineConfig(async ({ mode }) => {
   const walletdTarget = env.VITE_WALLETD_PROXY_TARGET;
   return {
   plugins: [react()],
+
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
 
   build: {
     // Inline the logo (64px) and wordmark (128px) PNGs as base64 data
