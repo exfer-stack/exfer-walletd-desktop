@@ -111,7 +111,7 @@
 
   /* ── status pills ──────────────────────────────────────────── */
   .pill {
-    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium;
   }
   .pill-info     { @apply bg-cyan-500/15 text-cyan-300; }
   .pill-success  { @apply bg-emerald-500/15 text-emerald-300; }
@@ -164,6 +164,40 @@
 /* ── micro-interactions ───────────────────────────────────────── */
 @keyframes pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
 .pop { animation: pop .4s cubic-bezier(.22,1,.36,1) both; }
+
+/* ── governance / voting ──────────────────────────────────────── */
+/* The "live" LED that softly pulses next to 实时 / Live. */
+@keyframes gov-led {
+  0%   { box-shadow: 0 0 0 0 rgb(34 211 238 / .55); }
+  70%  { box-shadow: 0 0 0 6px rgb(34 211 238 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(34 211 238 / 0); }
+}
+.gov-led { animation: gov-led 1.6s ease-out infinite; }
+
+/* A live result row: the tinted fill grows to --pct behind the label,
+ * with a 2px leading edge — the design's "results rail" bar. */
+.gov-res-fill {
+  position: absolute; inset: 0; width: var(--pct, 0%);
+  background: rgb(115 115 115 / .22);
+  border-right: 2px solid #525252;
+  transition: width .5s cubic-bezier(.22,1,.36,1);
+}
+.gov-res-win .gov-res-fill {
+  background: rgb(6 182 212 / .16);
+  border-right-color: #06b6d4;
+}
+.gov-res-muted .gov-res-fill { background: rgb(115 115 115 / .12); }
+
+/* The thin two-segment strip on an open proposal card. */
+.gov-mini-track { display: flex; overflow: hidden; }
+.gov-mini-track > span { transition: width .5s cubic-bezier(.22,1,.36,1); }
+
+/* Compact, dense attachment thumbnail grid: fixed ~130px tiles so a card with
+   many images stays small instead of growing huge and shoving the vote UI down. */
+.att-thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
 
 /* Respect reduced-motion: collapse animations + transitions to ~instant. */
 @media (prefers-reduced-motion: reduce) {

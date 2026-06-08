@@ -478,6 +478,155 @@ async fn get_bnb_price() -> Result<String, String> {
     resp.text().await.map_err(|e| format!("reading bnb price body: {e}"))
 }
 
+/// An HTTPS client that PINS the `exfer-vote` service's self-signed CA
+/// ([`VOTE_CA_PEM`]) — the same posture as the swap-pool client. Manual-roots
+/// reqwest means this CA is the ONLY trust anchor, so a MITM with a public cert
+/// still can't impersonate the vote server. Built per request (cheap; the
+/// governance UI calls are infrequent) to keep no extra long-lived state.
+fn vote_https_client() -> Result<reqwest::Client, String> {
+    let ca = reqwest::Certificate::from_pem(walletd_supervisor::VOTE_CA_PEM.as_bytes())
+        .map_err(|e| format!("parsing vote CA: {e}"))?;
+    reqwest::ClientBuilder::new()
+        .tls_built_in_root_certs(false)
+        .add_root_certificate(ca)
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("building vote http client: {e}"))
+}
+
+/// Normalize a frontend-supplied API path onto the vote server base, rejecting
+/// anything that isn't a relative `/...` path so the frontend can't redirect
+/// these (CA-pinned) calls at an arbitrary host.
+fn vote_url(path: &str) -> Result<String, String> {
+    if !path.starts_with('/') || path.contains("://") {
+        return Err("vote api path must be a relative \"/...\" path".into());
+    }
+    Ok(format!(
+        "{}{}",
+        walletd_supervisor::DEFAULT_VOTE_SERVER_URL.trim_end_matches('/'),
+        path
+    ))
+}
+
+/// GET a path on the community vote service (e.g. `/proposals`,
+/// `/proposals/:id`, `/proposals/:id/results`). Returns the raw JSON body as a
+/// `Value` for the frontend's `governance.ts` to normalize. CA-pinned HTTPS;
+/// mirrors `get_bnb_price`'s read-only, failure-is-tolerable shape.
+#[tauri::command]
+async fn vote_api_get(path: String) -> Result<Value, String> {
+    let resp = vote_https_client()?
+        .get(vote_url(&path)?)
+        .send()
+        .await
+        .map_err(|e| format!("vote api request failed: {e}"))?;
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("reading vote api body: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("vote server returned {status}: {body}"));
+    }
+    serde_json::from_str(&body).map_err(|e| format!("vote api returned non-JSON: {e}"))
+}
+
+/// POST a JSON body to the vote service (currently only `/votes` with
+/// `{ payload, signature, pubkey }`). `body` is the already-serialized JSON
+/// string built by `governance.ts`; we forward it verbatim so the signed
+/// `payload` bytes are never re-serialized. CA-pinned HTTPS.
+#[tauri::command]
+async fn vote_api_post(path: String, body: String) -> Result<Value, String> {
+    let resp = vote_https_client()?
+        .post(vote_url(&path)?)
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("vote api request failed: {e}"))?;
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("reading vote api body: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("vote server returned {status}: {text}"));
+    }
+    if text.is_empty() {
+        return Ok(Value::Null);
+    }
+    serde_json::from_str(&text).map_err(|e| format!("vote api returned non-JSON: {e}"))
+}
+
+/// GET an attachment's raw bytes from the exfer-vote service (`/media/:id`),
+/// routed through the SAME CA-pinned client as the JSON API so the pinned trust
+/// anchor is preserved — the webview must never hit the host directly for media.
+/// Returns `{ content_type, body_hex }`; the JS side hex-decodes the bytes and
+/// either renders them as an inline blob (`image` kinds) or saves them to disk
+/// (`file` kinds). The body is capped to guard against a hostile/oversized
+/// response (uploads are already capped server-side; this is belt-and-suspenders).
+#[tauri::command]
+async fn vote_media_get(path: String) -> Result<Value, String> {
+    // Hard ceiling on what we'll pull into memory + ferry across the IPC bridge.
+    const MAX_MEDIA_BYTES: usize = 16 * 1024 * 1024;
+    let resp = vote_https_client()?
+        .get(vote_url(&path)?)
+        .send()
+        .await
+        .map_err(|e| format!("media request failed: {e}"))?;
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("reading media body: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("vote server returned {status}"));
+    }
+    if bytes.len() > MAX_MEDIA_BYTES {
+        return Err("attachment exceeds the maximum download size".into());
+    }
+    Ok(serde_json::json!({
+        "content_type": content_type,
+        "body_hex": hex::encode(&bytes),
+    }))
+}
+
+/// Download an attachment (`/media/:id`) through the CA-pinned vote client and
+/// write it to `dest` (a path the frontend picked via the OS save dialog). Mirrors
+/// `export_wallet_key`'s "Rust owns the disk write" pattern — the bytes go
+/// straight from the pinned HTTPS response to the file, never through the webview
+/// host, so cert pinning is preserved. Same in-memory ceiling as `vote_media_get`.
+#[tauri::command]
+async fn vote_media_save(path: String, dest: String) -> Result<(), String> {
+    const MAX_MEDIA_BYTES: usize = 16 * 1024 * 1024;
+    if dest.is_empty() {
+        return Err("no destination selected".into());
+    }
+    let resp = vote_https_client()?
+        .get(vote_url(&path)?)
+        .send()
+        .await
+        .map_err(|e| format!("media request failed: {e}"))?;
+    let status = resp.status();
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("reading media body: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("vote server returned {status}"));
+    }
+    if bytes.len() > MAX_MEDIA_BYTES {
+        return Err("attachment exceeds the maximum download size".into());
+    }
+    std::fs::write(&dest, &bytes).map_err(|e| format!("writing {dest}: {e}"))?;
+    Ok(())
+}
+
 /// Wipe everything on this device: stop the embedded walletd, delete the
 /// entire app-data directory (sealed seed, tokens, TLS cert, desktop
 /// config), and clear the keychain passphrase. Returns the app to the
@@ -569,6 +718,10 @@ pub fn run() {
             get_swap_config,
             set_swap_config,
             get_bnb_price,
+            vote_api_get,
+            vote_api_post,
+            vote_media_get,
+            vote_media_save,
             reset_wallet,
             export_wallet_key,
             import_wallet_key,

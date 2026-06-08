@@ -169,6 +169,197 @@ function mockMnemonic(seed: string): string[] {
   });
 }
 
+// ── vote server (exfer-vote) dev transport + in-memory mock ─────────────────
+// Mirrors the walletd dual mode: when VITE_VOTE_PROXY_TARGET points the Vite
+// `/__vote` proxy at a real exfer-vote service, hit it; otherwise synthesise
+// realistic proposals/results so `npm run dev` works fully in-browser.
+
+const VOTE_BASE = "/__vote";
+
+function useRealVote(): boolean {
+  return !!import.meta.env.VITE_VOTE_PROXY_TARGET;
+}
+
+// Two open + one upcoming + one finalized proposal, with a live tally on the
+// open ones. min_power = 50,000 EXFER. Persisted votes live in MOCK_VOTES so
+// re-vote / latest-nonce / live-bar behaviour is exercisable in the browser.
+const MOCK_MIN_POWER = 5_000_000_000_000; // 50,000 EXFER
+const _voteNow = Math.floor(Date.now() / 1000);
+
+const MOCK_PROPOSALS = [
+  {
+    id: "eip-014-buyback",
+    title: {
+      en: "Use 30% of swap fees for buyback & burn",
+      zh: "将交易手续费的 30% 用于回购销毁",
+    },
+    description: {
+      en: "Route 30% of monthly protocol fee revenue into a buyback vault that buys EXFER on the open market and sends it to an unspendable burn address. Buybacks run weekly and are verifiable on-chain — an estimated ~18,000 EXFER/month burned, tightening circulating supply over the long term.",
+      zh: "把每月手续费收入的 30% 自动注入回购金库,由金库在公开市场买入 EXFER 并发送至不可花费的销毁地址。回购按周执行、链上可查。预计每月销毁约 18,000 EXFER,长期收紧流通供应。",
+    },
+    options: [
+      { id: "opt_a", label: { en: "For — enable 30% buyback & burn", zh: "赞成 —— 启用 30% 回购销毁" } },
+      { id: "opt_b", label: { en: "Against — keep the status quo", zh: "反对 —— 维持现状,不做回购" } },
+      { id: "opt_c", label: { en: "Abstain — count me as present", zh: "弃权 —— 计入参与,不站队" } },
+    ],
+    voting_window: { open_time: _voteNow - 86_400, close_time: _voteNow + 30 * 3600 },
+    status: "open" as const,
+    min_power: MOCK_MIN_POWER,
+    spot_check: { window_days: 7 },
+    results: {
+      finalized_at_height: null,
+      spot_check_heights: [] as number[],
+      total_voters: 3047,
+      total_power: "318400000000000", // 3,184,000 EXFER
+      by_option: {
+        opt_a: "194200000000000",
+        opt_b: "98700000000000",
+        opt_c: "25500000000000",
+      } as Record<string, string>,
+    },
+  },
+  {
+    id: "eip-013-hk-node",
+    title: {
+      en: "Add a DMIT Hong Kong node reachable from mainland China",
+      zh: "新增 DMIT 香港节点接入中国大陆",
+    },
+    description: {
+      en: "Deploy an official exfer node on a Hong Kong CN2 GIA line reachable from mainland China to improve domestic connectivity.",
+      zh: "在香港 CN2 GIA 线路部署一个面向中国大陆可达的官方 exfer 节点,改善国内连接质量。",
+    },
+    options: [
+      { id: "opt_a", label: { en: "For", zh: "赞成" } },
+      { id: "opt_b", label: { en: "Against", zh: "反对" } },
+      { id: "opt_c", label: { en: "Abstain", zh: "弃权" } },
+    ],
+    voting_window: { open_time: _voteNow - 2 * 86_400, close_time: _voteNow + 4 * 86_400 },
+    status: "open" as const,
+    min_power: MOCK_MIN_POWER,
+    spot_check: { window_days: 7 },
+    results: {
+      finalized_at_height: null,
+      spot_check_heights: [] as number[],
+      total_voters: 1902,
+      total_power: "190200000000000",
+      by_option: {
+        opt_a: "156000000000000",
+        opt_b: "26600000000000",
+        opt_c: "7600000000000",
+      } as Record<string, string>,
+    },
+  },
+  {
+    id: "eip-015-feecut",
+    title: {
+      en: "Cut the cross-chain swap fee from 0.30% to 0.20%",
+      zh: "把跨链兑换费率从 0.30% 下调到 0.20%",
+    },
+    description: {
+      en: "Lower the EXFER↔USDT cross-chain swap pool fee to a more competitive rate to attract more volume.",
+      zh: "降低 EXFER↔USDT 跨链兑换的池子手续费,以更有竞争力的价格吸引更多兑换量。",
+    },
+    options: [
+      { id: "opt_a", label: { en: "Approve", zh: "通过" } },
+      { id: "opt_b", label: { en: "Reject", zh: "否决" } },
+    ],
+    voting_window: { open_time: _voteNow + 2 * 86_400, close_time: _voteNow + 9 * 86_400 },
+    status: "upcoming" as const,
+    min_power: MOCK_MIN_POWER,
+    spot_check: { window_days: 7 },
+    results: null,
+  },
+  {
+    id: "eip-012-swapcap",
+    title: {
+      en: "Raise the single-swap cap to 5% of pool depth",
+      zh: "将单笔兑换上限提升至池子深度的 5%",
+    },
+    description: {
+      en: "Relax the soft single-swap cap so large users can complete a swap in one go while keeping slippage protection.",
+      zh: "放宽单笔兑换的软上限,方便大额用户一次性完成兑换,同时保留滑点保护。",
+    },
+    options: [
+      { id: "opt_a", label: { en: "Approve", zh: "通过" } },
+      { id: "opt_b", label: { en: "Reject", zh: "否决" } },
+    ],
+    voting_window: { open_time: _voteNow - 20 * 86_400, close_time: _voteNow - 10 * 86_400 },
+    status: "finalized" as const,
+    min_power: MOCK_MIN_POWER,
+    spot_check: { window_days: 7 },
+    results: {
+      finalized_at_height: 690_120,
+      spot_check_heights: [688_400, 689_700],
+      total_voters: 5210,
+      total_power: "521000000000000",
+      by_option: {
+        opt_a: "385400000000000",
+        opt_b: "135600000000000",
+      } as Record<string, string>,
+    },
+  },
+  {
+    id: "eip-011-halving",
+    title: {
+      en: "Halve the block-reward halving interval",
+      zh: "将区块出块奖励减半周期缩短一半",
+    },
+    description: {
+      en: "Speed up the halving schedule to enter deflation sooner; failed to reach the threshold over miner-incentive concerns.",
+      zh: "提议加快减半节奏以提前进入通缩,因社区担心矿工激励不足而未达通过门槛。",
+    },
+    options: [
+      { id: "opt_a", label: { en: "Approve", zh: "通过" } },
+      { id: "opt_b", label: { en: "Reject", zh: "否决" } },
+    ],
+    voting_window: { open_time: _voteNow - 30 * 86_400, close_time: _voteNow - 20 * 86_400 },
+    status: "finalized" as const,
+    min_power: MOCK_MIN_POWER,
+    spot_check: { window_days: 7 },
+    results: {
+      finalized_at_height: 670_900,
+      spot_check_heights: [668_100, 669_500],
+      total_voters: 4488,
+      total_power: "448800000000000",
+      by_option: {
+        opt_a: "170500000000000",
+        opt_b: "278300000000000",
+      } as Record<string, string>,
+    },
+  },
+];
+
+// address -> { proposalId -> { option_id, nonce, power } }
+interface MockVote {
+  option_id: string;
+  nonce: number;
+  power: number;
+}
+const MOCK_VOTES: Record<string, Record<string, MockVote>> = {};
+
+function mockProposalById(id: string) {
+  return MOCK_PROPOSALS.find((p) => p.id === id);
+}
+
+async function realVoteFetch(
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+): Promise<unknown> {
+  const resp = await fetch(VOTE_BASE + path, {
+    method,
+    headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const text = await resp.text();
+  const json = text ? JSON.parse(text) : null;
+  if (!resp.ok) {
+    const msg = (json && (json.error || json.message)) || `vote server ${resp.status}`;
+    throw new Error(String(msg));
+  }
+  return json;
+}
+
 async function realRpc(method: string, params: unknown): Promise<unknown> {
   const resp = await fetch(REAL_BASE, {
     method: "POST",
@@ -434,6 +625,22 @@ export const devmock = {
       case "ping":
         return { ok: true };
 
+      // Governance voting signs a canonical payload via walletd's
+      // sign_message (Spend scope). Dev mode can't run Ed25519, so we
+      // return a deterministic fake { signature, pubkey, address } — enough
+      // for the vote_api_post mock to accept the vote and move the live bar.
+      case "sign_message": {
+        const p = (params ?? {}) as { address?: string; message?: string };
+        if (!p.address) throw new Error("sign_message: address required");
+        if (!p.message) throw new Error("sign_message: message required");
+        const a = s.addresses.find((x) => x.address === p.address);
+        return {
+          address: p.address,
+          pubkey: a?.pubkey ?? fakeHex(`pk-${p.address}`, 64),
+          signature: fakeHex(`sig-${p.address}-${p.message}`, 128),
+        };
+      }
+
       case "list_addresses":
         return {
           addresses: s.addresses.map((a) => ({
@@ -692,6 +899,124 @@ export const devmock = {
       default:
         throw new Error(`dev-mock: method ${method} not implemented`);
     }
+  },
+
+  // ── vote server (exfer-vote) ─────────────────────────────────────────────
+  // GET helper: list / detail / my-vote / results. Real mode hits the proxy;
+  // otherwise serves MOCK_PROPOSALS + the in-memory MOCK_VOTES tally.
+  async vote_api_get(path: string): Promise<unknown> {
+    if (useRealVote()) return realVoteFetch("GET", path);
+
+    const [rawPath, query = ""] = path.split("?");
+    const qs = new URLSearchParams(query);
+
+    if (rawPath === "/proposals") {
+      return { proposals: MOCK_PROPOSALS };
+    }
+
+    // /proposals/:id  |  /proposals/:id/my-vote  |  /proposals/:id/results
+    const m = rawPath.match(/^\/proposals\/([^/]+)(\/my-vote|\/results)?$/);
+    if (m) {
+      const id = decodeURIComponent(m[1]);
+      const sub = m[2];
+      const p = mockProposalById(id);
+      if (!p) throw new Error(`proposal not found: ${id}`);
+
+      if (sub === "/my-vote") {
+        const addr = qs.get("address") ?? "";
+        const v = MOCK_VOTES[addr]?.[id];
+        return v ? { option_id: v.option_id } : { option_id: null };
+      }
+
+      if (sub === "/results") {
+        return this._voteTally(id);
+      }
+
+      // detail — merge any live mock votes into the published tally so the
+      // detail view shows movement after voting in-browser.
+      return { ...p, results: this._voteTally(id) };
+    }
+
+    throw new Error(`dev-mock vote_api_get: ${path} not implemented`);
+  },
+
+  // POST helper: /votes. Verifies the request shape, snapshots a mock power,
+  // records latest-nonce-wins, and returns the credited power.
+  async vote_api_post(path: string, body: unknown): Promise<unknown> {
+    if (useRealVote()) return realVoteFetch("POST", path, body);
+
+    if (path === "/votes") {
+      const b = (body ?? {}) as { payload?: string; signature?: string; pubkey?: string };
+      if (!b.payload || !b.signature || !b.pubkey) {
+        throw new Error("vote request must carry { payload, signature, pubkey }");
+      }
+      let parsed: {
+        proposal_id?: string;
+        option_id?: string;
+        address?: string;
+        nonce?: number;
+      };
+      try {
+        parsed = JSON.parse(b.payload);
+      } catch {
+        throw new Error("payload is not valid JSON");
+      }
+      const id = parsed.proposal_id ?? "";
+      const p = mockProposalById(id);
+      if (!p) throw new Error(`proposal not found: ${id}`);
+      if (p.status !== "open") throw new Error("proposal is not open for voting");
+      if (!p.options.some((o) => o.id === parsed.option_id)) {
+        throw new Error(`unknown option: ${parsed.option_id}`);
+      }
+      const addr = parsed.address ?? "";
+      const nonce = Number(parsed.nonce ?? 0);
+
+      // latest-nonce-wins
+      const prior = MOCK_VOTES[addr]?.[id];
+      if (prior && nonce <= prior.nonce) {
+        // Stale / replay — ignore, keep the existing vote, echo its power.
+        return { power: prior.power };
+      }
+
+      // Snapshot "current balance" from the in-memory wallet state, falling
+      // back to a plausible eligible power so a non-walletd dev browser still
+      // shows a vote landing.
+      const a = loadState().addresses.find((x) => x.address === addr);
+      const power = a && a.balance > 0 ? a.balance : 12_840_000_000_000; // 128,400 EXFER
+      (MOCK_VOTES[addr] ||= {})[id] = { option_id: parsed.option_id!, nonce, power };
+      return { power };
+    }
+
+    throw new Error(`dev-mock vote_api_post: ${path} not implemented`);
+  },
+
+  // Compose the published mock tally with any in-browser votes layered on top.
+  _voteTally(id: string): unknown {
+    const p = mockProposalById(id);
+    if (!p) throw new Error(`proposal not found: ${id}`);
+    const base = p.results;
+    const byOption: Record<string, string> = {};
+    const seedByOption = (base?.by_option ?? {}) as Record<string, string>;
+    for (const opt of p.options) byOption[opt.id] = seedByOption[opt.id] ?? "0";
+    let totalPower = BigInt(base?.total_power ?? "0");
+    let totalVoters = base?.total_voters ?? 0;
+
+    for (const addr of Object.keys(MOCK_VOTES)) {
+      const v = MOCK_VOTES[addr][id];
+      if (!v) continue;
+      byOption[v.option_id] = (
+        BigInt(byOption[v.option_id] ?? "0") + BigInt(v.power)
+      ).toString();
+      totalPower += BigInt(v.power);
+      totalVoters += 1;
+    }
+    return {
+      finalized_at_height: base?.finalized_at_height ?? null,
+      spot_check_heights: base?.spot_check_heights ?? [],
+      total_voters: totalVoters,
+      total_power: totalPower.toString(),
+      by_option: byOption,
+    };
   },
 
   /// Wipe local dev state. Exposed on `window.__exferDevReset` so

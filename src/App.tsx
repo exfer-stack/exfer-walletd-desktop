@@ -20,6 +20,7 @@ import { Send } from "./pages/Send";
 import { Swap } from "./pages/Swap";
 import { Liquidity } from "./pages/Liquidity";
 import { Activity } from "./pages/Activity";
+import { Governance } from "./pages/Governance";
 import { Settings } from "./pages/Settings";
 import { SwapWatcher } from "./components/SwapWatcher";
 import { InflightProvider, useResumeTarget } from "./lib/inflight";
@@ -160,6 +161,7 @@ function Ready({
       {tab === "swap" && <Swap />}
       {tab === "liquidity" && <Liquidity />}
       {tab === "activity" && <Activity onResumeSwap={resumeSwap} />}
+      {tab === "governance" && <Governance />}
       {tab === "settings" && (
         <Settings
           onRestart={(s) => setStatus(s)}

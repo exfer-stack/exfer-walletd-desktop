@@ -10,6 +10,7 @@ export type Tab =
   | "swap"
   | "liquidity"
   | "activity"
+  | "governance"
   | "settings";
 
 /** Monochrome inline-SVG icons drawn with `currentColor`, so they
@@ -76,6 +77,14 @@ function Icon({ name }: { name: Tab }) {
           <path d="M3 12h4l3 8 4-16 3 8h4" />
         </svg>
       );
+    case "governance":
+      // Shield with a check — the "governance / verified vote" glyph.
+      return (
+        <svg {...common}>
+          <path d="M12 2l9 5v6c0 5-3.5 8-9 9-5.5-1-9-4-9-9V7z" />
+          <path d="M9 12l2 2 4-4" />
+        </svg>
+      );
     case "settings":
       return (
         <svg {...common}>
@@ -99,6 +108,7 @@ const TABS: { id: Tab }[] = [
   { id: "swap" },
   { id: "liquidity" },
   { id: "activity" },
+  { id: "governance" },
   { id: "settings" },
 ];
 

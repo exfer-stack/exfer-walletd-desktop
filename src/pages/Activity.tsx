@@ -561,7 +561,7 @@ export function Activity({
                   <th className="w-28 py-1.5 pr-2 text-right font-normal">
                     {t("act.colAmount" as MsgKey)}
                   </th>
-                  <th className="w-24 py-1.5 pr-3 text-right font-normal">
+                  <th className="w-32 py-1.5 pr-3 text-right font-normal">
                     {t("act.colStatus" as MsgKey)}
                   </th>
                 </tr>
@@ -712,7 +712,7 @@ function SwapRowItem({
           </span>
         )}
       </td>
-      <td className="w-24 py-2 pr-3 text-right align-middle">
+      <td className="w-32 py-2 pr-3 text-right align-middle">
         {unmatched ? (
           <span className="pill pill-warn">{t("swap.unmatchedTitle")}</span>
         ) : inflight ? (
@@ -765,7 +765,7 @@ function TransferRowItem({
       <td className="w-28 py-2 pr-2 text-right align-middle">
         <span className="amount text-sm text-neutral-200">{formatExfer(total)}</span>
       </td>
-      <td className="w-24 py-2 pr-3 text-right align-middle">
+      <td className="w-32 py-2 pr-3 text-right align-middle">
         <span className={`pill ${pill.cls}`}>{pill.text}</span>
       </td>
     </tr>

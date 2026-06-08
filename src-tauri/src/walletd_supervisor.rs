@@ -64,6 +64,34 @@ TiAd+cw7MH3pK+bxkCf4I038dROruAaFLw0=
 /// is always on against this pool, same as the mobile wallet. Self-signed HTTPS
 /// pinned via POOL_CA_PEM; BSC leg via the publicnode RPC default.
 pub const DEFAULT_SWAP_POOL_URL: &str = "https://64.176.231.198:8080";
+
+/// The community governance vote service (`exfer-vote`). HARD-CODED, same
+/// posture as the swap pool — the wallet is a client of a curated community
+/// service, not a configurable endpoint. The frontend reaches it only through
+/// the `vote_api_get` / `vote_api_post` commands (lib.rs), which pin the
+/// service's self-signed CA via [`VOTE_CA_PEM`] exactly like the pool client.
+/// exfer-vote runs on the Seoul node box; self-signed HTTPS on its own port.
+pub const DEFAULT_VOTE_SERVER_URL: &str = "https://64.176.231.198:8443";
+
+/// The exfer-vote (Seoul) service's self-signed TLS CA (PEM), PINNED by the
+/// vote client so the service can serve self-signed HTTPS while a MITM still
+/// can't impersonate it. This is the vote cert — DISTINCT from POOL_CA_PEM (the
+/// swap pool uses a different cert). Its SAN includes the IP 64.176.231.198 so
+/// hostname verification passes against the bare-IP base URL. Rotating it (or
+/// pointing at a publicly-trusted host) means shipping a new build.
+pub const VOTE_CA_PEM: &str = "-----BEGIN CERTIFICATE-----
+MIIBpjCCAU2gAwIBAgIUCMB6+J7/6xD6vuAwUozzHZcIp8QwCgYIKoZIzj0EAwIw
+GzEZMBcGA1UEAwwQZXhmZXItdm90ZS1zZW91bDAeFw0yNjA2MDgwNjA3MjNaFw00
+NjA2MDMwNjA3MjNaMBsxGTAXBgNVBAMMEGV4ZmVyLXZvdGUtc2VvdWwwWTATBgcq
+hkjOPQIBBggqhkjOPQMBBwNCAASan/94S76lA/AsQGfyXGOmALMWvg2+Uo1fY+Jy
+sBV/gPAum+Mn4yW0kozeBJKaG1STbGGGrJyCly/zosLEaDG4o28wbTAdBgNVHQ4E
+FgQU8V/mjuc19AUdatnaPk6XVYGmb9IwHwYDVR0jBBgwFoAU8V/mjuc19AUdatna
+Pk6XVYGmb9IwDwYDVR0TAQH/BAUwAwEB/zAaBgNVHREEEzARhwRAsOfGgglsb2Nh
+bGhvc3QwCgYIKoZIzj0EAwIDRwAwRAIgEw+iUc78uM233NLeH0uIAw4JfC8Ke70Z
+hCz5eYkCSboCIFZsW7wfX9aS5pOS0/r61dvu+RooEJMCisoky75o0yVX
+-----END CERTIFICATE-----
+";
+
 pub const DESKTOP_CONFIG_FILE: &str = "desktop-config.json";
 
 #[derive(Debug, Clone, Serialize)]
