@@ -116,9 +116,16 @@ function Svg({
 
 const IconWallet = (p: { size?: number; className?: string }) => (
   <Svg {...p}>
-    <rect x="2" y="6" width="20" height="14" rx="2.5" />
-    <path d="M16 13h.01" />
-    <path d="M2 10h20" />
+    <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H18a2 2 0 0 1 2 2v1" />
+    <path d="M3 7.5V18a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3" />
+    <path d="M16 12.5h5v4h-5a2 2 0 0 1 0-4Z" />
+  </Svg>
+);
+const IconCoins = (p: { size?: number; className?: string }) => (
+  <Svg {...p}>
+    <ellipse cx="12" cy="7.5" rx="6.5" ry="2.8" />
+    <path d="M5.5 7.5v4c0 1.55 2.9 2.8 6.5 2.8s6.5-1.25 6.5-2.8v-4" />
+    <path d="M5.5 11.5v4c0 1.55 2.9 2.8 6.5 2.8s6.5-1.25 6.5-2.8v-4" />
   </Svg>
 );
 const IconShieldCheck = (p: { size?: number; className?: string }) => (
@@ -335,10 +342,10 @@ function GovernanceList({ onOpen }: { onOpen: (id: string) => void }) {
           <IconWallet size={18} />
         </PrimerStep>
         <PrimerStep n={2} text={t("gov.primerStep2")}>
-          <IconShieldCheck size={18} />
+          <IconCoins size={18} />
         </PrimerStep>
         <PrimerStep n={3} text={t("gov.primerStep3")}>
-          <IconInfo size={18} />
+          <IconClock size={18} />
         </PrimerStep>
       </div>
 

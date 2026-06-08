@@ -78,11 +78,12 @@ function Icon({ name }: { name: Tab }) {
         </svg>
       );
     case "governance":
-      // Shield with a check — the "governance / verified vote" glyph.
+      // Ballot box with a check inside — the "vote" glyph.
       return (
         <svg {...common}>
-          <path d="M12 2l9 5v6c0 5-3.5 8-9 9-5.5-1-9-4-9-9V7z" />
-          <path d="M9 12l2 2 4-4" />
+          <rect x="3.5" y="7.5" width="17" height="13" rx="2" />
+          <path d="M8 7.5V5.2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1V7.5" />
+          <path d="m8.7 14 2.3 2.3 4.3-4.3" />
         </svg>
       );
     case "settings":

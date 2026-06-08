@@ -41,7 +41,7 @@ const EN = {
   "nav.send": "Send",
   "nav.swap": "Swap",
   "nav.activity": "Activity",
-  "nav.governance": "Governance",
+  "nav.governance": "Vote",
   "nav.settings": "Settings",
 
   // ── app shell (bootstrap / update) ─────────────────────────────────
@@ -762,7 +762,7 @@ const EN = {
   "swap.priceImpactLine": "Price impact {pct}",
 
   // ── governance / community voting ──────────────────────────────────
-  "gov.title": "Governance",
+  "gov.title": "Vote",
   "gov.subtitle": "Hold to vote — decide the future of EXFER.",
   "gov.loading": "Loading proposals…",
   "gov.loadError": "Couldn't load proposals.",
@@ -771,7 +771,7 @@ const EN = {
   // primer (one-time onboarding, 3 steps)
   "gov.primerStep1": "Pick an address to vote with",
   "gov.primerStep2": "That address needs ≥ 10,000 EXFER",
-  "gov.primerStep3": "Power set at a random time after close",
+  "gov.primerStep3": "Keep holding to keep your power",
   // sections
   "gov.sectionOpen": "Open",
   "gov.sectionUpcoming": "Upcoming",
@@ -795,7 +795,7 @@ const EN = {
   "gov.dayHour": "{d}d {h}h",
   "gov.hourMin": "{h}h {m}m",
   // detail — back / breadcrumb
-  "gov.back": "Governance",
+  "gov.back": "Vote",
   // detail — description
   "gov.viewFull": "View full description",
   "gov.viewLess": "Show less",
@@ -812,7 +812,7 @@ const EN = {
   // options
   "gov.chooseVote": "Choose your vote",
   // warnings / power
-  "gov.preVoteWarn": "After voting ends, a random time is picked to set your final voting-power share.",
+  "gov.preVoteWarn": "Keep holding your EXFER after voting — random spot-checks set your final power from your lowest balance, so selling reduces it.",
   "gov.noSpend": "Voting spends no EXFER — it only signs with your wallet.",
   "gov.thisAddressPower": "This address's power · {label}",
   "gov.votedPower": "Voted power · {label}",
@@ -875,7 +875,7 @@ const ZH: Record<MsgKey, string> = {
   "nav.send": "转账",
   "nav.swap": "兑换",
   "nav.activity": "活动",
-  "nav.governance": "治理",
+  "nav.governance": "投票",
   "nav.settings": "设置",
 
   // ── app shell ──────────────────────────────────────────────────────
@@ -1595,7 +1595,7 @@ const ZH: Record<MsgKey, string> = {
   "swap.priceImpactLine": "价格影响 {pct}",
 
   // ── 治理 / 社区投票 ────────────────────────────────────────────────
-  "gov.title": "治理",
+  "gov.title": "投票",
   "gov.subtitle": "持币就能投票,共同决定 EXFER 的方向。",
   "gov.loading": "正在加载提案…",
   "gov.loadError": "提案加载失败。",
@@ -1603,7 +1603,7 @@ const ZH: Record<MsgKey, string> = {
   "gov.empty": "暂无提案,敬请期待。",
   "gov.primerStep1": "选择地址进行投票",
   "gov.primerStep2": "该地址需 ≥ 10,000 EXFER",
-  "gov.primerStep3": "结束后随机时刻定票权",
+  "gov.primerStep3": "持续持有 EXFER,票权才有效",
   "gov.sectionOpen": "进行中",
   "gov.sectionUpcoming": "即将开始",
   "gov.sectionClosed": "已结束",
@@ -1622,7 +1622,7 @@ const ZH: Record<MsgKey, string> = {
   "gov.minutes": "{n} 分钟",
   "gov.dayHour": "{d} 天 {h} 小时",
   "gov.hourMin": "{h} 小时 {m} 分",
-  "gov.back": "治理",
+  "gov.back": "投票",
   "gov.viewFull": "查看完整说明",
   "gov.viewLess": "收起",
   "gov.voteWithAddress": "用哪个地址投票",
@@ -1635,7 +1635,7 @@ const ZH: Record<MsgKey, string> = {
   "gov.eligible": "达标",
   "gov.current": "当前",
   "gov.chooseVote": "选择你的票",
-  "gov.preVoteWarn": "投票结束后将随机抽取时间点确定最终票权份额。",
+  "gov.preVoteWarn": "投票后请持续持有 EXFER:结束后会随机抽查,按最低余额计最终票权,卖出会减少票权。",
   "gov.noSpend": "投票不消耗你的 EXFER,只用钱包签名。",
   "gov.thisAddressPower": "此地址票权 · {label}",
   "gov.votedPower": "已投票权 · {label}",
