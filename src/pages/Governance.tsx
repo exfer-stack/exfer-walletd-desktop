@@ -35,6 +35,9 @@ import {
   submitVote,
   mediaUrl,
   fetchMediaBytes,
+  cachedProposals,
+  cachedProposal,
+  cachedResults,
   type Proposal,
   type VoteResult,
   type I18nText,
@@ -282,7 +285,10 @@ export function Governance() {
 
 function GovernanceList({ onOpen }: { onOpen: (id: string) => void }) {
   const { t, lang } = useT();
-  const [proposals, setProposals] = useState<Proposal[] | null>(null);
+  // Seed from the SWR cache so re-entering the tab paints instantly; the fetch
+  // below still refreshes in the background. Only the very first ever load
+  // (empty cache) shows the loading state.
+  const [proposals, setProposals] = useState<Proposal[] | null>(() => cachedProposals());
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -560,8 +566,11 @@ function ProposalDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const toast = useToast();
   const { balance } = useWallet();
 
-  const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [results, setResults] = useState<VoteResult | null>(null);
+  // Seed from the SWR cache so reopening a proposal paints instantly (the
+  // loadProposal() below refreshes in the background); only a truly-cold open
+  // shows the loading state.
+  const [proposal, setProposal] = useState<Proposal | null>(() => cachedProposal(id));
+  const [results, setResults] = useState<VoteResult | null>(() => cachedResults(id));
   const [resultsAt, setResultsAt] = useState<number>(Date.now());
   const [error, setError] = useState<string | null>(null);
 
@@ -926,9 +935,14 @@ function ProposalDetail({ id, onBack }: { id: string; onBack: () => void }) {
               })}
 
               {/* pre-vote warning */}
-              <div className="mb-4 mt-5 flex items-center gap-2.5 banner-warn font-semibold">
+              <div className="mb-3 mt-5 flex items-center gap-2.5 banner-warn font-semibold">
                 <IconWarn size={16} className="flex-none text-amber-300" />
                 <span>{t("gov.preVoteWarn")}</span>
+              </div>
+
+              {/* reassurance: voting costs no EXFER */}
+              <div className="mb-4 text-center text-xs leading-relaxed text-neutral-500">
+                {t("gov.noSpend")}
               </div>
 
               {/* primary action */}

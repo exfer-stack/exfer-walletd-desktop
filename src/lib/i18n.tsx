@@ -813,6 +813,7 @@ const EN = {
   "gov.chooseVote": "Choose your vote",
   // warnings / power
   "gov.preVoteWarn": "After voting ends, a random time is picked to set your final voting-power share.",
+  "gov.noSpend": "Voting spends no EXFER — it only signs with your wallet.",
   "gov.thisAddressPower": "This address's power · {label}",
   "gov.votedPower": "Voted power · {label}",
   // action
@@ -1635,6 +1636,7 @@ const ZH: Record<MsgKey, string> = {
   "gov.current": "当前",
   "gov.chooseVote": "选择你的票",
   "gov.preVoteWarn": "投票结束后将随机抽取时间点确定最终票权份额。",
+  "gov.noSpend": "投票不消耗你的 EXFER,只用钱包签名。",
   "gov.thisAddressPower": "此地址票权 · {label}",
   "gov.votedPower": "已投票权 · {label}",
   "gov.voteAs": "用「{label}」投「{option}」",
