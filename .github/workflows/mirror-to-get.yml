@@ -1,0 +1,62 @@
+name: Mirror to downloads hub
+
+# This repo is private, so desktop installers aren't publicly downloadable on
+# their own. When a desktop Release is PUBLISHED, mirror its installers into the
+# public downloads hub (exfer-stack/get) as a `desktop-vX.Y.Z` release — the
+# desktop counterpart of the Android .apk/.aab mirror in the mobile repo's
+# release.yml. Use the workflow_dispatch trigger (pass the tag) to backfill an
+# already-published release.
+#
+# Desktop builds are a 3-platform matrix, so unlike mobile (single build job)
+# the mirror can't live inside the build step — it runs here after the Release
+# is assembled and pulls the finished installers off the Release.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to mirror (e.g. v0.16.10)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    name: Mirror desktop installers to exfer-stack/get
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror to the downloads hub
+        env:
+          SRC_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GET_TOKEN: ${{ secrets.GET_MIRROR_TOKEN }}
+        run: |
+          set -eu
+          # GET_MIRROR_TOKEN is an org token with contents:write on `get`; the
+          # step no-ops if it's unset (mirrors the mobile repo's behaviour).
+          if [ -z "${GET_TOKEN:-}" ]; then echo "GET_MIRROR_TOKEN unset — skipping mirror"; exit 0; fi
+          TAG="${{ github.event.inputs.tag || github.event.release.tag_name }}"
+          if [ -z "${TAG:-}" ]; then echo "no tag to mirror"; exit 1; fi
+
+          mkdir -p dist
+          # Pull the published installers off THIS (private) repo's Release.
+          GH_TOKEN="$SRC_TOKEN" gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist
+          # latest.json is the in-app updater manifest (it points back at this
+          # repo's Release URLs), not a download-hub artifact — drop it.
+          rm -f dist/latest.json
+          shopt -s nullglob
+          files=( dist/* )
+          if [ ${#files[@]} -eq 0 ]; then echo "no artifacts to mirror"; exit 0; fi
+
+          DTAG="desktop-${TAG}"
+          if GH_TOKEN="$GET_TOKEN" gh release view "$DTAG" --repo exfer-stack/get >/dev/null 2>&1; then
+            GH_TOKEN="$GET_TOKEN" gh release upload "$DTAG" "${files[@]}" --repo exfer-stack/get --clobber
+          else
+            GH_TOKEN="$GET_TOKEN" gh release create "$DTAG" "${files[@]}" --repo exfer-stack/get \
+              --title "Desktop Wallet ${TAG}" \
+              --notes "Desktop build mirrored from the private exfer-walletd-desktop repo so it's publicly downloadable. dmg (macOS) / exe + msi (Windows) / AppImage + deb + rpm (Linux)."
+          fi
+          # Nudge the hub to refresh its releases index right away.
+          GH_TOKEN="$GET_TOKEN" gh api repos/exfer-stack/get/dispatches -f event_type=refresh-releases
