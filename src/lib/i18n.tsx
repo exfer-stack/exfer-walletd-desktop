@@ -771,7 +771,7 @@ const EN = {
   // primer (one-time onboarding, 3 steps)
   "gov.primerStep1": "Pick an address to vote with",
   "gov.primerStep2": "That address needs ≥ 10,000 EXFER",
-  "gov.primerStep3": "Final power share is set at a random time after voting ends",
+  "gov.primerStep3": "Power set at a random time after close",
   // sections
   "gov.sectionOpen": "Open",
   "gov.sectionUpcoming": "Upcoming",
@@ -1603,7 +1603,7 @@ const ZH: Record<MsgKey, string> = {
   "gov.empty": "暂无提案,敬请期待。",
   "gov.primerStep1": "选择地址进行投票",
   "gov.primerStep2": "该地址需 ≥ 10,000 EXFER",
-  "gov.primerStep3": "结束后随机时间点确定最终票权份额",
+  "gov.primerStep3": "结束后随机时刻定票权",
   "gov.sectionOpen": "进行中",
   "gov.sectionUpcoming": "即将开始",
   "gov.sectionClosed": "已结束",
