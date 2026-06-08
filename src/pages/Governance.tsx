@@ -24,6 +24,7 @@ import { useT, type MsgKey } from "../lib/i18n";
 import { useWallet } from "../lib/wallet";
 import { getLabel, shortAddress } from "../lib/labels";
 import { isHidden } from "../lib/hidden";
+import { PendingChip, netPending } from "../components/PendingChip";
 import { useToast } from "../lib/toast";
 import { devmock } from "../lib/devmock";
 import { humanizeError } from "../lib/errors";
@@ -220,7 +221,8 @@ interface AddrPower {
   address: string;
   label: string;
   short: string;
-  power: number; // exfers
+  power: number; // exfers (CONFIRMED balance — what actually counts as power)
+  pending: number; // unconfirmed incoming exfers — informational only
   eligible: boolean;
   voted: boolean; // already voted on THIS proposal
 }
@@ -616,6 +618,7 @@ function ProposalDetail({ id, onBack }: { id: string; onBack: () => void }) {
         label,
         short: shortAddress(e.address, 6, 4),
         power: e.balance,
+        pending: netPending(e),
         eligible: e.balance >= minPower,
         voted: !!votesByAddr[e.address],
       };
@@ -981,6 +984,7 @@ function ProposalDetail({ id, onBack }: { id: string; onBack: () => void }) {
             <PowerCard
               label={selected.label}
               power={selected.power}
+              pending={selected.pending}
               voted={hasVoted}
               t={t}
             />
@@ -1573,11 +1577,13 @@ function AddressSelector({
 function PowerCard({
   label,
   power,
+  pending,
   voted,
   t,
 }: {
   label: string;
   power: number;
+  pending: number;
   voted: boolean;
   t: (k: MsgKey, v?: Record<string, string | number>) => string;
 }) {
@@ -1587,8 +1593,11 @@ function PowerCard({
         <IconShieldCheck size={20} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-xs text-neutral-400">
+        <span className="flex items-center gap-1.5 text-xs text-neutral-400">
           {voted ? t("gov.votedPower", { label }) : t("gov.thisAddressPower", { label })}
+          {/* Unconfirmed incoming — power above is confirmed only; this just
+              signals more is on the way (won't count until it confirms). */}
+          <PendingChip amount={pending} />
         </span>
         <span className="mono mt-0.5 block text-2xl font-semibold leading-tight text-neutral-50">
           {fmtExfer(power)}{" "}

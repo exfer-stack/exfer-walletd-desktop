@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { rpc, formatExfer, MAX_ADDRESSES } from "../lib/rpc";
 import type { GeneratedAddress } from "../lib/types";
 import { CopyButton } from "../components/CopyButton";
+import { PendingChip, netPending } from "../components/PendingChip";
 import { getLabel, setLabel, shortAddress } from "../lib/labels";
 import { isHidden } from "../lib/hidden";
 import { useWallet } from "../lib/wallet";
@@ -172,8 +173,9 @@ export function Receive() {
                           </code>
                         ) : null}
                       </div>
-                      <div className="amount text-right text-sm">
-                        {formatExfer(e.balance)}
+                      <div className="flex items-center gap-1.5 text-right text-sm">
+                        <PendingChip amount={netPending(e)} />
+                        <span className="amount">{formatExfer(e.balance)}</span>
                       </div>
                     </div>
                   </button>
@@ -216,8 +218,11 @@ export function Receive() {
                 <div className="text-base font-medium text-neutral-100">
                   {getLabel(selected) ?? shortAddress(selected)}
                 </div>
-                <div className="amount-md">
-                  {selectedEntry ? formatExfer(selectedEntry.balance) : ""}
+                <div className="flex items-center justify-center gap-2">
+                  <div className="amount-md">
+                    {selectedEntry ? formatExfer(selectedEntry.balance) : ""}
+                  </div>
+                  {selectedEntry && <PendingChip amount={netPending(selectedEntry)} />}
                 </div>
               </div>
 

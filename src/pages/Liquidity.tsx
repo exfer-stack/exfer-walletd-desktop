@@ -41,6 +41,7 @@ import { addLpOp, removeLpOp } from "../lib/inflightLp";
 import { useResumeTarget } from "../lib/inflight";
 import { SetupBnbWalletModal } from "../components/SetupBnbWalletModal";
 import { StagedStepper, PairCoins } from "../components/anim";
+import { PendingChip, netPending } from "../components/PendingChip";
 
 const FEE_RATE = 1; // exfers/byte, matches Send
 // The BNB leg is swept from a per-request address that pays its own BSC gas, so
@@ -135,7 +136,11 @@ export function Liquidity() {
   // (a wallet can hold many), defaulting to the first funded address.
   const [fromAddr, setFromAddr] = useState("");
   const exferAddr = fromAddr || defaultAddr;
-  const exferBal = entries.find((e) => e.address === exferAddr)?.balance ?? 0;
+  const exferEntry = entries.find((e) => e.address === exferAddr);
+  const exferBal = exferEntry?.balance ?? 0;
+  // Unconfirmed incoming on the funding address — informational only; the
+  // deposit ceiling (maxAdd / enoughExfer) still uses confirmed balance.
+  const exferPending = exferEntry ? netPending(exferEntry) : 0;
 
   const [tab, setTab] = useState<Tab>("add");
   const [phase, setPhase] = useState<Phase>("form");
@@ -654,10 +659,13 @@ export function Liquidity() {
                     inputMode="decimal"
                   />
                   <div className="mt-1.5 flex items-baseline justify-between text-xs">
-                    <span className={amountValid && !enoughExfer ? "text-amber-300" : "text-neutral-500"}>
-                      {amountValid && !enoughExfer
-                        ? t("lp.needExfer")
-                        : `${t("lp.balance")}: ${formatBalanceCompact(exferBal)}`}
+                    <span className="flex items-center gap-1.5">
+                      <span className={amountValid && !enoughExfer ? "text-amber-300" : "text-neutral-500"}>
+                        {amountValid && !enoughExfer
+                          ? t("lp.needExfer")
+                          : `${t("lp.balance")}: ${formatBalanceCompact(exferBal)}`}
+                      </span>
+                      <PendingChip amount={exferPending} />
                     </span>
                     {minExfer > 0 && (
                       <span

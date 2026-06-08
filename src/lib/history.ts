@@ -58,6 +58,13 @@ export function clearHistory() {
   localStorage.removeItem(TXSTATUS_KEY);
 }
 
+// Permanently drop one local record by tx id. Used by the activity merge to
+// prune a "zombie" send the node positively reports as unknown (dropped/
+// evicted) so it can't keep reading "in mempool" forever.
+export function dropHistory(tx_id: string) {
+  save(load().filter((h) => h.tx_id !== tx_id));
+}
+
 // Cache of confirmed transactions. Once a tx is mined into a block its
 // height is final (barring a deep reorg, which we don't surface), so we
 // persist it. The Activity page seeds from this on mount instead of

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { rpc, formatExfer } from "../lib/rpc";
+import { clearHistory } from "../lib/history";
+import { useWallet } from "../lib/wallet";
+import { isHidden } from "../lib/hidden";
 import {
-  listHistory,
-  clearHistory,
-  loadConfirmed,
-  rememberConfirmed,
-  type HistoryEntry,
-} from "../lib/history";
+  buildActivityFeed,
+  type ActivityItem,
+} from "../lib/activity";
+import type { WalletEntry } from "../lib/types";
 import { getLabel, shortAddress } from "../lib/labels";
 import { openExternal } from "../lib/openExternal";
 import { CopyButton } from "../components/CopyButton";
@@ -93,6 +94,12 @@ const IconArrowUp = (p: { className?: string }) => (
     <path d="m5 12 7-7 7 7" />
   </Svg>
 );
+const IconArrowDown = (p: { className?: string }) => (
+  <Svg size={14} className={p.className}>
+    <path d="M12 5v14" />
+    <path d="m19 12-7 7-7-7" />
+  </Svg>
+);
 const IconArrowUpRight = (p: { className?: string }) => (
   <Svg size={14} className={p.className}>
     <path d="M7 17 17 7" />
@@ -134,12 +141,6 @@ function HashLine({
       </a>
     </div>
   );
-}
-
-interface TxStatus {
-  in_mempool: boolean;
-  block_height?: number;
-  block_id?: string;
 }
 
 /** A swap record from walletd's journal (serde snake_case). A cross-chain swap
@@ -204,18 +205,18 @@ function swapPill(status: string): { key: AnyKey; cls: string } {
   }
 }
 
-/** Transfer status → pill text + class. Pulled out so both the row and the
- *  detail panel share one vocabulary. */
+/** Transfer status → pill text + class. Derived from the merged ActivityItem
+ *  (indexer/mempool/local), so both the row and the detail panel share one
+ *  vocabulary for incoming AND outgoing transfers. */
 function transferPill(
   t: (k: MsgKey, vars?: Record<string, string | number>) => string,
-  status: TxStatus | "error" | undefined,
+  item: ActivityItem,
 ): { text: string; cls: string } {
-  if (status === "error") return { text: t("act.pillError"), cls: "pill-warn" };
-  if (!status) return { text: t("act.pillChecking"), cls: "pill-info" };
-  if (status.block_height != null)
-    return { text: t("act.pillConfirmed", { h: status.block_height }), cls: "pill-success" };
-  if (status.in_mempool) return { text: t("act.pillMempool"), cls: "pill-info" };
-  return { text: t("act.pillNotFound"), cls: "pill-warn" };
+  if (item.status === "confirmed" && item.block_height != null)
+    return { text: t("act.pillConfirmed", { h: item.block_height }), cls: "pill-success" };
+  if (item.status === "confirmed")
+    return { text: t("act.pillConfirmedNoH" as MsgKey), cls: "pill-success" };
+  return { text: t("act.pillMempool"), cls: "pill-info" };
 }
 
 /** mm-dd HH:MM in Geist Mono — the dense row timestamp. */
@@ -225,9 +226,11 @@ function fmtStamp(d: Date): string {
 }
 
 // A unified, time-sorted row: a swap or a transfer. The table renders both.
+// Transfers are now ActivityItems from the merged indexer + mempool + local
+// feed (so incoming deposits appear), not local-only send records.
 type Item =
   | { kind: "swap"; id: string; ts: number; swap: SwapRow }
-  | { kind: "transfer"; id: string; ts: number; entry: HistoryEntry };
+  | { kind: "transfer"; id: string; ts: number; item: ActivityItem };
 
 export function Activity({
   onResumeSwap,
@@ -238,24 +241,47 @@ export function Activity({
   onResumeSwap?: (swapId: string) => void;
 } = {}) {
   const { t } = useT();
-  const [version, bump] = useState(0); // bump to force reload
-  const rawHistory = useMemo(listHistory, [version]);
-  // Seed from the confirmed-tx cache so already-mined transfers render as
-  // "confirmed" immediately instead of flashing "checking" on every visit.
-  const [statuses, setStatuses] = useState<Record<string, TxStatus | "error">>(
-    () => {
-      const cached = loadConfirmed();
-      const seed: Record<string, TxStatus> = {};
-      for (const [tx_id, c] of Object.entries(cached)) {
-        seed[tx_id] = { in_mempool: false, block_height: c.block_height, block_id: c.block_id };
-      }
-      return seed;
-    },
-  );
+  const { balance } = useWallet();
   const [polling, setPolling] = useState(false);
   // Two-step inline confirm for the destructive clear (avoids the unstyled
   // native confirm() dialog against the dark themed surfaces).
   const [confirmingClear, setConfirmingClear] = useState(false);
+
+  // Transfers now come from the merged indexer + mempool + local feed (see
+  // lib/activity.ts) — so INCOMING deposits appear, not just our own sends. The
+  // addresses to query are the visible (non-hidden) wallet entries.
+  const ownAddrs = useMemo(
+    () =>
+      (balance?.entries ?? [])
+        .filter((e) => !isHidden(e.address))
+        .map((e) => e.address),
+    [balance],
+  );
+  const ownKey = ownAddrs.join(",");
+  const [feed, setFeed] = useState<ActivityItem[]>([]);
+
+  // Load the feed on mount, when the wallet (address set) changes, and whenever
+  // the balance moves — a deposit/send shifts `total` or `projected`, so keying
+  // on both surfaces new activity within one provider poll / SSE push without a
+  // separate timer. Fail-soft: buildActivityFeed never throws (it degrades to
+  // the local log), so a transient outage can't blank the list.
+  async function loadFeed() {
+    if (!ownAddrs.length) {
+      setFeed([]);
+      return;
+    }
+    setPolling(true);
+    try {
+      const { items } = await buildActivityFeed(ownAddrs);
+      setFeed(items);
+    } finally {
+      setPolling(false);
+    }
+  }
+  useEffect(() => {
+    void loadFeed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownKey, balance?.total, balance?.projected]);
 
   // Cross-chain swaps live in walletd's journal, not the EXFER history log —
   // surface them as their own labeled records. swap_list throws when the swap
@@ -344,71 +370,22 @@ export function Activity({
     }
     return s;
   }, [swaps]);
-  const history = useMemo(
-    () => rawHistory.filter((h) => !swapTxIds.has(h.tx_id)),
-    [rawHistory, swapTxIds],
+  // The swap's own EXFER legs are already represented by the unified swap
+  // record, so drop them from the transfer feed (no double-count).
+  const transfers = useMemo(
+    () => feed.filter((it) => !swapTxIds.has(it.tx_id)),
+    [feed, swapTxIds],
   );
 
-  async function refreshOne(tx_id: string) {
-    try {
-      const r = await rpc<{
-        in_mempool: boolean;
-        block_height?: number;
-        block_id?: string;
-      }>("get_transaction", { tx_id });
-      setStatuses((s) => ({
-        ...s,
-        [tx_id]: {
-          in_mempool: r.in_mempool,
-          block_height: r.block_height,
-          block_id: r.block_id,
-        },
-      }));
-      // A height is final — cache it so future visits skip the lookup.
-      if (r.block_height != null) {
-        rememberConfirmed(tx_id, r.block_height, r.block_id);
-      }
-    } catch {
-      setStatuses((s) => ({ ...s, [tx_id]: "error" }));
-    }
-  }
-
-  async function refreshAll(force = false) {
-    setPolling(true);
-    try {
-      const targets = force
-        ? history
-        : history.filter((h) => {
-            const st = statuses[h.tx_id];
-            // Skip rows already known confirmed (seeded from cache).
-            return !(st && st !== "error" && st.block_height != null);
-          });
-      await Promise.all(targets.map((h) => refreshOne(h.tx_id)));
-    } finally {
-      setPolling(false);
-    }
-  }
-
-  useEffect(() => {
-    refreshAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Auto-poll while any tx hasn't confirmed yet. get_transaction is a
-  // point lookup (not the UTXO-scan rate-limit bucket), so a 15s cadence
+  // Auto-poll while any transfer is still pending. buildActivityFeed resolves
+  // status via the indexer + a point get_transaction lookup, so a 15s cadence
   // is safe. Stops once everything is confirmed/settled.
   useEffect(() => {
-    const id = window.setInterval(() => {
-      const unsettled = history.filter((h) => {
-        const st = statuses[h.tx_id];
-        return !(st && st !== "error" && st.block_height != null);
-      });
-      if (unsettled.length === 0) return; // nothing to chase
-      unsettled.forEach((h) => refreshOne(h.tx_id));
-    }, 15_000);
+    if (!transfers.some((it) => it.status === "pending")) return; // nothing to chase
+    const id = window.setInterval(() => void loadFeed(), 15_000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [history, statuses]);
+  }, [transfers, ownKey]);
 
   // Filter segments: all / swaps only / transfers only.
   const [filter, setFilter] = useState<"all" | "swap" | "transfer">("all");
@@ -419,12 +396,19 @@ export function Activity({
     const list: Item[] = [];
     for (const s of swaps)
       list.push({ kind: "swap", id: `swap:${s.swap_id}`, ts: s.created_at * 1000, swap: s });
-    for (const h of history)
+    for (const it of transfers)
       list.push({
         kind: "transfer",
-        id: `tx:${h.tx_id}`,
-        ts: new Date(h.broadcast_at).getTime(),
-        entry: h,
+        id: `tx:${it.tx_id}`,
+        // Local sends carry a broadcast timestamp; confirmed-only deposits from
+        // the indexer don't — order those by block height (recent blocks first)
+        // so they slot in sensibly rather than sinking to the epoch.
+        ts: it.ts
+          ? new Date(it.ts).getTime()
+          : it.block_height != null
+            ? it.block_height
+            : 0,
+        item: it,
       });
     const inFlight = (it: Item) =>
       it.kind === "swap" && !SWAP_TERMINAL.has(it.swap.status);
@@ -435,7 +419,7 @@ export function Activity({
       return b.ts - a.ts; // then newest first
     });
     return list;
-  }, [swaps, history]);
+  }, [swaps, transfers]);
 
   const shown = useMemo(
     () => (filter === "all" ? items : items.filter((it) => it.kind === filter)),
@@ -454,10 +438,10 @@ export function Activity({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown]);
 
-  const n = history.length + swaps.length; // swaps + transfers on record
+  const n = transfers.length + swaps.length; // swaps + transfers on record
   const selItem = items.find((it) => it.id === selected) ?? null;
 
-  if (history.length === 0 && swaps.length === 0) {
+  if (transfers.length === 0 && swaps.length === 0) {
     return (
       <div className="mx-auto max-w-6xl space-y-4 p-6">
         <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
@@ -498,7 +482,7 @@ export function Activity({
           </div>
           <button
             type="button"
-            onClick={() => refreshAll(true)}
+            onClick={() => void loadFeed()}
             disabled={polling}
             title={t("act.refresh")}
             className="btn-ghost rounded-md p-1.5 text-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -510,8 +494,12 @@ export function Activity({
               <button
                 type="button"
                 onClick={() => {
+                  // Clears the local SEND log (recipient/fee detail + any
+                  // dropped zombie sends). Incoming + confirmed rows are
+                  // re-derived from the indexer on reload, so the on-chain
+                  // history isn't lost — only the local enrichment.
                   clearHistory();
-                  bump((v) => v + 1);
+                  void loadFeed();
                   setConfirmingClear(false);
                 }}
                 className="btn-danger rounded-md px-2.5 py-1 text-xs"
@@ -584,8 +572,8 @@ export function Activity({
                   ) : (
                     <TransferRowItem
                       key={it.id}
-                      entry={it.entry}
-                      status={statuses[it.entry.tx_id]}
+                      item={it.item}
+                      entries={balance?.entries ?? []}
                       selected={selected === it.id}
                       onSelect={() => setSelected(it.id)}
                     />
@@ -612,10 +600,7 @@ export function Activity({
               onResume={onResumeSwap}
             />
           ) : (
-            <TransferDetail
-              entry={selItem.entry}
-              status={statuses[selItem.entry.tx_id]}
-            />
+            <TransferDetail item={selItem.item} entries={balance?.entries ?? []} />
           )}
         </div>
       </div>
@@ -728,42 +713,82 @@ function SwapRowItem({
   );
 }
 
+type Entry = WalletEntry;
+
+/** mm-dd HH:MM for a row that has a local timestamp; "block {h}" for a
+ *  confirmed-only deposit the indexer surfaced (no wall-clock time). */
+function whenLabel(
+  t: (k: MsgKey, vars?: Record<string, string | number>) => string,
+  it: ActivityItem,
+): string {
+  if (it.ts) return fmtStamp(new Date(it.ts));
+  if (it.block_height != null) return t("act.blockShort" as MsgKey, { h: it.block_height });
+  return "";
+}
+
+/** Row description: who we received from / sent to, named when we can. */
+function transferDesc(
+  t: (k: MsgKey, vars?: Record<string, string | number>) => string,
+  it: ActivityItem,
+  entries: Entry[],
+): string {
+  if (it.kind === "received") {
+    if (it.is_coinbase) return t("act.miningReward" as MsgKey);
+    const toEntry = entries.find((e) => it.toAddresses?.includes(e.address));
+    if (toEntry) return getLabel(toEntry.address) ?? t("act.received" as MsgKey);
+    return t("act.received" as MsgKey);
+  }
+  // Sent: prefer the local-detail recipients (exact), else indexer peers.
+  const recipients = it.detail?.outputs.filter((o) => !o.is_change) ?? [];
+  if (recipients.length > 1)
+    return t("act.recipientsMany", { n: recipients.length });
+  const first = recipients[0]?.to ?? it.counterparties?.[0];
+  if (first) return getLabel(first) ?? t("act.externalAddress");
+  return t("act.externalAddress");
+}
+
 function TransferRowItem({
-  entry,
-  status,
+  item,
+  entries,
   selected,
   onSelect,
 }: {
-  entry: HistoryEntry;
-  status: TxStatus | "error" | undefined;
+  item: ActivityItem;
+  entries: Entry[];
   selected: boolean;
   onSelect: () => void;
 }) {
   const { t } = useT();
-  const dt = new Date(entry.broadcast_at);
-  const recipients = entry.outputs.filter((o) => !o.is_change);
-  const first = recipients[0];
-  const label = first ? getLabel(first.to) : undefined;
-  const desc =
-    recipients.length > 1
-      ? t("act.recipientsMany", { n: recipients.length })
-      : label ?? t("act.externalAddress");
-  const total = recipients.reduce((sum, o) => sum + o.amount, 0);
-  const pill = transferPill(t, status);
+  const received = item.kind === "received";
+  const desc = transferDesc(t, item, entries);
+  const pill = transferPill(t, item);
 
   return (
     <tr className={rowCls(selected, false)} onClick={onSelect}>
       <td className="w-7 py-2 pl-3 pr-1 align-middle text-neutral-500">
-        <IconArrowUp className="mx-auto h-3.5 w-3.5" />
+        {received ? (
+          <IconArrowDown className="mx-auto h-3.5 w-3.5 text-emerald-400" />
+        ) : (
+          <IconArrowUp className="mx-auto h-3.5 w-3.5" />
+        )}
       </td>
       <td className="w-[5.5rem] py-2 pr-2 align-middle">
-        <span className="addr-xs whitespace-nowrap text-neutral-500">{fmtStamp(dt)}</span>
+        <span className="addr-xs whitespace-nowrap text-neutral-500">
+          {whenLabel(t, item)}
+        </span>
       </td>
       <td className="py-2 pr-2 align-middle">
         <span className="block truncate text-sm text-neutral-200">{desc}</span>
       </td>
       <td className="w-28 py-2 pr-2 text-right align-middle">
-        <span className="amount text-sm text-neutral-200">{formatExfer(total)}</span>
+        <span
+          className={
+            "amount text-sm " + (received ? "text-emerald-400" : "text-neutral-200")
+          }
+        >
+          {received ? "+" : "−"}
+          {formatExfer(item.amount)}
+        </span>
       </td>
       <td className="w-32 py-2 pr-3 text-right align-middle">
         <span className={`pill ${pill.cls}`}>{pill.text}</span>
@@ -923,62 +948,87 @@ function SwapDetail({
 }
 
 function TransferDetail({
-  entry,
-  status,
+  item,
+  entries,
 }: {
-  entry: HistoryEntry;
-  status: TxStatus | "error" | undefined;
+  item: ActivityItem;
+  entries: Entry[];
 }) {
   const { t } = useT();
-  const dt = new Date(entry.broadcast_at);
-  const recipients = entry.outputs.filter((o) => !o.is_change);
-  const change = entry.outputs.find((o) => o.is_change);
-  const total = recipients.reduce((sum, o) => sum + o.amount, 0);
-  const pill = transferPill(t, status);
-  const first = recipients[0];
-  const label = first ? getLabel(first.to) : undefined;
-  const title =
-    recipients.length > 1
-      ? t("act.recipientsMany", { n: recipients.length })
-      : label ?? t("act.externalAddress");
+  const received = item.kind === "received";
+  const detail = item.detail; // rich local send record (recipients/fee/change)
+  const pill = transferPill(t, item);
+  const title = transferDesc(t, item, entries);
+  const when = item.ts
+    ? `${new Date(item.ts).toLocaleDateString()} · ${new Date(item.ts).toLocaleTimeString()}`
+    : item.block_height != null
+      ? t("act.blockShort" as MsgKey, { h: item.block_height })
+      : "";
+
+  // Received: senders come natively from the indexer's counterparties.
+  const senders = received ? item.counterparties ?? [] : [];
+  // Received: which of our addresses got credited.
+  const toAddr = received ? item.toAddresses?.[0] : undefined;
+  // Sent: prefer the exact local recipients; else the indexer's peer recipients.
+  const localRecips = detail?.outputs.filter((o) => !o.is_change) ?? [];
+  const change = detail?.outputs.find((o) => o.is_change);
+  const peerRecips = received
+    ? []
+    : localRecips.length > 0
+      ? localRecips.map((o) => o.to)
+      : (item.counterparties ?? []).filter(
+          (a) => !entries.some((e) => e.address === a),
+        );
 
   return (
     <div className="card-padded space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="truncate text-sm font-semibold text-neutral-100">{title}</div>
+        <div className="truncate text-sm font-semibold text-neutral-100">
+          {received ? t("act.received" as MsgKey) : title}
+        </div>
         <span className={`pill ${pill.cls}`}>{pill.text}</span>
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-        <Row label={t("act.amount")} value={formatExfer(total)} />
-        <Row label={t("act.fee")} value={formatExfer(entry.fee)} />
-        {change && <Row label={t("act.change")} value={formatExfer(change.amount)} />}
         <Row
-          label={t("act.swapCreated")}
-          value={`${dt.toLocaleDateString()} · ${dt.toLocaleTimeString()}`}
-          className="col-span-2"
+          label={t("act.amount")}
+          value={`${received ? "+" : "−"}${formatExfer(item.amount)}`}
         />
+        {detail && <Row label={t("act.fee")} value={formatExfer(detail.fee)} />}
+        {change && <Row label={t("act.change")} value={formatExfer(change.amount)} />}
+        {when && (
+          <Row label={t("act.swapCreated")} value={when} className="col-span-2" />
+        )}
       </div>
 
       <div className="space-y-2 border-t border-neutral-800 pt-3">
         <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
           {t("act.onChain")}
         </div>
-        <HashLine label={t("act.txId")} value={entry.tx_id} href={txUrl(entry.tx_id)} />
-        {recipients.map((o, i) => (
-          <HashLine
-            key={i}
-            label={t("act.sentTo")}
-            value={o.to}
-            href={addrUrl(o.to)}
-          />
-        ))}
+        <HashLine label={t("act.txId")} value={item.tx_id} href={txUrl(item.tx_id)} />
+        {received
+          ? senders.map((a, i) => (
+              <HashLine
+                key={i}
+                label={t("act.from" as MsgKey)}
+                value={a}
+                href={addrUrl(a)}
+              />
+            ))
+          : peerRecips.map((a, i) => (
+              <HashLine key={i} label={t("act.sentTo")} value={a} href={addrUrl(a)} />
+            ))}
+        {received && toAddr && (
+          <HashLine label={t("act.to" as MsgKey)} value={toAddr} href={addrUrl(toAddr)} />
+        )}
       </div>
 
-      <div className="addr-xs text-neutral-600">
-        {t("act.ioValue", { in: entry.inputs.length, out: entry.outputs.length })} ·{" "}
-        {t("act.sizeBytes", { size: entry.size })}
-      </div>
+      {detail && (
+        <div className="addr-xs text-neutral-600">
+          {t("act.ioValue", { in: detail.inputs.length, out: detail.outputs.length })} ·{" "}
+          {t("act.sizeBytes", { size: detail.size })}
+        </div>
+      )}
     </div>
   );
 }

@@ -55,6 +55,7 @@ import { useBnbAsset } from "../lib/bnb";
 import { BnbAccount } from "../components/BnbAccount";
 import { StagedStepper, SuccessMark, ExferMark } from "../components/anim";
 import { PriceChart } from "../components/PriceChart";
+import { PendingChip, netPending } from "../components/PendingChip";
 import { useResumeTarget } from "../lib/inflight";
 
 // Permissive decimal: BNB carries up to 18 fractional digits, EXFER up to 8.
@@ -382,6 +383,12 @@ export function Swap() {
     const feeReserve = Math.max(5_000_000, (e?.utxo_count ?? 1) * 500);
     return Math.max(0, bal - feeReserve);
   }, [sell, pickList, fromAddr]);
+  // Unconfirmed incoming on the pay-from address — purely informational ("more
+  // is on the way"); sellMax above still uses confirmed balance only.
+  const fromPending = useMemo(() => {
+    const e = pickList.find((x) => x.address === fromAddr);
+    return e ? netPending(e) : 0;
+  }, [pickList, fromAddr]);
   // BNB balance in human units — drives the buy-side "Balance:" line.
   const bnbHuman = useMemo(() => {
     if (!bnbWei) return 0;
@@ -705,11 +712,12 @@ export function Swap() {
                       <TokenChip unit={sendUnit} />
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-                      <span className="text-neutral-500">
+                      <span className="flex items-center gap-1.5 text-neutral-500">
                         {t("lp.balance")}:{" "}
                         {sell
                           ? formatBalanceCompact(sellMax)
                           : `${fmtAmt(String(bnbHuman), 4)} BNB`}
+                        {sell && <PendingChip amount={fromPending} />}
                       </span>
                       {minAmount > 0 && (
                         <span
@@ -969,8 +977,9 @@ function AddrPicker({
           </code>
         )}
       </span>
-      <span className="amount shrink-0 text-sm text-neutral-300">
-        {formatBalanceCompact(e.balance)}
+      <span className="flex shrink-0 items-center gap-1.5 text-sm">
+        <PendingChip amount={netPending(e)} />
+        <span className="amount text-neutral-300">{formatBalanceCompact(e.balance)}</span>
       </span>
     </>
   );
@@ -1099,7 +1108,7 @@ let poolInfoCache: PoolInfo | null = null;
 let engineOnCache: boolean | null = null;
 
 /** A compact 24h-change pill — green up / red down / muted flat. */
-function ChangePill({ pct }: { pct: number }) {
+export function ChangePill({ pct }: { pct: number }) {
   const up = pct > 0.05;
   const down = pct < -0.05;
   const tone = up
@@ -1122,7 +1131,7 @@ function ChangePill({ pct }: { pct: number }) {
 /** One market-stat cell: a small muted label over a tabular value. An optional
  *  `sub` rides the same baseline as a quiet qualifier (unit / count) so a
  *  composite figure still reads as ONE strong number, never a wrapped dump. */
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+export function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[11px] font-medium text-neutral-500">{label}</span>
@@ -1136,7 +1145,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-function MarketHeader({
+export function MarketHeader({
   price,
   poolInfo,
   bnbUsd,
@@ -1371,7 +1380,7 @@ function MarketHeader({
   );
 }
 
-function TokenChip({ unit }: { unit: "EXFER" | "BNB" }) {
+export function TokenChip({ unit }: { unit: "EXFER" | "BNB" }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-neutral-100">
       {unit === "EXFER" ? <ExferMark size={20} /> : <BnbMark size={20} />}
@@ -1405,7 +1414,7 @@ function BnbMark({ size = 20 }: { size?: number }) {
 
 /** 25/50/75/Max quick-fill chips. `max` is the spendable ceiling in the pay
  *  unit; each chip sets the amount to that fraction (Max = the whole ceiling). */
-function PercentChips({
+export function PercentChips({
   max,
   onPick,
 }: {
