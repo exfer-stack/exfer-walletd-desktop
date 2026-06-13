@@ -1,7 +1,6 @@
 // Community voting / governance — desktop.
 //
-// Matches the approved simplified DESKTOP mockups
-// (crypto-due-dil/voting-mockups/desktop/*.html):
+// Matches the approved simplified DESKTOP voting mockups:
 //   • a list view with a one-time 3-step primer, sections
 //     (Open / Upcoming / Closed), and proposal cards carrying a live
 //     mini-result strip,
