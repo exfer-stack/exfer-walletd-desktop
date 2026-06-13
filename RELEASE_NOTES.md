@@ -6,9 +6,11 @@
 
 ## What's new
 
-- **Activity now shows incoming transactions.** Received funds — and your full
-  on-chain history — show up in Activity; previously only the transfers you sent
-  were listed.
-- A small **"confirming" hint** on Receive / Swap / Liquidity / Vote when a
-  deposit hasn't confirmed yet, so those screens line up with your home total.
-  Spendable balance and voting power still use confirmed funds only.
+- **Import wallet.key files that the phone app accepts.** The desktop app now
+  takes the same key files as Exfer mobile — including raw (unencrypted)
+  private-key files — so a key that imported on your phone imports here too.
+  Files that previously failed with a "wrong length" or "incorrect password"
+  message now go in, and the password field is optional for unencrypted keys.
+- **BNB key export now shows your recovery phrase**, not just the private key,
+  so you can back up the phrase again from the export screen.
+- Small fixes and consistency improvements.
