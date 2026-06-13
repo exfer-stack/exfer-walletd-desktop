@@ -32,7 +32,7 @@ pub const KEYRING_SERVICE: &str = "com.exfer.walletd-desktop";
 // (get_address_mempool, get_balances, get_address_utxos_batch,
 // get_output_spent_by) AND Tier-2 SSE push at POST /sse, so the
 // wallet observes incoming pending balance within ~RTT instead of
-// the 2 s poll interval. Tokyo region.
+// the 2 s poll interval.
 pub const DEFAULT_NODE_RPC: &str = "http://198.13.38.245:9334";
 // Co-located exfer-indexer (public, anonymous) that answers
 // get_address_history — the authoritative per-address confirmed timeline that
@@ -70,10 +70,10 @@ pub const DEFAULT_SWAP_POOL_URL: &str = "https://64.176.231.198:8080";
 /// service, not a configurable endpoint. The frontend reaches it only through
 /// the `vote_api_get` / `vote_api_post` commands (lib.rs), which pin the
 /// service's self-signed CA via [`VOTE_CA_PEM`] exactly like the pool client.
-/// exfer-vote runs on the Seoul node box; self-signed HTTPS on its own port.
+/// exfer-vote runs on its own host; self-signed HTTPS on its own port.
 pub const DEFAULT_VOTE_SERVER_URL: &str = "https://64.176.231.198:8443";
 
-/// The exfer-vote (Seoul) service's self-signed TLS CA (PEM), PINNED by the
+/// The exfer-vote service's self-signed TLS CA (PEM), PINNED by the
 /// vote client so the service can serve self-signed HTTPS while a MITM still
 /// can't impersonate it. This is the vote cert — DISTINCT from POOL_CA_PEM (the
 /// swap pool uses a different cert). Its SAN includes the IP 64.176.231.198 so
