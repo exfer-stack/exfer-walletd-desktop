@@ -160,3 +160,12 @@ export function importBscMnemonic(
   });
 }
 
+/** Reveal the BNB wallet's recovery phrase. Errors for a raw-key-imported
+ *  BNB wallet, which has no phrase — callers best-effort it and fall back to
+ *  showing the private key only. */
+export function revealBscMnemonic(
+  passphrase: string,
+): Promise<{ mnemonic: string[] }> {
+  return rpc("bsc_reveal_mnemonic", { passphrase });
+}
+
