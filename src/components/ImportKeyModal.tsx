@@ -49,10 +49,9 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
       setError(t("imp.errNoFile"));
       return;
     }
-    if (!filePassword) {
-      setError(t("imp.errNoPass"));
-      return;
-    }
+    // Password is optional: a raw / unencrypted key file imports with it
+    // blank. Only encrypted EXFK files need one (and a wrong/empty one
+    // there surfaces as a decrypt error from the backend).
     setPending(true);
     try {
       const address = await importWalletKey({
@@ -148,7 +147,7 @@ export function ImportKeyModal({ onClose, onImported }: Props) {
           <button
             type="submit"
             className="btn"
-            disabled={pending || !path || !filePassword}
+            disabled={pending || !path}
           >
             {pending ? t("imp.importing") : t("imp.import")}
           </button>

@@ -241,7 +241,10 @@ async fn import_wallet_key(
     }
     let buf = std::fs::read(&path).map_err(|e| format!("reading {path}: {e}"))?;
 
-    let mut secret = export_key::parse_exfk(&buf, file_password.as_bytes())?;
+    // Accept an encrypted EXFK file, a raw 32-byte secret, or a 64-hex
+    // dump — the same set the mobile app takes, so a file that imports on
+    // the phone imports here too. Password is only used for the EXFK shape.
+    let mut secret = export_key::parse_key_file(&buf, file_password.as_bytes())?;
 
     let (client, conn) = {
         let inner = ctx.inner.lock().await;
