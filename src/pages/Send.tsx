@@ -18,14 +18,13 @@ import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
 import { isHidden } from "../lib/hidden";
 import { useT } from "../lib/i18n";
+import { isValidAddress, addressKey } from "../lib/address";
 import { humanizeError } from "../lib/errors";
 
 interface OutputRow {
   to: string;
   amount: string;
 }
-
-const HEX64 = /^[0-9a-fA-F]{64}$/;
 
 export function Send() {
   const { balance, refresh, utxos, refreshUtxos, suspendPolling } = useWallet();
@@ -64,7 +63,7 @@ export function Send() {
   const validOutputs = useMemo(() => {
     const out: { to: string; amount: number }[] = [];
     for (const o of outputs) {
-      if (!HEX64.test(o.to.trim())) return [];
+      if (!isValidAddress(o.to)) return [];
       try {
         out.push({
           to: o.to.trim().toLowerCase(),
@@ -183,7 +182,7 @@ export function Send() {
     const parsedOutputs: { to: string; amount: number }[] = [];
     for (let i = 0; i < outputs.length; i++) {
       const o = outputs[i];
-      if (!HEX64.test(o.to.trim())) {
+      if (!isValidAddress(o.to)) {
         setError(t("snd.recipBadAddr", { n: i + 1 }));
         return;
       }
@@ -252,7 +251,7 @@ export function Send() {
   // a recipient equal to the From address usually means a copy-paste slip.
   const selfSend =
     !!from &&
-    outputs.some((o) => o.to.trim().toLowerCase() === from.toLowerCase());
+    outputs.some((o) => isValidAddress(o.to) && addressKey(o.to) === addressKey(from));
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6 fade-in">
@@ -462,7 +461,7 @@ function RecipientRow({
   // Inline per-row validation: a non-empty address that isn't 64 hex tints
   // this row's input red. Empty (not yet typed) stays neutral.
   const addrInvalid =
-    value.to.trim().length > 0 && !HEX64.test(value.to.trim());
+    value.to.trim().length > 0 && !isValidAddress(value.to);
   return (
     <div className="grid grid-cols-[1.6fr_minmax(120px,0.8fr)_auto] items-center gap-2">
       <input
