@@ -6,11 +6,12 @@
 
 ## What's new
 
-- **Import wallet.key files that the phone app accepts.** The desktop app now
-  takes the same key files as Exfer mobile — including raw (unencrypted)
-  private-key files — so a key that imported on your phone imports here too.
-  Files that previously failed with a "wrong length" or "incorrect password"
-  message now go in, and the password field is optional for unencrypted keys.
-- **BNB key export now shows your recovery phrase**, not just the private key,
-  so you can back up the phrase again from the export screen.
+- Automatic recovery for interrupted swaps — now both directions. If a swap is
+  cut off at the final step (lost connection, app quit, fresh install), the
+  wallet finds your stranded funds and returns them automatically when you reopen
+  it: your EXFER on a sell, and now your BNB on a buy. As long as you have your
+  wallet, no action is needed.
+- Clearer guidance while a swap is in progress. The app now reminds you to keep
+  it running until the swap finishes, and to reopen it to continue if you quit —
+  so a swap is far less likely to be left waiting.
 - Small fixes and consistency improvements.

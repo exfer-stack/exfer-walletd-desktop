@@ -1,6 +1,6 @@
 [package]
 name        = "exfer-walletd-desktop"
-version     = "0.16.11"
+version     = "0.16.12"
 description = "Desktop GUI for exfer-walletd. One double-click → walletd in-process + a window for balance / generate-address / transfer."
 edition     = "2021"
 license     = "MIT"
@@ -37,10 +37,10 @@ tokio-util         = { version = "0.7", features = ["rt"] }
 # vault carrying that key, networkFeeBnb in the quote projection, the HTLC
 # reveal-gate funds-safety check, the delete_address LP-shares guard,
 # expired-quote pruning, a per-swap execute/refund lock, and bsc_tx_history.
-# Bumped 38846e1 → 3229f1c (chain-driven recovery of stranded HTLC locks, incl.
-# the mainnet-proven locked_expired fix) to match mobile. Keep this rev in
-# LOCKSTEP with mobile's pin; cut a tag for prod.
-exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "3229f1c1d0da0d0efd484a12286e8239b1f6ca3d" }
+# Bumped 3229f1c → 5ad5ca7 (journal-independent recovery of stranded BNB locks
+# on the buy direction — the BSC twin of the EXFER stranded-lock sweep,
+# mainnet-proven) to match mobile. Keep this rev in LOCKSTEP with mobile's pin.
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "5ad5ca7b51d423d637c7482ecd50df16dd2c7de1" }
 
 # HTTP client used by the Tauri Rust side to talk to the embedded
 # walletd over loopback HTTPS. `rustls-tls-manual-roots` disables
