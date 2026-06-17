@@ -30,3 +30,7 @@ src-tauri/target/
 src-tauri/icons/android/
 src-tauri/icons/ios/
 .gstack/
+
+# stray QA/preview screenshots — keep them out of the repo root
+*.jpg
+*.jpeg
