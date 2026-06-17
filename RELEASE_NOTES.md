@@ -6,12 +6,5 @@
 
 ## What's new
 
-- Automatic recovery for interrupted swaps — now both directions. If a swap is
-  cut off at the final step (lost connection, app quit, fresh install), the
-  wallet finds your stranded funds and returns them automatically when you reopen
-  it: your EXFER on a sell, and now your BNB on a buy. As long as you have your
-  wallet, no action is needed.
-- Clearer guidance while a swap is in progress. The app now reminds you to keep
-  it running until the swap finishes, and to reopen it to continue if you quit —
-  so a swap is far less likely to be left waiting.
-- Small fixes and consistency improvements.
+- Updated the voting tip to show the correct holding requirement: an address
+  now needs ≥ 100,000 EXFER to vote.

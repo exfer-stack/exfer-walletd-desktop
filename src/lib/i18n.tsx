@@ -780,7 +780,7 @@ const EN = {
   "gov.empty": "No proposals yet. Check back soon.",
   // primer (one-time onboarding, 3 steps)
   "gov.primerStep1": "Pick an address to vote with",
-  "gov.primerStep2": "That address needs ≥ 10,000 EXFER",
+  "gov.primerStep2": "That address needs ≥ 100,000 EXFER",
   "gov.primerStep3": "Keep holding to keep your power",
   // sections
   "gov.sectionOpen": "Open",
@@ -1619,7 +1619,7 @@ const ZH: Record<MsgKey, string> = {
   "gov.retry": "重试",
   "gov.empty": "暂无提案,敬请期待。",
   "gov.primerStep1": "选择地址进行投票",
-  "gov.primerStep2": "该地址需 ≥ 10,000 EXFER",
+  "gov.primerStep2": "该地址需 ≥ 100,000 EXFER",
   "gov.primerStep3": "持续持有 EXFER,票权才有效",
   "gov.sectionOpen": "进行中",
   "gov.sectionUpcoming": "即将开始",
