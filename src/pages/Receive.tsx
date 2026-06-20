@@ -6,7 +6,7 @@ import { CopyButton } from "../components/CopyButton";
 import { PendingChip, netPending } from "../components/PendingChip";
 import { getLabel, setLabel } from "../lib/labels";
 import { useAddressDisplay } from "../lib/addressDisplay";
-import { AddressText, FormToggle } from "../components/AddressForm";
+import { AddressText, FormToggle, FormInfo } from "../components/AddressForm";
 import { isHidden } from "../lib/hidden";
 import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
@@ -240,7 +240,10 @@ export function Receive() {
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <div className="label">{t("rcv.fullAddress")}</div>
-                  <FormToggle address={selected} />
+                  <div className="flex items-center gap-1.5">
+                    <FormToggle address={selected} />
+                    <FormInfo />
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <code className="addr flex-1 break-all rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2.5">
@@ -250,9 +253,6 @@ export function Receive() {
                 </div>
               </div>
 
-              <p className="text-sm text-neutral-400">
-                {t("rcv.formNote")}
-              </p>
               <p className="text-sm text-neutral-400">
                 {t("rcv.privacyNote")}
               </p>
