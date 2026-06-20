@@ -4,8 +4,7 @@ import { CopyButton } from "./CopyButton";
 import { ExportKeyModal } from "./ExportKeyModal";
 import { DeleteAddressModal } from "./KeyringModals";
 import { getLabel, setLabel, shortAddress } from "../lib/labels";
-import { useAddressDisplay } from "../lib/addressDisplay";
-import { FormToggle } from "./AddressForm";
+import { AddressFormatsModal } from "./AddressForm";
 import { hide } from "../lib/hidden";
 import { formatExfer, formatBalanceCompact } from "../lib/rpc";
 import { useT } from "../lib/i18n";
@@ -35,13 +34,12 @@ export function AddressRow({
   onUnhide,
 }: Props) {
   const { t } = useT();
-  // Display form (hex / bech32m) for this row; copy follows what's shown.
-  const { display } = useAddressDisplay(address);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => getLabel(address) ?? "");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [formatsOpen, setFormatsOpen] = useState(false);
   const label = getLabel(address);
 
   function commit() {
@@ -95,15 +93,22 @@ export function AddressRow({
               }
               title={label ? t("adr.clickToRename") : t("adr.clickToLabel")}
             >
-              {label ?? shortAddress(display)}
+              {label ?? shortAddress(address)}
             </button>
           )}
         </td>
         <td className="px-5 py-4">
           <div className="flex items-center gap-2">
-            <code className="addr-xs">{shortAddress(display)}</code>
-            <FormToggle address={address} />
-            <CopyButton text={display} className="btn-ghost text-xs" />
+            {/* Click the address to see both formats (hex / xf). */}
+            <button
+              type="button"
+              onClick={() => setFormatsOpen(true)}
+              title={t("addr.formInfoTitle")}
+              className="addr-xs text-left hover:text-cyan-300"
+            >
+              {shortAddress(address)}
+            </button>
+            <CopyButton text={address} className="btn-ghost text-xs" />
           </div>
         </td>
         <td className="px-5 py-4 text-right">
@@ -164,7 +169,7 @@ export function AddressRow({
             {
               label: t("adr.menuCopy"),
               onClick: () => {
-                navigator.clipboard.writeText(display).catch(() => {});
+                navigator.clipboard.writeText(address).catch(() => {});
                 setMenu(null);
               },
             },
@@ -218,6 +223,10 @@ export function AddressRow({
           onClose={() => setShowDelete(false)}
           onDeleted={() => onLabelChange?.()}
         />
+      )}
+
+      {formatsOpen && (
+        <AddressFormatsModal address={address} onClose={() => setFormatsOpen(false)} />
       )}
     </>
   );
