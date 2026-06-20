@@ -4,6 +4,8 @@ import { CopyButton } from "./CopyButton";
 import { ExportKeyModal } from "./ExportKeyModal";
 import { DeleteAddressModal } from "./KeyringModals";
 import { getLabel, setLabel, shortAddress } from "../lib/labels";
+import { useAddressDisplay } from "../lib/addressDisplay";
+import { FormToggle } from "./AddressForm";
 import { hide } from "../lib/hidden";
 import { formatExfer, formatBalanceCompact } from "../lib/rpc";
 import { useT } from "../lib/i18n";
@@ -33,6 +35,8 @@ export function AddressRow({
   onUnhide,
 }: Props) {
   const { t } = useT();
+  // Display form (hex / bech32m) for this row; copy follows what's shown.
+  const { display } = useAddressDisplay(address);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => getLabel(address) ?? "");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -91,14 +95,15 @@ export function AddressRow({
               }
               title={label ? t("adr.clickToRename") : t("adr.clickToLabel")}
             >
-              {label ?? shortAddress(address)}
+              {label ?? shortAddress(display)}
             </button>
           )}
         </td>
         <td className="px-5 py-4">
           <div className="flex items-center gap-2">
-            <code className="addr-xs">{shortAddress(address)}</code>
-            <CopyButton text={address} className="btn-ghost text-xs" />
+            <code className="addr-xs">{shortAddress(display)}</code>
+            <FormToggle address={address} />
+            <CopyButton text={display} className="btn-ghost text-xs" />
           </div>
         </td>
         <td className="px-5 py-4 text-right">
@@ -159,7 +164,7 @@ export function AddressRow({
             {
               label: t("adr.menuCopy"),
               onClick: () => {
-                navigator.clipboard.writeText(address).catch(() => {});
+                navigator.clipboard.writeText(display).catch(() => {});
                 setMenu(null);
               },
             },

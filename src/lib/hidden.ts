@@ -2,6 +2,12 @@
 // from the lists — reversible, and no key material is touched. It's the
 // soft counterpart to "Delete address" (which erases the key via walletd);
 // use hide to declutter, delete to actually remove.
+//
+// Entries are CANONICAL (addressKey()) so a hidden address stays hidden no
+// matter which textual form (hex or bech32m) is on screen. migrateHidden()
+// re-keys any legacy raw entries.
+
+import { addressKey } from "./address";
 
 const HIDDEN_KEY = "exfer-walletd-desktop-hidden-v1";
 
@@ -21,18 +27,18 @@ function save(s: Set<string>) {
 }
 
 export function isHidden(address: string): boolean {
-  return load().has(address);
+  return load().has(addressKey(address));
 }
 
 export function hide(address: string) {
   const s = load();
-  s.add(address);
+  s.add(addressKey(address));
   save(s);
 }
 
 export function unhide(address: string) {
   const s = load();
-  s.delete(address);
+  s.delete(addressKey(address));
   save(s);
 }
 
@@ -42,4 +48,18 @@ export function hiddenCount(): number {
 
 export function clearHidden() {
   localStorage.removeItem(HIDDEN_KEY);
+}
+
+/** One-time re-key of any legacy raw-keyed entries to addressKey(). Idempotent
+ *  — safe to run on every boot. */
+export function migrateHidden() {
+  const s = load();
+  let changed = false;
+  const out = new Set<string>();
+  for (const a of s) {
+    const ck = addressKey(a);
+    if (ck !== a) changed = true;
+    out.add(ck);
+  }
+  if (changed) save(out);
 }

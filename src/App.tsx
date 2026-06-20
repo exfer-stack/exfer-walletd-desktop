@@ -12,6 +12,9 @@ import {
   persistLang,
   type Lang,
 } from "./lib/i18n";
+import { migrateLabels } from "./lib/labels";
+import { migrateHidden } from "./lib/hidden";
+import { resolveNetwork } from "./lib/addressDisplay";
 import { PasswordPrompt } from "./components/PasswordPrompt";
 import { Layout, type Tab } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
@@ -33,6 +36,14 @@ function App() {
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
     persistLang(l);
+  }, []);
+
+  // One-time, idempotent re-key of client-side address metadata to the
+  // canonical key, so labels/hidden survive the bech32m display rollout (#36).
+  // Runs at the root before any address surface mounts.
+  useEffect(() => {
+    migrateLabels();
+    migrateHidden();
   }, []);
 
   return (
@@ -79,6 +90,13 @@ function AppInner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void })
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Once walletd is up, learn the connected node's network so the bech32m
+  // display form uses the right HRP (xf / xft / xfd). Best-effort; the mainnet
+  // default stands if the node is old or unreachable.
+  useEffect(() => {
+    if (status?.status === "ready") resolveNetwork();
+  }, [status?.status]);
 
   if (!status || status.status === "needs_password") {
     return <PasswordPrompt onReady={refreshStatus} />;

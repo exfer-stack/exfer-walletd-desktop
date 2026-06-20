@@ -4,7 +4,9 @@ import { rpc, formatExfer, MAX_ADDRESSES } from "../lib/rpc";
 import type { GeneratedAddress } from "../lib/types";
 import { CopyButton } from "../components/CopyButton";
 import { PendingChip, netPending } from "../components/PendingChip";
-import { getLabel, setLabel, shortAddress } from "../lib/labels";
+import { getLabel, setLabel } from "../lib/labels";
+import { useAddressDisplay } from "../lib/addressDisplay";
+import { AddressText, FormToggle } from "../components/AddressForm";
 import { isHidden } from "../lib/hidden";
 import { useWallet } from "../lib/wallet";
 import { useToast } from "../lib/toast";
@@ -28,6 +30,12 @@ export function Receive() {
     if (creatingOpen && !generating) setCreatingOpen(false);
   });
 
+  // Display form (hex vs bech32m) of the selected address. The QR, the full
+  // address line and Copy all use `selDisplay` so what's shown, scanned and
+  // copied are the same spelling. Hook must be unconditional, so pass "" when
+  // nothing is selected (displays to "", QR cleared by the effect below).
+  const { display: selDisplay } = useAddressDisplay(selected ?? "");
+
   const entries = (data?.entries ?? []).filter((e) => !isHidden(e.address));
 
   // Default the selection to the first address once balances arrive, and
@@ -42,11 +50,13 @@ export function Receive() {
   }, [data, selected]);
 
   useEffect(() => {
-    if (!selected) {
+    if (!selected || !selDisplay) {
       setQr("");
       return;
     }
-    QRCode.toDataURL(selected, {
+    // Encode the displayed form: a scanner gets whichever spelling the user is
+    // looking at. Both decode to the same bytes and walletd accepts either.
+    QRCode.toDataURL(selDisplay, {
       errorCorrectionLevel: "M",
       // Small quiet zone so finder patterns are locatable (margin:1 was too
       // tight) without a heavy white border — the QR sits in a white card.
@@ -57,7 +67,7 @@ export function Receive() {
         light: "#ffffff",
       },
     }).then(setQr).catch((e) => setError(humanizeError(e)));
-  }, [selected]);
+  }, [selected, selDisplay]);
 
   // Each generated address is its own independent key. We let the user name it
   // in one step: generate, then save the (optional) name as the address label.
@@ -160,18 +170,19 @@ export function Receive() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-neutral-100">
-                          {label ?? shortAddress(e.address)}
+                          {label ?? (
+                            <AddressText
+                              address={e.address}
+                              className="text-sm font-medium text-neutral-100"
+                            />
+                          )}
                         </div>
                         {/* Only when a label exists does the short address need
                             a second line; without a label the short address is
                             already the primary identity. walletd marks every
                             self-generated key imported:true, so the old
                             "Imported"/"Address N" line was misleading — dropped. */}
-                        {label ? (
-                          <code className="addr-xs">
-                            {shortAddress(e.address)}
-                          </code>
-                        ) : null}
+                        {label ? <AddressText address={e.address} /> : null}
                       </div>
                       <div className="flex items-center gap-1.5 text-right text-sm">
                         <PendingChip amount={netPending(e)} />
@@ -216,7 +227,7 @@ export function Receive() {
 
               <div className="space-y-2 text-center">
                 <div className="text-base font-medium text-neutral-100">
-                  {getLabel(selected) ?? shortAddress(selected)}
+                  {getLabel(selected) ?? <AddressText address={selected} />}
                 </div>
                 <div className="flex items-center justify-center gap-2">
                   <div className="amount-md">
@@ -227,15 +238,21 @@ export function Receive() {
               </div>
 
               <div>
-                <div className="label">{t("rcv.fullAddress")}</div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="label">{t("rcv.fullAddress")}</div>
+                  <FormToggle address={selected} />
+                </div>
                 <div className="flex gap-2">
-                  <code className="addr flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2.5">
-                    {selected}
+                  <code className="addr flex-1 break-all rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2.5">
+                    {selDisplay}
                   </code>
-                  <CopyButton text={selected} className="btn-secondary" />
+                  <CopyButton text={selDisplay} className="btn-secondary" />
                 </div>
               </div>
 
+              <p className="text-sm text-neutral-400">
+                {t("rcv.formNote")}
+              </p>
               <p className="text-sm text-neutral-400">
                 {t("rcv.privacyNote")}
               </p>
