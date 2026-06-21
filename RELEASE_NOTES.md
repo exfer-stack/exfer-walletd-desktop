@@ -6,15 +6,9 @@
 
 ## What's new
 
-- New: show any address in the checksummed "xf…" format. Every EXFER address
-  has two spellings of the exact same account — the familiar hex form, and a
-  newer bech32m form that begins with `xf` and carries a built-in typo check.
-  On the Receive screen and your address list, tap the small XF / HEX button
-  next to an address to switch how that one is displayed, copied and encoded in
-  its QR. The default stays hex, so nothing changes unless you choose it — and
-  the choice is per address.
-- Same account, either spelling. The xf… and hex forms are the identical
-  address holding the identical funds, and both are accepted when someone sends
-  to you. Your saved names, hidden addresses and recent recipients carry over
-  untouched — switching the display never affects your balance or who can pay
-  you.
+- Addresses now have a newer, checksummed "xf…" form alongside the original.
+  Click any address to see both formats and copy whichever you need — it's the
+  same address with the same balance either way.
+- Sending accepts both forms: paste an xf… or a classic address and it just
+  works. The xf… form has a built-in check that catches typos, so funds can't
+  go to a mistyped address.
