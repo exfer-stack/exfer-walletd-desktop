@@ -207,6 +207,7 @@ const EN = {
   "swap.youSend": "You send",
   "swap.youReceive": "You receive",
   "swap.rate": "Rate",
+  "swap.priceLabel": "Price",
   "swap.bnbAccount": "BNB account",
   "swap.htlcExplain": "Confirming locks your funds in an on-chain HTLC. If the counterparty doesn't complete, the lock refunds automatically after the timeout.",
   "swap.back": "Back",
@@ -778,6 +779,9 @@ const EN = {
   "swap.quoteValidFor": "Quote valid {t}",
   "swap.quoteExpired": "Quote expired — go back and re-quote",
   "swap.priceImpactLine": "Price impact {pct}",
+  "swap.priceEffVsMid": "1 EXFER ≈ ${eff} (spot ${mid})",
+  "swap.quoteDiverged": "This quote is about {pct}% below the estimate — you'll get ~{got}, not ~{est}. The rate moved while you were quoting.",
+  "swap.quoteDivergedAck": "I understand I'll receive less than the estimate",
 
   // ── governance / community voting ──────────────────────────────────
   "gov.title": "Vote",
@@ -1059,6 +1063,7 @@ const ZH: Record<MsgKey, string> = {
   "swap.youSend": "你支付",
   "swap.youReceive": "你收到",
   "swap.rate": "汇率",
+  "swap.priceLabel": "价格",
   "swap.bnbAccount": "BNB 账户",
   "swap.htlcExplain": "确认后会将你的资金锁定在链上的 HTLC 中。如果对手方未完成，超时后锁定的资金会自动退回。",
   "swap.back": "返回",
@@ -1624,6 +1629,9 @@ const ZH: Record<MsgKey, string> = {
   "swap.quoteValidFor": "报价有效期 {t}",
   "swap.quoteExpired": "报价已过期——请返回重新获取",
   "swap.priceImpactLine": "价格影响 {pct}",
+  "swap.priceEffVsMid": "1 EXFER ≈ ${eff}(现价 ${mid})",
+  "swap.quoteDiverged": "此报价比预估低约 {pct}% —— 你会拿到约 {got},而非约 {est}。报价期间价格发生了变化。",
+  "swap.quoteDivergedAck": "我了解实际到手会少于预估",
 
   // ── 治理 / 社区投票 ────────────────────────────────────────────────
   "gov.title": "投票",

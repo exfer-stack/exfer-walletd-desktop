@@ -85,6 +85,17 @@ function fmtAmt(s: string | undefined, dp = 6): string {
   return frac ? `${w}.${frac}` : w;
 }
 
+/** Trim a number to ~`sig` significant digits as a plain decimal — never
+ *  scientific notation. Used for the per-EXFER USD price on Review (bare
+ *  number; the i18n template supplies the "$"). */
+function sigFmt(n: number, sig = 4): string {
+  if (!isFinite(n) || n === 0) return "0";
+  return n.toLocaleString("en-US", {
+    maximumSignificantDigits: sig,
+    useGrouping: false,
+  });
+}
+
 /** Normalize a typed amount into a strictly daemon-parseable decimal before it
  *  goes to swap_get_quote: a leading/trailing dot (".5" / "5.") becomes "0.5" /
  *  "5", and the fraction is clamped to the token's precision (8 dp EXFER, 18 dp
@@ -488,9 +499,15 @@ export function Swap() {
     setErr(null);
     try {
       const r = await rpc<SwapRec>("swap_execute", { swap_id: quote.swap_id });
-      // Snapshot the effective EXFER/USD now, so the activity record can later
-      // show what this swap was worth at execution time.
-      if (exferUsd != null) recordSwapUsd(quote.swap_id, exferUsd);
+      // Snapshot the REALIZED EXFER/USD for THIS swap (amount_out/amount_in ×
+      // BNB/USD), not the pool mid — so the history detail reconciles with the
+      // on-chain BNB actually received. Sell: BNB out per EXFER in; buy: BNB in
+      // per EXFER out. Falls back to the mid only if the quote rate is unusable.
+      const exIn = Number(quote.amount_in);
+      const exOut = Number(quote.amount_out);
+      const rRate = exIn > 0 && exOut > 0 ? (sell ? exOut / exIn : exIn / exOut) : null;
+      const realizedUsd = rRate != null && bnbUsd != null ? rRate * bnbUsd : exferUsd;
+      if (realizedUsd != null) recordSwapUsd(quote.swap_id, realizedUsd);
       setLive(r);
       setStep(3);
       toast.success(t("swap.toastStartedTitle"), t("swap.toastStartedBody"));
@@ -891,6 +908,8 @@ export function Swap() {
                   highImpact={highImpact}
                   exferUsd={exferUsd}
                   bnbUsd={bnbUsd}
+                  poolInfo={poolInfo}
+                  estOutNet={estOutNet}
                   busy={busy}
                   err={err}
                   onBack={() => {
@@ -1460,6 +1479,8 @@ function ReviewCard({
   highImpact,
   exferUsd,
   bnbUsd,
+  poolInfo,
+  estOutNet,
   busy,
   err,
   onBack,
@@ -1473,12 +1494,21 @@ function ReviewCard({
   highImpact: boolean;
   exferUsd: number | null;
   bnbUsd: number | null;
+  poolInfo: PoolInfo | null;
+  /** The step-1 mid-based NET estimate the user was shown before quoting — the
+   *  baseline for the estimate-vs-firm divergence guard. */
+  estOutNet: number | null;
   busy: boolean;
   err: string | null;
   onBack: () => void;
   onConfirm: () => void;
 }) {
   const { t } = useT();
+  // Estimate-vs-firm divergence acknowledgement (fix #3). When the firm quote
+  // lands materially below the step-1 estimate, require an explicit ack before
+  // Confirm is enabled — desktop's high-impact gate is a separate modal
+  // (ImpactConfirmModal), so this divergence ack is its own small inline state.
+  const [divergeAck, setDivergeAck] = useState(false);
   // 1s wall clock for the quote-validity countdown. The quote carries
   // expires_at (unix sec); past it the daemon rejects execute, so we say so
   // up front and disable Confirm instead of letting it fail server-side.
@@ -1497,13 +1527,52 @@ function ReviewCard({
     remaining != null && remaining > 0
       ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`
       : null;
-  const rate =
-    Number(quote.amount_in) > 0
-      ? Number(quote.amount_out) / Number(quote.amount_in)
+  const qIn = Number(quote.amount_in);
+  const qOut = Number(quote.amount_out);
+  const rate = qIn > 0 ? qOut / qIn : 0;
+  // Fix #1: derive the per-EXFER price from the FIRM quote (amount_out/amount_in
+  // × bnbUsd) so price × amount_in reconciles with amount_out — NOT the pool mid
+  // (exferUsd). Sell pays BNB out per EXFER in (rate); buy spends BNB in per
+  // EXFER out (1/rate). Falls back to the mid only when bnbUsd/rate is unusable.
+  const qRate = qIn > 0 && qOut > 0 ? qOut / qIn : null;
+  const qBnbPerExfer = qRate == null ? null : sell ? qRate : 1 / qRate;
+  const qExferUsd =
+    qBnbPerExfer != null && bnbUsd != null ? qBnbPerExfer * bnbUsd : exferUsd;
+  // Receive-side USD on the FIRM amount_out — what actually arrives: a sell
+  // receives BNB (× bnbUsd), a buy receives EXFER (× exferUsd) (fix #1).
+  const usd = sell
+    ? bnbUsd != null && isFinite(qOut)
+      ? qOut * bnbUsd
+      : null
+    : exferUsd != null && isFinite(qOut)
+      ? qOut * exferUsd
+      : null;
+  // Fix #2: realized price impact = how far the FIRM amount_out sits below what
+  // the pool mid implies for this amount_in (mid × in for a sell, in / mid for a
+  // buy). This reflects what the user actually pays, vs the reserve-fraction
+  // `priceImpact` (raw mid) which can read far lower than reality when the firm
+  // quote is depressed. Clamp at 0 — a quote better than mid isn't a cost.
+  const midOut =
+    poolInfo && poolInfo.mid > 0
+      ? sell
+        ? qIn * poolInfo.mid
+        : qIn / poolInfo.mid
+      : null;
+  const realizedImpact =
+    midOut != null && midOut > 0 && qOut > 0
+      ? Math.max(0, 1 - qOut / midOut)
+      : null;
+  // Prefer the realized impact on Review; fall back to the reserve-fraction one.
+  const reviewImpact = realizedImpact ?? priceImpact;
+  // Fix #3: estimate-vs-firm divergence. estOutNet is the step-1 mid-based net
+  // estimate the user was shown BEFORE quoting; qOut is the firm quote. A firm
+  // quote materially below the estimate means the user gets noticeably less than
+  // promised — warn prominently and require an explicit ack.
+  const quoteShortfall =
+    estOutNet != null && estOutNet > 0 && qOut > 0
+      ? Math.max(0, 1 - qOut / estOutNet)
       : 0;
-  // ≈$ of the EXFER leg: sell sends EXFER (amount_in), buy receives it (amount_out).
-  const exferAmt = sell ? Number(quote.amount_in) : Number(quote.amount_out);
-  const usd = exferUsd != null && isFinite(exferAmt) ? exferAmt * exferUsd : null;
+  const quoteDiverged = quoteShortfall >= 0.03; // firm quote >3% below estimate
   // Rate on its own line — impact moved to its own labeled row below.
   const rateLine = `1 ${sendUnit} ≈ ${fmtAmt(String(rate), 8)} ${recvUnit}`;
   const feeAcct =
@@ -1558,18 +1627,38 @@ function ReviewCard({
             {rateLine}
           </span>
         </div>
+        {/* Per-EXFER price = the EFFECTIVE price THIS quote settles at
+            (qExferUsd, from amount_out/amount_in), NOT the pool mid — price ×
+            amount_in must reconcile with amount_out. The market mid rides
+            alongside as a reference so the user sees how far execution is from
+            spot (fix #1). */}
+        {qExferUsd != null && (
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-sm text-neutral-400">{t("swap.priceLabel")}</span>
+            <span className="font-mono text-sm tabular-nums text-neutral-200">
+              {exferUsd != null && exferUsd > 0
+                ? t("swap.priceEffVsMid", {
+                    eff: sigFmt(qExferUsd, 4),
+                    mid: sigFmt(exferUsd, 4),
+                  })
+                : `1 EXFER ≈ $${sigFmt(qExferUsd, 4)}`}
+            </span>
+          </div>
+        )}
         {/* Fee + BNB account on one line. */}
         {feeAcct && <Row label={t("swap.poolFee")} value={feeAcct} mono />}
         {/* Settlement-gas fee disclosure — already deducted from amount_out. */}
         <Row label={t("swap.networkFee")} value={netFeeValue} mono />
-        {/* Price impact — always disclosed, amber past the warning threshold. */}
+        {/* Price impact — the REALIZED impact (firm amount_out vs the mid-implied
+            output), so it reflects what the user actually pays, not the raw
+            reserve fraction (fix #2). Amber past the warning threshold. */}
         <div
           className={
             "font-mono text-xs tabular-nums " +
-            (highImpact ? "text-amber-300" : "text-neutral-500")
+            (highImpact || reviewImpact >= 0.03 ? "text-amber-300" : "text-neutral-500")
           }
         >
-          {t("swap.priceImpactLine", { pct: `${(priceImpact * 100).toFixed(2)}%` })}
+          {t("swap.priceImpactLine", { pct: `${(reviewImpact * 100).toFixed(2)}%` })}
         </div>
       </div>
 
@@ -1590,6 +1679,32 @@ function ReviewCard({
         </div>
       )}
 
+      {/* Firm quote landed materially below the step-1 estimate — the user is
+          about to receive noticeably less than they were shown (the rate moved,
+          or another swap's reservation depressed the pool while they were
+          quoting). Hard-to-miss banner + an explicit ack that gates Confirm
+          (fix #3). */}
+      {quoteDiverged && (
+        <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-amber-200">
+          <div className="text-xs leading-relaxed">
+            {t("swap.quoteDiverged", {
+              pct: String(Math.round(quoteShortfall * 100)),
+              got: `${fmtAmt(quote.amount_out, 8)} ${recvUnit}`,
+              est: `${sigFmt(estOutNet ?? 0, 6)} ${recvUnit}`,
+            })}
+          </div>
+          <label className="mt-2.5 flex cursor-pointer items-start gap-2 text-xs font-semibold">
+            <input
+              type="checkbox"
+              checked={divergeAck}
+              onChange={(e) => setDivergeAck(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>{t("swap.quoteDivergedAck")}</span>
+          </label>
+        </div>
+      )}
+
       {/* HTLC safety note — what "confirm" actually does (locks funds in an
           on-chain HTLC) and the built-in escape hatch (auto-refund at the
           timeout). Said up front, before any funds lock. */}
@@ -1604,7 +1719,7 @@ function ReviewCard({
         <button
           type="button"
           className="btn flex-1"
-          disabled={busy || expired}
+          disabled={busy || expired || (quoteDiverged && !divergeAck)}
           onClick={onConfirm}
         >
           {busy ? t("swap.confirming") : t("swap.confirmSwap")}
