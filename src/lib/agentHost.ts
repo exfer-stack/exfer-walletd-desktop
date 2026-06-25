@@ -31,17 +31,28 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
   return invoke<T>(cmd, args);
 }
 
-/** LLM provider whose fetch is proxied through the Rust `llm_fetch` command
- *  (key injected Rust-side; bypasses webview CORS). */
+function normalizeHeaders(h: HeadersInit | undefined): Record<string, string> {
+  if (!h) return {};
+  if (h instanceof Headers) return Object.fromEntries(h.entries());
+  if (Array.isArray(h)) return Object.fromEntries(h);
+  return h as Record<string, string>;
+}
+
+/** LLM provider whose fetch is proxied through the Rust `llm_fetch` command:
+ *  the real API key is injected host-side from the OS keychain (never in the
+ *  webview) and webview CORS is bypassed. The config carries a placeholder key. */
 export function realProvider(cfg: ProviderConfig): LLMProvider {
   const hostFetch: typeof fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const body = typeof init?.body === "string" ? init.body : init?.body ? String(init.body) : null;
     const res = await tauriInvoke<{ status: number; headers: Record<string, string>; body: string }>("llm_fetch", {
-      req: { url, method: init?.method ?? "POST", headers: init?.headers ?? {}, body: init?.body ?? null },
+      req: { url, method: init?.method ?? "POST", headers: normalizeHeaders(init?.headers), body },
+      provider: cfg.id,
+      kind: cfg.kind,
     });
     return new Response(res.body, { status: res.status, headers: res.headers });
   };
-  return createProvider(cfg, hostFetch);
+  return createProvider({ ...cfg, apiKey: "host-managed" }, hostFetch);
 }
 
 export const realTools: ToolSource = {
