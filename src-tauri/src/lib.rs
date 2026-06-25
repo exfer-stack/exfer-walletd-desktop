@@ -6,10 +6,13 @@
 
 mod error;
 mod export_key;
+mod mcp_supervisor;
 mod mnemonic;
 mod rpc_client;
 mod secrets;
 mod walletd_supervisor;
+
+use mcp_supervisor::{mcp_call_tool, mcp_list_tools, mcp_start, McpCtx};
 
 use serde_json::Value;
 use tauri::{Manager, State};
@@ -837,6 +840,7 @@ pub fn run() {
             std::fs::create_dir_all(&datadir).expect("creating app_data_dir");
             let ctx = AppCtx::new(datadir);
             app.manage(ctx.clone());
+            app.manage(McpCtx::new());
 
             // Try silent passphrase recovery from the OS keychain. If
             // it's there, kick off walletd immediately; otherwise the
@@ -888,6 +892,9 @@ pub fn run() {
             set_llm_api_key,
             has_llm_api_key,
             agent_confirm_consent,
+            mcp_start,
+            mcp_list_tools,
+            mcp_call_tool,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
