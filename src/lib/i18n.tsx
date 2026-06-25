@@ -100,6 +100,7 @@ const EN = {
   "agent.consent.passphrase": "Wallet passphrase",
   "agent.consent.authFailed": "Incorrect passphrase.",
   "agent.consent.copied": "Address copied",
+  "agent.consent.total": "Total",
 
   // ── app shell (bootstrap / update) ─────────────────────────────────
   "app.bootFailedTitle": "Walletd failed to start",
@@ -1013,6 +1014,7 @@ const ZH: Record<MsgKey, string> = {
   "agent.consent.passphrase": "钱包口令",
   "agent.consent.authFailed": "口令不正确。",
   "agent.consent.copied": "地址已复制",
+  "agent.consent.total": "合计",
 
   // ── app shell ──────────────────────────────────────────────────────
   "app.bootFailedTitle": "Walletd 启动失败",

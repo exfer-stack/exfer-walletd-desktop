@@ -405,6 +405,15 @@ function ConfirmationCard({ card, t, onResolve }: { card: ConsentCard; t: Return
   // Any value-moving / value-signing tool (every GATED tool) carries the warning.
   const risky = card.consentClass === "gated";
 
+  // Total debit = amount + fee (only when both are base-exfer amounts, i.e. a
+  // transfer — a swap's fee is a percentage, so this stays null there).
+  const amtF = card.fields.find((f) => f.labelKey === "amount" && f.kind === "amount");
+  const feeF = card.fields.find((f) => f.labelKey === "fee" && f.kind === "amount");
+  const total =
+    amtF && feeF && Number.isSafeInteger(Number(amtF.value)) && Number.isSafeInteger(Number(feeF.value))
+      ? Number(amtF.value) + Number(feeF.value)
+      : null;
+
   const renderValue = (f: ConsentField) => {
     if (f.kind === "amount") {
       const n = Number(f.value);
@@ -455,6 +464,12 @@ function ConfirmationCard({ card, t, onResolve }: { card: ConsentCard; t: Return
               </div>
             ))}
           </dl>
+          {total != null && (
+            <div className="grid grid-cols-[auto,1fr] items-baseline gap-3 border-t border-neutral-800 pt-2 text-sm">
+              <dt className="font-medium text-neutral-300">{t("agent.consent.total")}</dt>
+              <dd className="amount-md text-right">{formatExfer(total)}</dd>
+            </div>
+          )}
           {risky && (
             <p role="alert" className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
               {t("agent.consent.risk")}
