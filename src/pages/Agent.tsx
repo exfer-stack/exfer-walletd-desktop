@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AgentSession, type AgentEvent, type ConsentCard, type ConsentField } from "exfer-agent";
 import { useT, type Lang, type MsgKey } from "../lib/i18n";
-import { hostDeps } from "../lib/agentHost";
+import { hostDeps, inTauri, confirmConsent } from "../lib/agentHost";
 import { AgentSettings } from "../components/agent/AgentSettings";
 import { loadConfig, toProviderConfig } from "../lib/agentConfig";
 import { formatExfer } from "../lib/rpc";
@@ -84,9 +84,11 @@ export function Agent({ lang }: { lang: Lang }) {
   const [consent, setConsent] = useState<PendingConsent | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [cfgVersion, setCfgVersion] = useState(0);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastQuoteRef = useRef<Record<string, unknown> | null>(null);
+  const lastUserText = useRef<string>("");
 
   const session = useMemo(() => {
     const saved = loadConfig();
@@ -99,10 +101,16 @@ export function Agent({ lang }: { lang: Lang }) {
       executeTool: tools.executeTool,
       requestConsent: (req) =>
         new Promise<boolean>((resolve) => {
-          // Enrich the swap card with the economics from the preceding quote.
+          // Enrich the swap card with the economics from the preceding quote —
+          // but only if the quote is for THIS swap_id (never show one swap's
+          // economics for another).
           let card = req.card;
-          if (card.toolName === "exfer_swap_execute" && lastQuoteRef.current) {
-            card = { ...card, fields: [...swapFields(lastQuoteRef.current), ...card.fields] };
+          if (card.toolName === "exfer_swap_execute") {
+            const q = lastQuoteRef.current;
+            const idField = card.fields.find((f) => f.labelKey === "swap_id");
+            if (q && idField && String(q.swap_id) === String(idField.value)) {
+              card = { ...card, fields: [...swapFields(q), ...card.fields] };
+            }
           }
           setConsent({ card, resolve, prevFocus: document.activeElement });
         }),
@@ -135,6 +143,8 @@ export function Agent({ lang }: { lang: Lang }) {
   const send = useCallback(
     async (text: string) => {
       if (!text.trim() || busy) return;
+      lastUserText.current = text;
+      setErrorBanner(null);
       setInput("");
       setBusy(true);
       const controller = new AbortController();
@@ -147,9 +157,12 @@ export function Agent({ lang }: { lang: Lang }) {
               patchLast((tn) => (tn.thinking = (tn.thinking ?? "") + ev.text));
               break;
             case "text_delta":
+              // Pure: replace the tail block, never mutate a shared object
+              // (StrictMode double-invokes reducers).
               patchLast((tn) => {
-                const tail = tn.blocks[tn.blocks.length - 1];
-                if (tail?.kind === "text") tail.text += ev.text;
+                const i = tn.blocks.length - 1;
+                const tail = tn.blocks[i];
+                if (tail?.kind === "text") tn.blocks[i] = { kind: "text", text: tail.text + ev.text };
                 else tn.blocks.push({ kind: "text", text: ev.text });
               });
               break;
@@ -166,16 +179,17 @@ export function Agent({ lang }: { lang: Lang }) {
                   /* ignore */
                 }
               }
+              if (ev.name === "exfer_swap_execute") lastQuoteRef.current = null; // consumed
               patchLast((tn) => {
-                const blk = tn.blocks.find((b) => b.kind === "tool" && b.card.id === ev.id) as { kind: "tool"; card: ToolCard } | undefined;
-                if (blk) {
-                  blk.card.status = ev.ok ? "ok" : "error";
-                  blk.card.summary = ev.summary;
+                const i = tn.blocks.findIndex((b) => b.kind === "tool" && b.card.id === ev.id);
+                if (i >= 0) {
+                  const b = tn.blocks[i] as { kind: "tool"; card: ToolCard };
+                  tn.blocks[i] = { kind: "tool", card: { ...b.card, status: ev.ok ? "ok" : "error", summary: ev.summary } };
                 }
               });
               break;
             case "error":
-              patchLast((tn) => tn.blocks.push({ kind: "text", text: t("agent.error.generic", { message: ev.message }) }));
+              setErrorBanner(ev.message);
               break;
           }
         }
@@ -201,7 +215,7 @@ export function Agent({ lang }: { lang: Lang }) {
           </svg>
         </button>
       </div>
-      <div ref={scrollRef} className="flex-1 space-y-4 overflow-auto" aria-live="polite" aria-atomic="false">
+      <div ref={scrollRef} className="flex-1 space-y-4 overflow-auto">
         {turns.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-5 text-center fade-in">
             <div className="space-y-2">
@@ -250,6 +264,15 @@ export function Agent({ lang }: { lang: Lang }) {
           ),
         )}
       </div>
+
+      {errorBanner && (
+        <div className="banner-error mt-3 flex items-center justify-between gap-3" role="alert" data-testid="agent-error">
+          <span>{t("agent.error.generic", { message: errorBanner })}</span>
+          <button type="button" className="btn-ghost shrink-0" onClick={() => send(lastUserText.current)}>
+            {t("agent.error.retry")}
+          </button>
+        </div>
+      )}
 
       <div className="mt-4 flex items-center gap-2">
         <input
@@ -332,26 +355,55 @@ function ToolCardView({ card, t }: { card: ToolCard; t: ReturnType<typeof useT>[
 
 function ConfirmationCard({ card, t, onResolve }: { card: ConsentCard; t: ReturnType<typeof useT>["t"]; onResolve: (ok: boolean) => void }) {
   const titleId = useId();
+  const descId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const declineRef = useRef<HTMLButtonElement>(null);
-  const approveRef = useRef<HTMLButtonElement>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [passphrase, setPassphrase] = useState("");
+  const [authError, setAuthError] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const needAuth = inTauri(); // desktop: passphrase re-entry; browser-dev: pass-through
 
   useEffect(() => {
     declineRef.current?.focus(); // safe default
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onResolve(false);
-      if (e.key === "Tab") {
-        // simple two-button focus trap
+      if (e.key === "Escape") return onResolve(false);
+      if (e.key !== "Tab") return;
+      // Full focus trap over every focusable in the dialog (incl. Copy + the
+      // passphrase field), not just the two buttons.
+      const root = dialogRef.current;
+      if (!root) return;
+      const f = [...root.querySelectorAll<HTMLElement>('button,input,select,textarea,[href],[tabindex]:not([tabindex="-1"])')].filter(
+        (el) => !el.hasAttribute("disabled"),
+      );
+      if (f.length < 2) return;
+      const first = f[0];
+      const last = f[f.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && active === first) {
         e.preventDefault();
-        (document.activeElement === declineRef.current ? approveRef.current : declineRef.current)?.focus();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onResolve]);
 
+  const approve = async () => {
+    if (!needAuth) return onResolve(true);
+    setVerifying(true);
+    const ok = await confirmConsent(passphrase).catch(() => false);
+    setVerifying(false);
+    if (ok) onResolve(true);
+    else setAuthError(true);
+  };
+
   const titleText = (card.titleKey && t(`agent.consent.title.${card.titleKey}` as MsgKey)) || card.title;
-  const moves = card.toolName === "exfer_transfer" || card.toolName === "exfer_swap_execute" || card.toolName === "exfer_htlc_lock";
+  // Any value-moving / value-signing tool (every GATED tool) carries the warning.
+  const risky = card.consentClass === "gated";
 
   const renderValue = (f: ConsentField) => {
     if (f.kind === "amount") {
@@ -366,13 +418,14 @@ function ConfirmationCard({ card, t, onResolve }: { card: ConsentCard; t: Return
             <button
               type="button"
               className="shrink-0 text-cyan-400 hover:text-cyan-200"
-              title={t("agent.consent.copy")}
+              aria-label={t("agent.consent.copy")}
               onClick={() => {
                 void navigator.clipboard?.writeText(f.value);
                 setCopied(f.value);
               }}
             >
-              {copied === f.value ? "✓" : t("agent.consent.copy")}
+              <span aria-hidden>{copied === f.value ? "✓" : t("agent.consent.copy")}</span>
+              {copied === f.value && <span className="sr-only">{t("agent.consent.copied")}</span>}
             </button>
           )}
         </span>
@@ -383,7 +436,7 @@ function ConfirmationCard({ card, t, onResolve }: { card: ConsentCard; t: Return
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" data-testid="consent-card">
-      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="card-padded w-full max-w-sm space-y-4 fade-in">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId} className="card-padded w-full max-w-sm space-y-4 fade-in">
         <div className="flex items-center gap-2">
           <svg className="h-5 w-5 text-cyan-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <path d="M12 3 4 6v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V6l-8-3Z" />
@@ -393,20 +446,44 @@ function ConfirmationCard({ card, t, onResolve }: { card: ConsentCard; t: Return
             {titleText}
           </h2>
         </div>
-        <dl className="space-y-2 text-sm">
-          {card.fields.map((f) => (
-            <div key={f.label} className="grid grid-cols-[auto,1fr] items-start gap-3">
-              <dt className="text-neutral-500">{(f.labelKey && t(`agent.consent.field.${f.labelKey}` as MsgKey)) || f.label}</dt>
-              <dd className="text-right">{renderValue(f)}</dd>
-            </div>
-          ))}
-        </dl>
-        {moves && <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">{t("agent.consent.risk")}</p>}
+        <div id={descId} className="space-y-4">
+          <dl className="space-y-2 text-sm">
+            {card.fields.map((f) => (
+              <div key={f.label} className="grid grid-cols-[auto,1fr] items-start gap-3">
+                <dt className="text-neutral-400">{(f.labelKey && t(`agent.consent.field.${f.labelKey}` as MsgKey)) || f.label}</dt>
+                <dd className="text-right">{renderValue(f)}</dd>
+              </div>
+            ))}
+          </dl>
+          {risky && (
+            <p role="alert" className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              {t("agent.consent.risk")}
+            </p>
+          )}
+        </div>
+        {needAuth && (
+          <label className="block space-y-1">
+            <span className="label">{t("agent.consent.passphrase")}</span>
+            <input
+              type="password"
+              className="input w-full"
+              value={passphrase}
+              autoComplete="off"
+              onChange={(e) => {
+                setPassphrase(e.target.value);
+                setAuthError(false);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && passphrase && approve()}
+              data-testid="consent-passphrase"
+            />
+            {authError && <span className="text-xs text-red-400">{t("agent.consent.authFailed")}</span>}
+          </label>
+        )}
         <div className="flex gap-3 pt-1">
           <button ref={declineRef} type="button" className="btn-ghost flex-1" onClick={() => onResolve(false)} data-testid="consent-decline">
             {t("agent.consent.decline")}
           </button>
-          <button ref={approveRef} type="button" className="btn flex-1" onClick={() => onResolve(true)} data-testid="consent-approve">
+          <button type="button" className="btn flex-1" disabled={verifying || (needAuth && !passphrase)} onClick={approve} data-testid="consent-approve">
             {t("agent.consent.approve")}
           </button>
         </div>

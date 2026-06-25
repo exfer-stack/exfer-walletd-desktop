@@ -96,6 +96,10 @@ const EN = {
   "agent.settings.save": "Save",
   "agent.settings.cancel": "Cancel",
   "agent.settings.open": "LLM settings",
+  "agent.error.retry": "Retry",
+  "agent.consent.passphrase": "Wallet passphrase",
+  "agent.consent.authFailed": "Incorrect passphrase.",
+  "agent.consent.copied": "Address copied",
 
   // ── app shell (bootstrap / update) ─────────────────────────────────
   "app.bootFailedTitle": "Walletd failed to start",
@@ -974,7 +978,7 @@ const ZH: Record<MsgKey, string> = {
   "agent.thinking.active": "思考中…",
   "agent.tool.gated": "需确认",
   "agent.tool.details": "详情",
-  "agent.consent.risk": "这会动用真实资金,且不可撤销。",
+  "agent.consent.risk": "这会动用真实资金，且不可撤销。",
   "agent.consent.copy": "复制",
   "agent.consent.feeEstimated": "发送时估算",
   "agent.consent.title.transfer": "确认转账",
@@ -1005,6 +1009,10 @@ const ZH: Record<MsgKey, string> = {
   "agent.settings.save": "保存",
   "agent.settings.cancel": "取消",
   "agent.settings.open": "大模型设置",
+  "agent.error.retry": "重试",
+  "agent.consent.passphrase": "钱包口令",
+  "agent.consent.authFailed": "口令不正确。",
+  "agent.consent.copied": "地址已复制",
 
   // ── app shell ──────────────────────────────────────────────────────
   "app.bootFailedTitle": "Walletd 启动失败",

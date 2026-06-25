@@ -55,6 +55,14 @@ export function realProvider(cfg: ProviderConfig): LLMProvider {
   return createProvider({ ...cfg, apiKey: "host-managed" }, hostFetch);
 }
 
+/** Re-authenticate a money-moving action before it runs. In Tauri this is a
+ *  constant-time passphrase check in the OS keychain (biometric on mobile);
+ *  in browser-dev there is no keychain, so it passes through. */
+export async function confirmConsent(passphrase: string): Promise<boolean> {
+  if (!inTauri()) return true;
+  return tauriInvoke<boolean>("agent_confirm_consent", { passphrase });
+}
+
 export const realTools: ToolSource = {
   listTools: () =>
     tauriInvoke<{ tools: { name: string; description?: string; inputSchema?: unknown }[] }>("mcp_list_tools").then((r) =>
@@ -135,8 +143,14 @@ async function* swapExecuteStream(quoteJson: string): AsyncIterable<StreamEvent>
 }
 
 // After a tool runs, the mock summarizes and ends the turn (mirrors a real model
-// reacting to the tool result, instead of re-calling the tool forever).
-async function* finalStream(toolName: string, resultJson: string): AsyncIterable<StreamEvent> {
+// reacting to the tool result, instead of re-calling the tool forever). A
+// declined/errored tool never gets a success-flavored close.
+async function* finalStream(toolName: string, resultJson: string, isError: boolean): AsyncIterable<StreamEvent> {
+  if (isError) {
+    yield* say(resultJson.toLowerCase().includes("declined") ? "Okay — I won't do that. Nothing was sent." : "That didn't go through.");
+    yield { type: "done", stopReason: "end_turn" };
+    return;
+  }
   let line = "Done.";
   try {
     const r = JSON.parse(resultJson) as Record<string, unknown>;
@@ -155,8 +169,8 @@ export const mockProvider: LLMProvider = {
   stream: ({ messages }) => {
     const last = messages[messages.length - 1];
     if (last && last.role === "tool") {
-      if (last.name === "exfer_swap_get_quote") return swapExecuteStream(last.content);
-      return finalStream(last.name, last.content);
+      if (last.name === "exfer_swap_get_quote" && !last.isError) return swapExecuteStream(last.content);
+      return finalStream(last.name, last.content, last.isError === true);
     }
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     return scriptedStream(lastUser && "content" in lastUser ? lastUser.content : "");
