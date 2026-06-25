@@ -56,14 +56,14 @@ export function realProvider(cfg: ProviderConfig): LLMProvider {
 }
 
 export const realTools: ToolSource = {
-  listTools: () => tauriInvoke<{ tools: { name: string; description?: string; inputSchema?: unknown }[] }>("mcp_list_tools").then(
-    (r) =>
+  listTools: () =>
+    tauriInvoke<{ tools: { name: string; description?: string; inputSchema?: unknown }[] }>("mcp_list_tools").then((r) =>
       r.tools.map((t) => ({
         name: t.name,
         description: t.description ?? "",
         parameters: (t.inputSchema ?? { type: "object", properties: {} }) as Record<string, unknown>,
       })),
-  ),
+    ),
   executeTool: (name, args) =>
     tauriInvoke<{ content: { type: string; text?: string }[]; isError?: boolean }>("mcp_call_tool", { name, args }).then((r) => ({
       content: r.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n"),
@@ -73,6 +73,9 @@ export const realTools: ToolSource = {
 
 // ── browser-dev mock (scripted LLM + canned tools) ─────────────────────────────
 
+const SELF_EXFER = "91e01411670779bf8df3f593f02da7b83b72b8ab315c15bc7f4de8a5adbbc042";
+const PAYEE = "8c721d0534f232c767afd6672c007e561e4dd70ac5d57105d35450f2c6b1336e";
+
 const MOCK_TOOLS: ToolDef[] = [
   { name: "exfer_get_balance", description: "Get EXFER balance for an address.", parameters: { type: "object", properties: { address: { type: "string" } } } },
   { name: "exfer_transfer", description: "Send EXFER. Moves funds.", parameters: { type: "object", properties: { to_address: { type: "string" }, amount: { type: "number" } }, required: ["to_address", "amount"] } },
@@ -80,32 +83,34 @@ const MOCK_TOOLS: ToolDef[] = [
   { name: "exfer_swap_execute", description: "Execute a swap. Moves funds.", parameters: { type: "object", properties: { swap_id: { type: "string" } } } },
 ];
 
+async function* say(text: string): AsyncIterable<StreamEvent> {
+  for (const chunk of text.match(/.{1,8}/g) ?? []) {
+    yield { type: "text_delta", text: chunk };
+    await new Promise((r) => setTimeout(r, 12));
+  }
+}
+
 async function* scriptedStream(userText: string): AsyncIterable<StreamEvent> {
   const t = userText.toLowerCase();
-  const say = async function* (text: string): AsyncIterable<StreamEvent> {
-    for (const chunk of text.match(/.{1,8}/g) ?? []) {
-      yield { type: "text_delta", text: chunk };
-      await new Promise((r) => setTimeout(r, 12));
-    }
-  };
   if (/balance|余额|how much/.test(t)) {
     yield { type: "thinking_delta", text: "The user wants their balance — I'll call exfer_get_balance for their address." };
     yield* say("Let me check your balance.");
-    yield { type: "tool_call", call: { id: "c1", name: "exfer_get_balance", args: { address: "91e0…c042" } } };
+    yield { type: "tool_call", call: { id: "c1", name: "exfer_get_balance", args: { address: SELF_EXFER } } };
     yield { type: "done", stopReason: "tool_use" };
     return;
   }
   if (/send|transfer|转/.test(t)) {
     yield { type: "thinking_delta", text: "A transfer request. I'll call exfer_transfer; the app will ask the user to confirm." };
     yield* say("I'll send that now.");
-    yield { type: "tool_call", call: { id: "c2", name: "exfer_transfer", args: { to_address: "8c721d05…336e", amount: 5 } } };
+    // amount is base exfers (1 EXFER = 1e8) — 5 EXFER = 500_000_000.
+    yield { type: "tool_call", call: { id: "c2", name: "exfer_transfer", args: { to_address: PAYEE, amount: 500_000_000, fee: 69 } } };
     yield { type: "done", stopReason: "tool_use" };
     return;
   }
   if (/swap|兑换|换/.test(t)) {
     yield { type: "thinking_delta", text: "Swap request — quote first, then execute (execute is gated)." };
-    yield* say("Getting a quote, then I'll execute the swap.");
-    yield { type: "tool_call", call: { id: "c3", name: "exfer_swap_execute", args: { swap_id: "2e53ce5c" } } };
+    yield* say("Getting a quote first.");
+    yield { type: "tool_call", call: { id: "c3q", name: "exfer_swap_get_quote", args: { direction: "bnb_to_exfer", amount_in: "0.002" } } };
     yield { type: "done", stopReason: "tool_use" };
     return;
   }
@@ -116,23 +121,32 @@ async function* scriptedStream(userText: string): AsyncIterable<StreamEvent> {
   yield { type: "done", stopReason: "end_turn" };
 }
 
-// After a tool runs, the result is fed back; the mock then summarizes and ends
-// the turn (mirrors a real model reacting to the tool result, instead of
-// re-calling the tool forever).
+// After a quote returns, proceed to the (gated) swap execution.
+async function* swapExecuteStream(quoteJson: string): AsyncIterable<StreamEvent> {
+  let swapId = "2e53ce5c";
+  try {
+    swapId = String((JSON.parse(quoteJson) as { swap_id?: string }).swap_id ?? swapId);
+  } catch {
+    /* keep default */
+  }
+  yield* say("Quote looks good — executing the swap.");
+  yield { type: "tool_call", call: { id: "c3x", name: "exfer_swap_execute", args: { swap_id: swapId } } };
+  yield { type: "done", stopReason: "tool_use" };
+}
+
+// After a tool runs, the mock summarizes and ends the turn (mirrors a real model
+// reacting to the tool result, instead of re-calling the tool forever).
 async function* finalStream(toolName: string, resultJson: string): AsyncIterable<StreamEvent> {
   let line = "Done.";
   try {
     const r = JSON.parse(resultJson) as Record<string, unknown>;
-    if (toolName === "exfer_get_balance") line = `Your balance is ${(Number(r.balance) / 1e8).toLocaleString()} EXFER.`;
+    if (toolName === "exfer_get_balance") line = `Your balance is ${(Number(r.balance) / 1e8).toLocaleString("en-US")} EXFER.`;
     else if (toolName === "exfer_transfer") line = `Sent. Transaction ${String(r.tx_id ?? "").slice(0, 14)}…`;
     else if (toolName === "exfer_swap_execute") line = `Swap ${String(r.swap_id ?? "")} started (${String(r.state ?? "")}); it settles in the background.`;
   } catch {
     /* keep default */
   }
-  for (const chunk of line.match(/.{1,8}/g) ?? []) {
-    yield { type: "text_delta", text: chunk };
-    await new Promise((res) => setTimeout(res, 12));
-  }
+  yield* say(line);
   yield { type: "done", stopReason: "end_turn" };
 }
 
@@ -140,7 +154,10 @@ export const mockProvider: LLMProvider = {
   kind: "openai",
   stream: ({ messages }) => {
     const last = messages[messages.length - 1];
-    if (last && last.role === "tool") return finalStream(last.name, last.content);
+    if (last && last.role === "tool") {
+      if (last.name === "exfer_swap_get_quote") return swapExecuteStream(last.content);
+      return finalStream(last.name, last.content);
+    }
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     return scriptedStream(lastUser && "content" in lastUser ? lastUser.content : "");
   },
@@ -151,13 +168,13 @@ export const mockTools: ToolSource = {
   executeTool: async (name) => {
     switch (name) {
       case "exfer_get_balance":
-        return { content: JSON.stringify({ address: "91e0…c042", balance: 100000000000 }) };
+        return { content: JSON.stringify({ address: SELF_EXFER, balance: 100000000000 }) };
       case "exfer_transfer":
-        return { content: JSON.stringify({ tx_id: "ca898cd9ad72d39d…", fee: 69, submitted: true }) };
+        return { content: JSON.stringify({ tx_id: "ca898cd9ad72d39d6d34b8c2268a5", fee: 69, submitted: true }) };
       case "exfer_swap_get_quote":
-        return { content: JSON.stringify({ amount_in: "0.002", amount_out: "4039.99", fee_bps: 30 }) };
+        return { content: JSON.stringify({ swap_id: "2e53ce5c", direction: "bnb_to_exfer", amount_in: "0.002", amount_out: "4039.99561830", fee_bps: 30 }) };
       case "exfer_swap_execute":
-        return { content: JSON.stringify({ swap_id: "2e53ce5c", state: "user_locked", amount_out: "4039.99" }) };
+        return { content: JSON.stringify({ swap_id: "2e53ce5c", state: "user_locked", amount_out: "4039.99561830" }) };
       default:
         return { content: "{}" };
     }
