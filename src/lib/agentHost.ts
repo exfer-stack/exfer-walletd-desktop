@@ -1,0 +1,160 @@
+// Wires the headless exfer-agent core to the desktop host.
+//
+// The core (AgentSession) needs four injected effects. In the real Tauri app
+// these go through Rust commands (llm_fetch, mcp_* sidecar, agent_confirm_consent);
+// in browser dev (vite + Playwright, no Tauri) we substitute a scripted mock LLM
+// + canned tools so the whole chat UX runs headless. `requestConsent` is always
+// provided by the Agent page (it owns the confirmation card).
+
+import {
+  createProvider,
+  type LLMProvider,
+  type ProviderConfig,
+  type StreamEvent,
+  type ToolDef,
+  type AgentToolResult,
+} from "exfer-agent";
+
+export function inTauri(): boolean {
+  return typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+}
+
+export interface ToolSource {
+  listTools(): Promise<ToolDef[]>;
+  executeTool(name: string, args: Record<string, unknown>): Promise<AgentToolResult>;
+}
+
+// ── real Tauri wiring (used when running inside the app) ───────────────────────
+
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(cmd, args);
+}
+
+/** LLM provider whose fetch is proxied through the Rust `llm_fetch` command
+ *  (key injected Rust-side; bypasses webview CORS). */
+export function realProvider(cfg: ProviderConfig): LLMProvider {
+  const hostFetch: typeof fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const res = await tauriInvoke<{ status: number; headers: Record<string, string>; body: string }>("llm_fetch", {
+      req: { url, method: init?.method ?? "POST", headers: init?.headers ?? {}, body: init?.body ?? null },
+    });
+    return new Response(res.body, { status: res.status, headers: res.headers });
+  };
+  return createProvider(cfg, hostFetch);
+}
+
+export const realTools: ToolSource = {
+  listTools: () => tauriInvoke<{ tools: { name: string; description?: string; inputSchema?: unknown }[] }>("mcp_list_tools").then(
+    (r) =>
+      r.tools.map((t) => ({
+        name: t.name,
+        description: t.description ?? "",
+        parameters: (t.inputSchema ?? { type: "object", properties: {} }) as Record<string, unknown>,
+      })),
+  ),
+  executeTool: (name, args) =>
+    tauriInvoke<{ content: { type: string; text?: string }[]; isError?: boolean }>("mcp_call_tool", { name, args }).then((r) => ({
+      content: r.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n"),
+      isError: r.isError === true,
+    })),
+};
+
+// ── browser-dev mock (scripted LLM + canned tools) ─────────────────────────────
+
+const MOCK_TOOLS: ToolDef[] = [
+  { name: "exfer_get_balance", description: "Get EXFER balance for an address.", parameters: { type: "object", properties: { address: { type: "string" } } } },
+  { name: "exfer_transfer", description: "Send EXFER. Moves funds.", parameters: { type: "object", properties: { to_address: { type: "string" }, amount: { type: "number" } }, required: ["to_address", "amount"] } },
+  { name: "exfer_swap_get_quote", description: "Quote a BNB<->EXFER swap.", parameters: { type: "object", properties: { direction: { type: "string" }, amount_in: { type: "string" } } } },
+  { name: "exfer_swap_execute", description: "Execute a swap. Moves funds.", parameters: { type: "object", properties: { swap_id: { type: "string" } } } },
+];
+
+async function* scriptedStream(userText: string): AsyncIterable<StreamEvent> {
+  const t = userText.toLowerCase();
+  const say = async function* (text: string): AsyncIterable<StreamEvent> {
+    for (const chunk of text.match(/.{1,8}/g) ?? []) {
+      yield { type: "text_delta", text: chunk };
+      await new Promise((r) => setTimeout(r, 12));
+    }
+  };
+  if (/balance|余额|how much/.test(t)) {
+    yield { type: "thinking_delta", text: "The user wants their balance — I'll call exfer_get_balance for their address." };
+    yield* say("Let me check your balance.");
+    yield { type: "tool_call", call: { id: "c1", name: "exfer_get_balance", args: { address: "91e0…c042" } } };
+    yield { type: "done", stopReason: "tool_use" };
+    return;
+  }
+  if (/send|transfer|转/.test(t)) {
+    yield { type: "thinking_delta", text: "A transfer request. I'll call exfer_transfer; the app will ask the user to confirm." };
+    yield* say("I'll send that now.");
+    yield { type: "tool_call", call: { id: "c2", name: "exfer_transfer", args: { to_address: "8c721d05…336e", amount: 5 } } };
+    yield { type: "done", stopReason: "tool_use" };
+    return;
+  }
+  if (/swap|兑换|换/.test(t)) {
+    yield { type: "thinking_delta", text: "Swap request — quote first, then execute (execute is gated)." };
+    yield* say("Getting a quote, then I'll execute the swap.");
+    yield { type: "tool_call", call: { id: "c3", name: "exfer_swap_execute", args: { swap_id: "2e53ce5c" } } };
+    yield { type: "done", stopReason: "tool_use" };
+    return;
+  }
+  yield { type: "thinking_delta", text: "General question about exfer." };
+  yield* say(
+    "I'm your exfer wallet agent. I can check your balance, send EXFER, and swap BNB↔EXFER — every money move asks for your fingerprint first. Try \"check my balance\".",
+  );
+  yield { type: "done", stopReason: "end_turn" };
+}
+
+// After a tool runs, the result is fed back; the mock then summarizes and ends
+// the turn (mirrors a real model reacting to the tool result, instead of
+// re-calling the tool forever).
+async function* finalStream(toolName: string, resultJson: string): AsyncIterable<StreamEvent> {
+  let line = "Done.";
+  try {
+    const r = JSON.parse(resultJson) as Record<string, unknown>;
+    if (toolName === "exfer_get_balance") line = `Your balance is ${(Number(r.balance) / 1e8).toLocaleString()} EXFER.`;
+    else if (toolName === "exfer_transfer") line = `Sent. Transaction ${String(r.tx_id ?? "").slice(0, 14)}…`;
+    else if (toolName === "exfer_swap_execute") line = `Swap ${String(r.swap_id ?? "")} started (${String(r.state ?? "")}); it settles in the background.`;
+  } catch {
+    /* keep default */
+  }
+  for (const chunk of line.match(/.{1,8}/g) ?? []) {
+    yield { type: "text_delta", text: chunk };
+    await new Promise((res) => setTimeout(res, 12));
+  }
+  yield { type: "done", stopReason: "end_turn" };
+}
+
+export const mockProvider: LLMProvider = {
+  kind: "openai",
+  stream: ({ messages }) => {
+    const last = messages[messages.length - 1];
+    if (last && last.role === "tool") return finalStream(last.name, last.content);
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    return scriptedStream(lastUser && "content" in lastUser ? lastUser.content : "");
+  },
+};
+
+export const mockTools: ToolSource = {
+  listTools: async () => MOCK_TOOLS,
+  executeTool: async (name) => {
+    switch (name) {
+      case "exfer_get_balance":
+        return { content: JSON.stringify({ address: "91e0…c042", balance: 100000000000 }) };
+      case "exfer_transfer":
+        return { content: JSON.stringify({ tx_id: "ca898cd9ad72d39d…", fee: 69, submitted: true }) };
+      case "exfer_swap_get_quote":
+        return { content: JSON.stringify({ amount_in: "0.002", amount_out: "4039.99", fee_bps: 30 }) };
+      case "exfer_swap_execute":
+        return { content: JSON.stringify({ swap_id: "2e53ce5c", state: "user_locked", amount_out: "4039.99" }) };
+      default:
+        return { content: "{}" };
+    }
+  },
+};
+
+/** Pick provider + tools for the current environment. */
+export function hostDeps(cfg?: ProviderConfig): { provider: LLMProvider; tools: ToolSource } {
+  if (inTauri() && cfg?.apiKey) return { provider: realProvider(cfg), tools: realTools };
+  return { provider: mockProvider, tools: mockTools };
+}

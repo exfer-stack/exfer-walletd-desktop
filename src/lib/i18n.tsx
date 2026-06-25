@@ -43,6 +43,23 @@ const EN = {
   "nav.activity": "Activity",
   "nav.governance": "Vote",
   "nav.settings": "Settings",
+  "nav.agent": "Agent",
+
+  // ── agent (in-wallet AI agent tab) ─────────────────────────────────
+  "agent.empty.title": "What can I help with?",
+  "agent.empty.ex1": "Check my balance",
+  "agent.empty.ex2": "Send 5 EXFER to …",
+  "agent.empty.ex3": "How much EXFER for 0.1 BNB?",
+  "agent.composer.placeholder": "Message the agent…",
+  "agent.composer.send": "Send",
+  "agent.thinking.label": "Thinking",
+  "agent.tool.running": "Running {name}…",
+  "agent.tool.done": "Done",
+  "agent.tool.failed": "Failed",
+  "agent.consent.approve": "Approve",
+  "agent.consent.decline": "Decline",
+  "agent.consent.declined": "You declined this action.",
+  "agent.error.generic": "Something went wrong: {message}",
 
   // ── app shell (bootstrap / update) ─────────────────────────────────
   "app.bootFailedTitle": "Walletd failed to start",
@@ -899,6 +916,23 @@ const ZH: Record<MsgKey, string> = {
   "nav.activity": "活动",
   "nav.governance": "投票",
   "nav.settings": "设置",
+  "nav.agent": "智能助手",
+
+  // ── agent ──────────────────────────────────────────────────────────
+  "agent.empty.title": "我能帮你做什么？",
+  "agent.empty.ex1": "查一下我的余额",
+  "agent.empty.ex2": "把 5 EXFER 转给 …",
+  "agent.empty.ex3": "0.1 BNB 能换多少 EXFER",
+  "agent.composer.placeholder": "给智能助手发消息…",
+  "agent.composer.send": "发送",
+  "agent.thinking.label": "思考中",
+  "agent.tool.running": "正在执行 {name}…",
+  "agent.tool.done": "完成",
+  "agent.tool.failed": "失败",
+  "agent.consent.approve": "批准",
+  "agent.consent.decline": "拒绝",
+  "agent.consent.declined": "你已拒绝此操作。",
+  "agent.error.generic": "出错了：{message}",
 
   // ── app shell ──────────────────────────────────────────────────────
   "app.bootFailedTitle": "Walletd 启动失败",

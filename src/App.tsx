@@ -18,6 +18,7 @@ import { resolveNetwork } from "./lib/addressDisplay";
 import { PasswordPrompt } from "./components/PasswordPrompt";
 import { Layout, type Tab } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
+import { Agent } from "./pages/Agent";
 import { Receive } from "./pages/Receive";
 import { Send } from "./pages/Send";
 import { Swap } from "./pages/Swap";
@@ -174,6 +175,7 @@ function Ready({
   return (
     <Layout activeTab={tab} onTabChange={setTab}>
       {tab === "dashboard" && <Dashboard onOpenSwap={() => setTab("swap")} />}
+      {tab === "agent" && <Agent />}
       {tab === "receive" && <Receive />}
       {tab === "send" && <Send />}
       {tab === "swap" && <Swap />}

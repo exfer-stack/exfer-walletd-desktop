@@ -5,6 +5,7 @@ import { useInflight } from "../lib/inflight";
 
 export type Tab =
   | "dashboard"
+  | "agent"
   | "receive"
   | "send"
   | "swap"
@@ -29,6 +30,14 @@ function Icon({ name }: { name: Tab }) {
     "aria-hidden": true,
   };
   switch (name) {
+    case "agent":
+      // Speech bubble with a spark — the "AI assistant" glyph.
+      return (
+        <svg {...common}>
+          <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 4V5Z" />
+          <path d="m12 7 .9 1.9 1.9.9-1.9.9L12 12.6l-.9-1.9-1.9-.9 1.9-.9L12 7Z" />
+        </svg>
+      );
     case "dashboard":
       return (
         <svg {...common}>
@@ -104,6 +113,7 @@ interface Props {
 
 const TABS: { id: Tab }[] = [
   { id: "dashboard" },
+  { id: "agent" },
   { id: "receive" },
   { id: "send" },
   { id: "swap" },
