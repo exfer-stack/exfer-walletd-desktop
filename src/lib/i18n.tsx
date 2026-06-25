@@ -87,6 +87,15 @@ const EN = {
   "agent.consent.field.you_pay": "You pay",
   "agent.consent.field.you_receive": "You receive",
   "agent.consent.field.earn_note": "Note",
+  "agent.settings.title": "LLM provider",
+  "agent.settings.provider": "Provider",
+  "agent.settings.baseUrl": "Base URL",
+  "agent.settings.model": "Model",
+  "agent.settings.apiKey": "API key",
+  "agent.settings.keyNote": "Stored in your OS keychain; never leaves this device.",
+  "agent.settings.save": "Save",
+  "agent.settings.cancel": "Cancel",
+  "agent.settings.open": "LLM settings",
 
   // ── app shell (bootstrap / update) ─────────────────────────────────
   "app.bootFailedTitle": "Walletd failed to start",
@@ -987,6 +996,15 @@ const ZH: Record<MsgKey, string> = {
   "agent.consent.field.you_pay": "你支付",
   "agent.consent.field.you_receive": "你收到",
   "agent.consent.field.earn_note": "说明",
+  "agent.settings.title": "大模型服务商",
+  "agent.settings.provider": "服务商",
+  "agent.settings.baseUrl": "Base URL",
+  "agent.settings.model": "模型",
+  "agent.settings.apiKey": "API 密钥",
+  "agent.settings.keyNote": "存于系统钥匙串,绝不离开本机。",
+  "agent.settings.save": "保存",
+  "agent.settings.cancel": "取消",
+  "agent.settings.open": "大模型设置",
 
   // ── app shell ──────────────────────────────────────────────────────
   "app.bootFailedTitle": "Walletd 启动失败",

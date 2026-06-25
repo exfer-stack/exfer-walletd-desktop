@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { AgentSession, type AgentEvent, type ConsentCard, type ConsentField } from "exfer-agent";
 import { useT, type Lang, type MsgKey } from "../lib/i18n";
 import { hostDeps } from "../lib/agentHost";
+import { AgentSettings } from "../components/agent/AgentSettings";
+import { loadConfig, toProviderConfig } from "../lib/agentConfig";
 import { formatExfer } from "../lib/rpc";
 
 // In-wallet AI agent chat (desktop). Lives in the desktop app (its own look);
@@ -80,15 +82,19 @@ export function Agent({ lang }: { lang: Lang }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [consent, setConsent] = useState<PendingConsent | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [cfgVersion, setCfgVersion] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastQuoteRef = useRef<Record<string, unknown> | null>(null);
 
   const session = useMemo(() => {
-    const { provider, tools } = hostDeps();
+    const saved = loadConfig();
+    const cfg = saved ? toProviderConfig(saved) : undefined;
+    const { provider, tools } = hostDeps(cfg);
     return new AgentSession({
       provider,
-      model: "deepseek-chat",
+      model: saved?.model ?? "deepseek-chat",
       listTools: tools.listTools,
       executeTool: tools.executeTool,
       requestConsent: (req) =>
@@ -105,7 +111,7 @@ export function Agent({ lang }: { lang: Lang }) {
         `Always respond to the user in ${lang === "zh" ? "Chinese (简体中文)" : "English"}.`,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cfgVersion, lang]);
 
   // Auto-scroll only when the user is already near the bottom (don't yank them
   // away while they re-read an address mid-stream).
@@ -186,7 +192,15 @@ export function Agent({ lang }: { lang: Lang }) {
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col p-6">
-      <h1 className="mb-3 text-lg font-semibold tracking-tight text-neutral-100">{t("nav.agent")}</h1>
+      <div className="mb-3 flex items-center justify-between">
+        <h1 className="text-lg font-semibold tracking-tight text-neutral-100">{t("nav.agent")}</h1>
+        <button type="button" className="btn-ghost px-2 py-1" title={t("agent.settings.open")} aria-label={t("agent.settings.open")} onClick={() => setShowSettings(true)} data-testid="agent-settings-open">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </div>
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-auto" aria-live="polite" aria-atomic="false">
         {turns.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-5 text-center fade-in">
@@ -267,6 +281,15 @@ export function Agent({ lang }: { lang: Lang }) {
             consent.resolve(ok);
             setConsent(null);
             if (prev instanceof HTMLElement) prev.focus();
+          }}
+        />
+      )}
+
+      {showSettings && (
+        <AgentSettings
+          onClose={(saved) => {
+            setShowSettings(false);
+            if (saved) setCfgVersion((v) => v + 1);
           }}
         />
       )}
