@@ -44,9 +44,12 @@ impl Default for McpCtx {
 fn external_env(conn: &ConnectionInfo) -> HashMap<String, String> {
     let mut e = HashMap::new();
     e.insert("WALLETD_URL".into(), conn.base_url.clone());
-    e.insert("WALLETD_TOKEN_READ".into(), conn.token_read.clone());
-    e.insert("WALLETD_TOKEN_MANAGE".into(), conn.token_manage.clone());
-    e.insert("WALLETD_TOKEN_SPEND".into(), conn.token_spend.clone());
+    // exfer-mcp speaks to walletd with a SINGLE bearer token (WALLETD_AUTH_TOKEN),
+    // not the desktop's per-scope read/manage/spend triple. The spend-scope token
+    // is the most privileged, so it covers the agent's reads AND writes
+    // (transfer / swap / sign). Sending the wrong env makes exfer-mcp exit on
+    // startup ("WALLETD_AUTH_TOKEN is unset") and the agent hangs awaiting tools.
+    e.insert("WALLETD_AUTH_TOKEN".into(), conn.token_spend.clone());
     if !conn.fingerprint.is_empty() {
         e.insert("WALLETD_FINGERPRINT".into(), conn.fingerprint.clone());
     }
