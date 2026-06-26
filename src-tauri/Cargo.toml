@@ -29,8 +29,10 @@ aes-gcm            = "0.10"
 rand               = "0.8"
 tokio              = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "io-util", "time"] }
 tokio-util         = { version = "0.7", features = ["rt"] }
-# Official MCP client — drives the exfer-mcp sidecar over stdio for agent tools.
-rmcp               = { version = "0.15", features = ["client", "transport-child-process"] }
+# Official MCP client — drives the exfer-mcp sidecar over stdio AND user-added
+# MCP servers over stdio or streamable-http (the reqwest variant reuses the same
+# rustls stack the rest of the app already pulls in).
+rmcp               = { version = "0.15", features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 
 # The embedded walletd. Pinned to the released tag (now that walletd cuts
 # proper releases) — the SAME version mobile ships, so the cross-chain swap

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useT } from "../../lib/i18n";
+import { useT, type MsgKey } from "../../lib/i18n";
 import { PROVIDER_PRESETS, loadConfig, saveConfig, saveApiKey, type SavedConfig } from "../../lib/agentConfig";
 
 // "Bring your own LLM": pick a preset (or Custom), set baseUrl/model, paste a
@@ -43,11 +43,11 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
           <select className="input w-full" value={presetIdx} onChange={(e) => onPreset(Number(e.target.value))} data-testid="settings-provider">
             {PROVIDER_PRESETS.map((p, i) => (
               <option key={p.label} value={i}>
-                {p.label}
+                {(p.labelKey && t(p.labelKey as MsgKey)) || p.label}
               </option>
             ))}
           </select>
-          {preset.note && <span className="help">{preset.note}</span>}
+          {(preset.noteKey || preset.note) && <span className="help">{(preset.noteKey && t(preset.noteKey as MsgKey)) || preset.note}</span>}
         </label>
 
         <label className="block space-y-1">
@@ -62,7 +62,9 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
 
         <label className="block space-y-1">
           <span className="label">{t("agent.settings.apiKey")}</span>
+          <p className="text-xs text-neutral-500">{t("agent.settings.keyExplain")}</p>
           <input type="password" className="input w-full" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" autoComplete="off" data-testid="settings-apikey" />
+          <span className="help">{t("agent.settings.keyWhere")}</span>
           <span className="help">{t("agent.settings.keyNote")}</span>
         </label>
 

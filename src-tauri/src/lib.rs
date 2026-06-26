@@ -6,12 +6,14 @@
 
 mod error;
 mod export_key;
+mod mcp_registry;
 mod mcp_supervisor;
 mod mnemonic;
 mod rpc_client;
 mod secrets;
 mod walletd_supervisor;
 
+use mcp_registry::{mcp_add_server, mcp_list_servers, mcp_remove_server, mcp_set_enabled};
 use mcp_supervisor::{mcp_call_tool, mcp_list_tools, mcp_start, McpCtx};
 
 use serde_json::Value;
@@ -895,6 +897,10 @@ pub fn run() {
             mcp_start,
             mcp_list_tools,
             mcp_call_tool,
+            mcp_list_servers,
+            mcp_add_server,
+            mcp_remove_server,
+            mcp_set_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

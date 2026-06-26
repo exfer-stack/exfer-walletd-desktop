@@ -175,7 +175,11 @@ function Ready({
   return (
     <Layout activeTab={tab} onTabChange={setTab}>
       {tab === "dashboard" && <Dashboard onOpenSwap={() => setTab("swap")} />}
-      {tab === "agent" && <Agent lang={lang} />}
+      {/* Keep the agent MOUNTED across tab switches (hidden when inactive) so the
+          conversation + LLM session survive leaving and coming back. */}
+      <div className={tab === "agent" ? "h-full" : "hidden"}>
+        <Agent lang={lang} />
+      </div>
       {tab === "receive" && <Receive />}
       {tab === "send" && <Send />}
       {tab === "swap" && <Swap />}

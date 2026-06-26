@@ -8,10 +8,14 @@
 
 import {
   createProvider,
+  mergePolicies,
+  EXFER_POLICY,
   type LLMProvider,
   type ProviderConfig,
   type StreamEvent,
   type ToolDef,
+  type ToolPolicy,
+  type ConsentClass,
   type AgentToolResult,
 } from "exfer-agent";
 
@@ -22,6 +26,10 @@ export function inTauri(): boolean {
 export interface ToolSource {
   listTools(): Promise<ToolDef[]>;
   executeTool(name: string, args: Record<string, unknown>): Promise<AgentToolResult>;
+  /** Build the consent policy across all enabled MCP servers. Optional so the
+   *  current Agent page (which doesn't yet read it) keeps type-checking; the
+   *  session falls back to EXFER_POLICY when absent. */
+  getPolicy?(): Promise<ToolPolicy>;
 }
 
 // ── real Tauri wiring (used when running inside the app) ───────────────────────
@@ -63,9 +71,16 @@ export async function confirmConsent(passphrase: string): Promise<boolean> {
   return tauriInvoke<boolean>("agent_confirm_consent", { passphrase });
 }
 
+/** Shape of the `mcp_list_tools` response: tools across ALL enabled servers
+ *  (raw names, each tagged with its owning `server`) plus per-server metadata. */
+interface McpListToolsResult {
+  tools: { name: string; description?: string; inputSchema?: unknown; server?: string }[];
+  servers?: { id: string; defaultConsent: ConsentClass }[];
+}
+
 export const realTools: ToolSource = {
   listTools: () =>
-    tauriInvoke<{ tools: { name: string; description?: string; inputSchema?: unknown }[] }>("mcp_list_tools").then((r) =>
+    tauriInvoke<McpListToolsResult>("mcp_list_tools").then((r) =>
       r.tools.map((t) => ({
         name: t.name,
         description: t.description ?? "",
@@ -77,6 +92,25 @@ export const realTools: ToolSource = {
       content: r.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n"),
       isError: r.isError === true,
     })),
+  // Merge a policy per enabled server: the built-in "exfer" server uses core
+  // EXFER_POLICY's per-tool classes; every OTHER server's tools all take that
+  // server's defaultConsent. mergePolicies keeps the strictest default, so
+  // adding any gated source keeps unknown tools fail-closed.
+  getPolicy: () =>
+    tauriInvoke<McpListToolsResult>("mcp_list_tools").then((r) => {
+      const servers = r.servers ?? [{ id: "exfer", defaultConsent: "auto" as ConsentClass }];
+      const consentOf = new Map(servers.map((s) => [s.id, s.defaultConsent]));
+      const policies: ToolPolicy[] = [EXFER_POLICY];
+      for (const s of servers) {
+        if (s.id === "exfer") continue; // covered by EXFER_POLICY
+        const classes: Record<string, ConsentClass> = {};
+        for (const t of r.tools) {
+          if (t.server === s.id) classes[t.name] = consentOf.get(s.id) ?? "gated";
+        }
+        policies.push({ classes, default: s.defaultConsent });
+      }
+      return mergePolicies(...policies);
+    }),
 };
 
 // ── browser-dev mock (scripted LLM + canned tools) ─────────────────────────────
@@ -193,6 +227,7 @@ export const mockTools: ToolSource = {
         return { content: "{}" };
     }
   },
+  getPolicy: async () => EXFER_POLICY,
 };
 
 /** Pick provider + tools for the current environment. */

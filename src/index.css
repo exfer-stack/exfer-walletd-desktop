@@ -37,6 +37,14 @@
   ::-webkit-scrollbar-thumb:hover { background: #404040; }
 }
 
+/* The agent chat + its nested markdown tables/code use a thin, transparent-track
+   scrollbar instead of the chunky 10px global one — the chat shouldn't shout. */
+.agent-scroll { scrollbar-width: thin; scrollbar-color: #2a2a2a transparent; scrollbar-gutter: stable; }
+.agent-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.agent-scroll::-webkit-scrollbar-track { background: transparent; }
+.agent-scroll::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 999px; }
+.agent-scroll::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+
 @layer components {
   /* ── buttons ────────────────────────────────────────────────── */
   .btn {
@@ -86,6 +94,19 @@
   }
   .card-padded {
     @apply rounded-xl border border-neutral-800 bg-neutral-950 shadow-sm p-6;
+  }
+  /* One chat-surface token. Every translucent in-chat card (tool result, MCP
+     row, thinking, sub-agent) shares ONE radius + ONE opacity so they read as
+     one family instead of four ad-hoc recipes. The sub-agent layers an extra
+     accent rail (border-l-2 border-cyan-500/40) on top of this. */
+  .card-chat {
+    @apply rounded-lg border border-neutral-800 bg-neutral-900/40;
+  }
+  /* Example-prompt chip in the empty state: a quiet ghost button, distinct from
+     the colored status pills (which carry meaning). */
+  .suggestion-chip {
+    @apply inline-flex items-center rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2;
+    @apply text-sm text-neutral-300 transition hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-100;
   }
 
   /* ── typographic helpers for amounts / addresses ─────────────── */

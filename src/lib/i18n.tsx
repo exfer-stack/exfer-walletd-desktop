@@ -60,7 +60,7 @@ const EN = {
   "agent.consent.decline": "Decline",
   "agent.consent.declined": "You declined this action.",
   "agent.error.generic": "Something went wrong: {message}",
-  "agent.empty.subtitle": "Check balances, send EXFER, and swap BNB↔EXFER — you approve every money move.",
+  "agent.empty.subtitle": "Check balances, send EXFER, and swap BNB↔EXFER.",
   "agent.composer.stop": "Stop",
   "agent.thinking.active": "Thinking…",
   "agent.tool.gated": "needs approval",
@@ -74,6 +74,11 @@ const EN = {
   "agent.consent.title.htlc_lock": "Confirm HTLC lock",
   "agent.consent.title.quote_issue": "Sign a price quote",
   "agent.consent.title.earn": "Start mining EXFER",
+  "agent.consent.title.htlc_claim": "Claim escrow funds",
+  "agent.consent.title.htlc_reclaim": "Reclaim escrow funds",
+  "agent.consent.title.swap_refund": "Refund swap",
+  "agent.consent.field.lock_tx_id": "Lock tx",
+  "agent.consent.field.from": "To",
   "agent.consent.field.to": "To",
   "agent.consent.field.amount": "Amount",
   "agent.consent.field.fee": "Fee",
@@ -96,11 +101,114 @@ const EN = {
   "agent.settings.save": "Save",
   "agent.settings.cancel": "Cancel",
   "agent.settings.open": "LLM settings",
+  "providerLabel.ollama": "Ollama (local)",
+  "providerNote.ollama": "Runs locally; the API key can be any string.",
+  "providerLabel.custom": "Custom (OpenAI-compatible)",
+  "providerNote.custom": "Any provider exposing /chat/completions.",
   "agent.error.retry": "Retry",
   "agent.consent.passphrase": "Wallet passphrase",
   "agent.consent.authFailed": "Incorrect passphrase.",
   "agent.consent.copied": "Address copied",
   "agent.consent.total": "Total",
+  "agent.copy.copied": "Copied",
+  "agent.copy.label": "Copy {value}",
+
+  // ── agent · sub-agent (read-only research child) ───────────────────
+  "agent.subagent.label": "Researching: {task}",
+  "agent.subagent.running": "Researching…",
+  "agent.subagent.done": "Research complete",
+
+  // ── agent · MCP / skill manager ────────────────────────────────────
+  "agent.mcp.open": "Tools and MCP servers",
+  "agent.mcp.title": "Tools and MCP servers",
+  "agent.mcp.subtitle": "Connect external MCP servers to give the agent more skills. The built-in wallet tools are always available.",
+  "agent.mcp.builtinLabel": "Built-in wallet (exfer)",
+  "agent.mcp.builtinNote": "Always on. Cannot be removed.",
+  "agent.mcp.yourServers": "Your servers",
+  "agent.mcp.empty": "No servers added yet.",
+  "agent.mcp.enabled": "Enabled",
+  "agent.mcp.disabled": "Disabled",
+  "agent.mcp.remove": "Remove",
+  "agent.mcp.addTitle": "Add a server",
+  "agent.mcp.fieldId": "Id",
+  "agent.mcp.fieldIdHint": "Unique, lowercase. Used to route tool calls.",
+  "agent.mcp.fieldLabel": "Label",
+  "agent.mcp.fieldTransport": "Transport",
+  "agent.mcp.transportStdio": "stdio (local command)",
+  "agent.mcp.transportHttp": "HTTP (URL)",
+  "agent.mcp.fieldCommand": "Command",
+  "agent.mcp.fieldArgs": "Arguments (one per line)",
+  "agent.mcp.fieldEnv": "Environment (KEY=value, one per line)",
+  "agent.mcp.fieldUrl": "URL",
+  "agent.mcp.fieldConsent": "Default consent",
+  "agent.mcp.consentAuto": "auto (run without asking)",
+  "agent.mcp.consentGated": "gated (ask before each call)",
+  "agent.mcp.consentHint": "How tools from this server are treated unless overridden. Choose gated for anything that can act on your behalf.",
+  "agent.mcp.add": "Add server",
+  "agent.mcp.close": "Close",
+  "agent.mcp.errIdRequired": "Id and label are required.",
+  "agent.mcp.errIdReserved": "\"exfer\" is reserved for the built-in wallet server.",
+  "agent.mcp.errIdTaken": "A server with that id already exists.",
+  "agent.mcp.errCommand": "A command is required for a stdio server.",
+  "agent.mcp.errUrl": "A URL is required for an HTTP server.",
+  "agent.mcp.builtinAlwaysOn": "Always on",
+  "agent.mcp.newChat": "New chat",
+
+  // ── agent · tool labels (card header — friendly action, not a slug) ─
+  "agent.toolLabel.exfer_get_balance": "Check balance",
+  "agent.toolLabel.exfer_list_addresses": "List addresses",
+  "agent.toolLabel.exfer_generate_address": "Create address",
+  "agent.toolLabel.exfer_get_address_history": "Address history",
+  "agent.toolLabel.exfer_simulate_transfer": "Preview transfer",
+  "agent.toolLabel.exfer_transfer": "Send EXFER",
+  "agent.toolLabel.exfer_swap_get_quote": "Get swap quote",
+  "agent.toolLabel.exfer_swap_execute": "Start swap",
+  "agent.toolLabel.exfer_swap_pool_info": "Swap pool info",
+  "agent.toolLabel.exfer_bsc_get_address": "BNB address",
+  "agent.toolLabel.exfer_bsc_get_balance": "BNB balance",
+  "agent.toolLabel.exfer_payment_uri_encode": "Payment link",
+  "agent.toolLabel.spawn_research_agent": "Research",
+
+  // ── agent · humanized tool results (one-liner under the card) ──────
+  "agent.tool.balance": "Balance: {value}",
+  "agent.tool.addressCount": "{n} addresses",
+  "agent.tool.newAddress": "New address {address}",
+  "agent.tool.addressCreated": "Address created",
+  "agent.tool.previewFee": "Preview · fee {fee}",
+  "agent.tool.submittedFee": "Submitted · fee {fee} · tx {tx}",
+  "agent.tool.quote": "Quote: {in} → ≈ {out}",
+  "agent.tool.quoteFee": "Quote: {in} → ≈ {out} · fee {fee}",
+  "agent.tool.swapStarted": "Swap {id} started ({state}) · settling",
+
+  // ── agent · empty state (safety + orientation) ─────────────────────
+  "agent.empty.safety": "Money moves always ask you to confirm first — the agent can't send or swap on its own.",
+  "agent.empty.tryTitle": "Try",
+  "agent.empty.ex4": "Check balance, then quote 0.1 BNB→EXFER",
+  "agent.empty.noKeyTitle": "Connect an LLM to begin",
+  "agent.empty.noKeyBody": "Add your provider and API key in settings. Without a key the chat runs a scripted demo.",
+  "agent.empty.noKeyCta": "Open LLM settings",
+
+  // ── agent · settings hand-holding ──────────────────────────────────
+  "agent.settings.keyExplain": "The agent calls your chosen LLM directly with this key.",
+  "agent.settings.keyWhere": "Get a key from your provider's dashboard (e.g. platform.deepseek.com).",
+
+  // ── agent · top-bubble error (friendly + raw behind details) ───────
+  "agent.error.rawDetails": "Technical details",
+
+  // ── agent · conversations (multi-session) ──────────────────────────
+  "agent.conv.title": "Conversations",
+  "agent.conv.new": "New chat",
+  "agent.conv.untitled": "New conversation",
+  "agent.conv.rename": "Rename",
+  "agent.conv.delete": "Delete",
+  "agent.conv.switchBlocked": "Finish the current reply before switching.",
+  "agent.conv.open": "Conversations",
+  "agent.conv.empty": "No conversations yet.",
+  "agent.conv.renameHint": "Double-click a title to rename.",
+  "agent.time.now": "just now",
+  "agent.time.minutes": "{n}m ago",
+  "agent.time.hours": "{n}h ago",
+  "agent.time.days": "{n}d ago",
 
   // ── app shell (bootstrap / update) ─────────────────────────────────
   "app.bootFailedTitle": "Walletd failed to start",
@@ -974,7 +1082,7 @@ const ZH: Record<MsgKey, string> = {
   "agent.consent.decline": "拒绝",
   "agent.consent.declined": "你已拒绝此操作。",
   "agent.error.generic": "出错了：{message}",
-  "agent.empty.subtitle": "查余额、转 EXFER、BNB↔EXFER 兑换 —— 每笔动钱都由你确认。",
+  "agent.empty.subtitle": "查余额、转 EXFER、BNB↔EXFER 兑换。",
   "agent.composer.stop": "停止",
   "agent.thinking.active": "思考中…",
   "agent.tool.gated": "需确认",
@@ -988,6 +1096,11 @@ const ZH: Record<MsgKey, string> = {
   "agent.consent.title.htlc_lock": "确认 HTLC 锁定",
   "agent.consent.title.quote_issue": "签名报价",
   "agent.consent.title.earn": "开始挖矿",
+  "agent.consent.title.htlc_claim": "领取托管资金",
+  "agent.consent.title.htlc_reclaim": "取回托管资金",
+  "agent.consent.title.swap_refund": "退回兑换",
+  "agent.consent.field.lock_tx_id": "锁定交易",
+  "agent.consent.field.from": "目标地址",
   "agent.consent.field.to": "收款方",
   "agent.consent.field.amount": "金额",
   "agent.consent.field.fee": "手续费",
@@ -1003,18 +1116,121 @@ const ZH: Record<MsgKey, string> = {
   "agent.consent.field.earn_note": "说明",
   "agent.settings.title": "大模型服务商",
   "agent.settings.provider": "服务商",
-  "agent.settings.baseUrl": "Base URL",
+  "agent.settings.baseUrl": "接口地址",
   "agent.settings.model": "模型",
   "agent.settings.apiKey": "API 密钥",
   "agent.settings.keyNote": "存于系统钥匙串,绝不离开本机。",
   "agent.settings.save": "保存",
   "agent.settings.cancel": "取消",
   "agent.settings.open": "大模型设置",
+  "providerLabel.ollama": "Ollama（本地）",
+  "providerNote.ollama": "本地运行，API 密钥可填任意字符串。",
+  "providerLabel.custom": "自定义（兼容 OpenAI）",
+  "providerNote.custom": "任何提供 /chat/completions 接口的服务商。",
   "agent.error.retry": "重试",
   "agent.consent.passphrase": "钱包口令",
   "agent.consent.authFailed": "口令不正确。",
   "agent.consent.copied": "地址已复制",
   "agent.consent.total": "合计",
+  "agent.copy.copied": "已复制",
+  "agent.copy.label": "复制 {value}",
+
+  // ── agent · 子智能体（只读研究） ───────────────────────────────────
+  "agent.subagent.label": "正在研究：{task}",
+  "agent.subagent.running": "研究中…",
+  "agent.subagent.done": "研究完成",
+
+  // ── agent · MCP / 技能管理 ─────────────────────────────────────────
+  "agent.mcp.open": "工具与 MCP 服务器",
+  "agent.mcp.title": "工具与 MCP 服务器",
+  "agent.mcp.subtitle": "连接外部 MCP 服务器，为智能助手增添更多技能。内置的钱包工具始终可用。",
+  "agent.mcp.builtinLabel": "内置钱包（exfer）",
+  "agent.mcp.builtinNote": "始终启用，无法移除。",
+  "agent.mcp.yourServers": "你的服务器",
+  "agent.mcp.empty": "尚未添加服务器。",
+  "agent.mcp.enabled": "已启用",
+  "agent.mcp.disabled": "已停用",
+  "agent.mcp.remove": "移除",
+  "agent.mcp.addTitle": "添加服务器",
+  "agent.mcp.fieldId": "标识 (Id)",
+  "agent.mcp.fieldIdHint": "唯一、小写，用于路由工具调用。",
+  "agent.mcp.fieldLabel": "名称",
+  "agent.mcp.fieldTransport": "传输方式",
+  "agent.mcp.transportStdio": "stdio（本地命令）",
+  "agent.mcp.transportHttp": "HTTP（网址）",
+  "agent.mcp.fieldCommand": "命令",
+  "agent.mcp.fieldArgs": "参数（每行一个）",
+  "agent.mcp.fieldEnv": "环境变量（KEY=value，每行一个）",
+  "agent.mcp.fieldUrl": "网址",
+  "agent.mcp.fieldConsent": "默认授权",
+  "agent.mcp.consentAuto": "auto（无需询问直接运行）",
+  "agent.mcp.consentGated": "gated（每次调用前询问）",
+  "agent.mcp.consentHint": "除非另行覆盖，此服务器的工具默认按此处理。凡是可代你执行操作的，请选择 gated。",
+  "agent.mcp.add": "添加服务器",
+  "agent.mcp.close": "关闭",
+  "agent.mcp.errIdRequired": "标识与名称为必填。",
+  "agent.mcp.errIdReserved": "“exfer”为内置钱包服务器保留。",
+  "agent.mcp.errIdTaken": "已存在使用该标识的服务器。",
+  "agent.mcp.errCommand": "stdio 服务器需填写命令。",
+  "agent.mcp.errUrl": "HTTP 服务器需填写网址。",
+  "agent.mcp.builtinAlwaysOn": "始终启用",
+  "agent.mcp.newChat": "新对话",
+
+  // ── agent · 工具名称（卡片标题，友好动作而非内部标识） ─────────────
+  "agent.toolLabel.exfer_get_balance": "查询余额",
+  "agent.toolLabel.exfer_list_addresses": "列出地址",
+  "agent.toolLabel.exfer_generate_address": "创建地址",
+  "agent.toolLabel.exfer_get_address_history": "地址历史",
+  "agent.toolLabel.exfer_simulate_transfer": "预览转账",
+  "agent.toolLabel.exfer_transfer": "发送 EXFER",
+  "agent.toolLabel.exfer_swap_get_quote": "获取兑换报价",
+  "agent.toolLabel.exfer_swap_execute": "开始兑换",
+  "agent.toolLabel.exfer_swap_pool_info": "兑换池信息",
+  "agent.toolLabel.exfer_bsc_get_address": "BNB 地址",
+  "agent.toolLabel.exfer_bsc_get_balance": "BNB 余额",
+  "agent.toolLabel.exfer_payment_uri_encode": "收款链接",
+  "agent.toolLabel.spawn_research_agent": "研究",
+
+  // ── agent · 工具结果一行摘要 ───────────────────────────────────────
+  "agent.tool.balance": "余额：{value}",
+  "agent.tool.addressCount": "{n} 个地址",
+  "agent.tool.newAddress": "新地址 {address}",
+  "agent.tool.addressCreated": "已创建地址",
+  "agent.tool.previewFee": "预览 · 手续费 {fee}",
+  "agent.tool.submittedFee": "已提交 · 手续费 {fee} · 交易 {tx}",
+  "agent.tool.quote": "报价：{in} → ≈ {out}",
+  "agent.tool.quoteFee": "报价：{in} → ≈ {out} · 手续费 {fee}",
+  "agent.tool.swapStarted": "兑换 {id} 已开始（{state}）· 结算中",
+
+  // ── agent · 空状态（安全提示 + 引导） ──────────────────────────────
+  "agent.empty.safety": "涉及资金的操作都会先请你确认——智能助手无法自行转账或兑换。",
+  "agent.empty.tryTitle": "试试看",
+  "agent.empty.ex4": "查余额，再报价 0.1 BNB→EXFER",
+  "agent.empty.noKeyTitle": "先连接大模型",
+  "agent.empty.noKeyBody": "在设置中填写你的服务商和 API 密钥。未填密钥时，对话将运行脚本演示。",
+  "agent.empty.noKeyCta": "打开大模型设置",
+
+  // ── agent · 设置引导 ───────────────────────────────────────────────
+  "agent.settings.keyExplain": "智能助手会用此密钥直接调用你选择的大模型。",
+  "agent.settings.keyWhere": "在服务商的控制台获取密钥（例如 platform.deepseek.com）。",
+
+  // ── agent · 顶部错误气泡（友好提示 + 原始信息折叠） ────────────────
+  "agent.error.rawDetails": "技术详情",
+
+  // ── agent · 多会话 ─────────────────────────────────────────────────
+  "agent.conv.title": "对话",
+  "agent.conv.new": "新对话",
+  "agent.conv.untitled": "新对话",
+  "agent.conv.rename": "重命名",
+  "agent.conv.delete": "删除",
+  "agent.conv.switchBlocked": "请等当前回复完成后再切换。",
+  "agent.conv.open": "对话列表",
+  "agent.conv.empty": "暂无对话。",
+  "agent.conv.renameHint": "双击标题可重命名。",
+  "agent.time.now": "刚刚",
+  "agent.time.minutes": "{n} 分钟前",
+  "agent.time.hours": "{n} 小时前",
+  "agent.time.days": "{n} 天前",
 
   // ── app shell ──────────────────────────────────────────────────────
   "app.bootFailedTitle": "Walletd 启动失败",
@@ -1874,4 +2090,18 @@ export function useT(): I18n {
 export function tStatic(key: MsgKey, vars?: Vars): string {
   const table = DICT[readLang()] ?? EN;
   return interpolate(table[key] ?? EN[key], vars);
+}
+
+/** A short, localized "x ago" for a past timestamp (ms epoch). Used by the
+ *  conversation list. Pass the same `t` the component already holds so it
+ *  follows the live language without re-reading storage. */
+export function relativeTime(t: (key: MsgKey, vars?: Vars) => string, ts: number, now = Date.now()): string {
+  const sec = Math.max(0, Math.floor((now - ts) / 1000));
+  if (sec < 60) return t("agent.time.now");
+  const min = Math.floor(sec / 60);
+  if (min < 60) return t("agent.time.minutes", { n: min });
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return t("agent.time.hours", { n: hr });
+  const day = Math.floor(hr / 24);
+  return t("agent.time.days", { n: day });
 }
