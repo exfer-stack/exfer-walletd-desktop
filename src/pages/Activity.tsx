@@ -232,6 +232,22 @@ type Item =
   | { kind: "swap"; id: string; ts: number; swap: SwapRow }
   | { kind: "transfer"; id: string; ts: number; item: ActivityItem };
 
+/** Merge a fresh (possibly degraded / incomplete) feed over the last-good one,
+ *  keyed by tx_id, WITHOUT losing confirmed rows. Used only when the indexer
+ *  fetch failed for some/all addresses: keep what we had, add/upgrade with the
+ *  degraded pass, but never downgrade a confirmed row to pending/missing. A
+ *  later COMPLETE load replaces the feed wholesale, so any stale row self-heals. */
+function mergeFeeds(prev: ActivityItem[], fresh: ActivityItem[]): ActivityItem[] {
+  const byId = new Map<string, ActivityItem>();
+  for (const it of prev) byId.set(it.tx_id, it);
+  for (const it of fresh) {
+    const old = byId.get(it.tx_id);
+    if (old?.status === "confirmed" && it.status !== "confirmed") continue;
+    byId.set(it.tx_id, it);
+  }
+  return [...byId.values()];
+}
+
 export function Activity({
   onResumeSwap,
 }: {
@@ -267,13 +283,21 @@ export function Activity({
   // the local log), so a transient outage can't blank the list.
   async function loadFeed() {
     if (!ownAddrs.length) {
-      setFeed([]);
+      // Address set not loaded yet (cold start) — keep what we're showing
+      // rather than flashing empty; this re-fires once addresses arrive.
       return;
     }
     setPolling(true);
     try {
-      const { items } = await buildActivityFeed(ownAddrs);
-      setFeed(items);
+      const { items, indexerOk } = await buildActivityFeed(ownAddrs);
+      if (indexerOk) {
+        setFeed(items);
+      } else {
+        // Degraded fetch (indexer failed for some/all addresses): don't blank
+        // the visible history with this partial result — merge fresh over what
+        // we have, keeping every confirmed row. A later complete load replaces.
+        setFeed((prev) => mergeFeeds(prev, items));
+      }
     } finally {
       setPolling(false);
     }
@@ -394,22 +418,34 @@ export function Activity({
   // One unified, in-flight-first then time-sorted list.
   const items = useMemo<Item[]>(() => {
     const list: Item[] = [];
+    // Confirmed-only deposits from the indexer carry a block height but no
+    // wall-clock time. Put them on the SAME ms axis as swaps / local sends by
+    // converting height -> time against the chain tip; when the tip hasn't
+    // loaded (or the node is unreachable) anchor to the highest block we hold.
+    // The old code used the RAW block height (~9e5) as `ts`, which is ~7 orders
+    // of magnitude below a real ms timestamp (~1.7e12) — so every confirmed
+    // deposit sank below every swap and local send regardless of real time.
+    const BLOCK_MS = 10_000;
+    const nowMs = Date.now();
+    const maxBlock = transfers.reduce(
+      (m, it) => (it.block_height != null && it.block_height > m ? it.block_height : m),
+      0,
+    );
+    const effTip = tipHeight ?? (maxBlock > 0 ? maxBlock : null);
+    const txTime = (it: ActivityItem): number => {
+      if (it.ts) {
+        const t = new Date(it.ts).getTime();
+        if (!Number.isNaN(t)) return t;
+      }
+      if (it.block_height != null && effTip != null) {
+        return nowMs - Math.max(0, effTip - it.block_height) * BLOCK_MS;
+      }
+      return nowMs;
+    };
     for (const s of swaps)
       list.push({ kind: "swap", id: `swap:${s.swap_id}`, ts: s.created_at * 1000, swap: s });
     for (const it of transfers)
-      list.push({
-        kind: "transfer",
-        id: `tx:${it.tx_id}`,
-        // Local sends carry a broadcast timestamp; confirmed-only deposits from
-        // the indexer don't — order those by block height (recent blocks first)
-        // so they slot in sensibly rather than sinking to the epoch.
-        ts: it.ts
-          ? new Date(it.ts).getTime()
-          : it.block_height != null
-            ? it.block_height
-            : 0,
-        item: it,
-      });
+      list.push({ kind: "transfer", id: `tx:${it.tx_id}`, ts: txTime(it), item: it });
     const inFlight = (it: Item) =>
       it.kind === "swap" && !SWAP_TERMINAL.has(it.swap.status);
     list.sort((a, b) => {
@@ -419,7 +455,7 @@ export function Activity({
       return b.ts - a.ts; // then newest first
     });
     return list;
-  }, [swaps, transfers]);
+  }, [swaps, transfers, tipHeight]);
 
   const shown = useMemo(
     () => (filter === "all" ? items : items.filter((it) => it.kind === filter)),
