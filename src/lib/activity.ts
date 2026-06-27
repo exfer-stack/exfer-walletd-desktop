@@ -126,7 +126,12 @@ function itemFromAgg(
 const HISTORY_PAGE = 200;
 const MAX_PAGES = 8; // safety cap: up to 1600 rows/address
 
-// Pull the full (paged) confirmed history for one address from the indexer.
+// Pull the (paged) confirmed history for one address from the indexer, NEWEST
+// FIRST. The page cap only ever fetches the first MAX_PAGES*HISTORY_PAGE rows;
+// the indexer historically returned them OLDEST-first, so a busy address (>1600
+// rows) had its most-recent activity cut off behind the cap. `reverse: true`
+// makes the indexer return newest-first, so the cap keeps the LATEST 1600 rows.
+// (Older indexers ignore the unknown param and stay oldest-first — no error.)
 async function addressHistory(address: string) {
   const rows: AddressHistoryResponse["history"] = [];
   let cursor: string | undefined;
@@ -134,6 +139,7 @@ async function addressHistory(address: string) {
     const r = await rpc<AddressHistoryResponse>("get_address_history", {
       address,
       limit: HISTORY_PAGE,
+      reverse: true,
       ...(cursor ? { cursor } : {}),
     });
     rows.push(...(r.history ?? []));
