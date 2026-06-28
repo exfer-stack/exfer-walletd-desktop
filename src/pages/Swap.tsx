@@ -471,6 +471,9 @@ export function Swap() {
         // RPC accepts (sell pays EXFER = 8 dp, buy pays BNB = 18 dp).
         amount_in: normalizeAmountInput(amount, sell ? 8 : 18),
         from: fromAddr,
+        // v2 (reversed) flow: the pool locks first; the user locks once and the
+        // pool settles both legs. Requires a v2-capable walletd.
+        flow: "v2",
       });
       setQuote(q);
       setStep(2);
