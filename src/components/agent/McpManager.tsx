@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useT } from "../../lib/i18n";
+import { useT, type MsgKey } from "../../lib/i18n";
 import { mcpListServers, mcpAddServer, mcpRemoveServer, mcpSetEnabled, type McpServerConfig } from "../../lib/mcpRegistry";
 
 // Tools & MCP-server manager (mirrors the AgentSettings.tsx modal pattern). Lists
@@ -11,6 +11,28 @@ import { mcpListServers, mcpAddServer, mcpRemoveServer, mcpSetEnabled, type McpS
 
 type Transport = "stdio" | "http";
 type Consent = "auto" | "gated";
+
+// Curated one-tap presets shown above the manual add-form. Each row adds an
+// McpServerConfig through the same registry path as the form, so there are no
+// manual fields to fill. `labelKey` localizes the display name; the stored
+// `label` (set at add-time from the translation) keeps the list readable. Keep
+// this a plain data array so more presets (other-chain data, price, …) are a
+// one-line addition later. All entries are read-only catalogs → defaultConsent
+// per their nature.
+interface CatalogEntry {
+  id: string;
+  labelKey: MsgKey;
+  transport: Transport;
+  command?: string;
+  args?: string[];
+  url?: string;
+  defaultConsent: Consent;
+}
+
+const RECOMMENDED_CATALOG: CatalogEntry[] = [
+  { id: "websearch", labelKey: "agent.mcp.catalog.websearch", transport: "stdio", command: "uvx", args: ["duckduckgo-mcp-server"], defaultConsent: "auto" },
+  { id: "time", labelKey: "agent.mcp.catalog.time", transport: "stdio", command: "uvx", args: ["mcp-server-time"], defaultConsent: "auto" },
+];
 
 export function McpManager({ onClose }: { onClose: () => void }) {
   const { t } = useT();
@@ -87,6 +109,34 @@ export function McpManager({ onClose }: { onClose: () => void }) {
     try {
       await mcpAddServer(cfg);
       resetForm();
+      await refresh();
+    } catch (e) {
+      setFormError(String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // One-tap add a curated preset. Builds the McpServerConfig from the catalog
+  // entry and routes through the same registry path as the manual form.
+  const onAddCatalog = async (entry: CatalogEntry) => {
+    if ((servers ?? []).some((s) => s.id === entry.id)) return;
+    const cfg: McpServerConfig = {
+      id: entry.id,
+      label: t(entry.labelKey),
+      transport: entry.transport,
+      enabled: true,
+      defaultConsent: entry.defaultConsent,
+    };
+    if (entry.transport === "stdio") {
+      cfg.command = entry.command;
+      if (entry.args?.length) cfg.args = entry.args;
+    } else {
+      cfg.url = entry.url;
+    }
+    setBusy(true);
+    try {
+      await mcpAddServer(cfg);
       await refresh();
     } catch (e) {
       setFormError(String((e as Error)?.message ?? e));
@@ -180,6 +230,43 @@ export function McpManager({ onClose }: { onClose: () => void }) {
             ))
           )}
         </div>
+
+        {/* Recommended presets — one-tap add via the same registry path. Rows
+            already in the server list are hidden so the section only ever
+            offers things you don't have yet. */}
+        {(() => {
+          const available = RECOMMENDED_CATALOG.filter((e) => !(servers ?? []).some((s) => s.id === e.id));
+          if (servers === null || available.length === 0) return null;
+          return (
+            <div className="space-y-2 border-t border-neutral-800 pt-4">
+              <div className="space-y-1">
+                <h3 className="label">{t("agent.mcp.recommendedTitle")}</h3>
+                <p className="help">{t("agent.mcp.recommendedHint")}</p>
+              </div>
+              {available.map((e) => (
+                <div key={e.id} className="card-chat px-3 py-2" data-testid={`mcp-catalog-${e.id}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-neutral-100">{t(e.labelKey)}</div>
+                      <div className="mono truncate text-[11px] text-neutral-600">
+                        {e.transport === "http" ? e.url : [e.command, ...(e.args ?? [])].join(" ")} · {e.defaultConsent}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary shrink-0 px-3 py-1 text-xs"
+                      disabled={busy}
+                      onClick={() => onAddCatalog(e)}
+                      data-testid={`mcp-catalog-add-${e.id}`}
+                    >
+                      {t("agent.mcp.recommendedAdd")}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Add-server form */}
         <div className="space-y-3 border-t border-neutral-800 pt-4">

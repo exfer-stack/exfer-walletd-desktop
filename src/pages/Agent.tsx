@@ -121,7 +121,31 @@ const SUMMARIZED_TOOLS = new Set([
   "exfer_swap_get_quote",
   "exfer_swap_execute",
   "exfer_payment_uri_encode",
+  "exfer_network_status",
+  "exfer_network_hashrate",
+  "exfer_get_block",
+  "exfer_get_transaction",
+  "exfer_earn_pool_stats",
 ]);
+
+/** Compact a hashrate in H/s to a human string (kH/s, MH/s, …). */
+function fmtHashrate(hs: number): string {
+  if (!Number.isFinite(hs) || hs <= 0) return `${hs} H/s`;
+  const units = ["H/s", "kH/s", "MH/s", "GH/s", "TH/s", "PH/s", "EH/s"];
+  let v = hs;
+  let i = 0;
+  while (v >= 1000 && i < units.length - 1) {
+    v /= 1000;
+    i += 1;
+  }
+  return `${v >= 100 ? v.toFixed(0) : v.toFixed(2)} ${units[i]}`;
+}
+
+/** Shorten a long hash for inline display. */
+function shortHash(h: unknown): string {
+  const s = String(h ?? "");
+  return s.length > 18 ? `${s.slice(0, 10)}…${s.slice(-6)}` : s;
+}
 
 /** A human one-liner for a tool result; the raw JSON stays behind a disclosure
  *  (when shown). Localized via agent.tool.* keys. */
@@ -149,6 +173,37 @@ function humanizeTool(name: string, summary: string, t: Tr): string {
         return t("agent.tool.swapStarted", { id: String(r.swap_id ?? ""), state: String(r.state ?? "") });
       case "exfer_payment_uri_encode":
         return String(r.uri ?? summary);
+      case "exfer_network_status":
+        return t("agent.tool.networkStatus", {
+          network: String(r.network ?? "exfer"),
+          height: String(r.tip_height ?? r.height ?? "?"),
+          peers: String(r.peer_count ?? r.peers ?? 0),
+          mempool: String(r.mempool_size ?? 0),
+        });
+      case "exfer_network_hashrate":
+        return t("agent.tool.networkHashrate", {
+          hashrate: fmtHashrate(Number(r.est_hashrate_hs ?? 0)),
+          difficulty: String(r.difficulty ?? "?"),
+        });
+      case "exfer_get_block": {
+        const txs = Array.isArray(r.transactions) ? r.transactions.length : Number(r.tx_count ?? r.num_transactions ?? 0);
+        return t("agent.tool.block", { height: String(r.height ?? "?"), txs: String(txs), id: shortHash(r.block_id ?? r.id ?? r.hash) });
+      }
+      case "exfer_get_transaction": {
+        const ins = Array.isArray(r.inputs) ? r.inputs.length : Number(r.input_count ?? 0);
+        const outs = Array.isArray(r.outputs) ? r.outputs.length : Number(r.output_count ?? 0);
+        return t("agent.tool.transaction", { id: shortHash(r.tx_id ?? r.id ?? r.txid), inputs: String(ins), outputs: String(outs) });
+      }
+      case "exfer_earn_pool_stats": {
+        // The MCP tool returns a curated dict (EXFER units already), not the raw pool API.
+        return t("agent.tool.poolStats", {
+          accrued: Number(r.accrued_exfer ?? 0).toFixed(4),
+          threshold: Number(r.payout_threshold_exfer ?? 0).toFixed(4),
+          remaining: Number(r.remaining_to_payout_exfer ?? 0).toFixed(4),
+          hashrate: fmtHashrate(Number(r.hashrate_hs ?? 0)),
+          status: r.online === false ? t("agent.tool.poolOffline") : t("agent.tool.poolOnline"),
+        });
+      }
       default:
         return summary.length > 80 ? `${summary.slice(0, 80)}…` : summary;
     }
