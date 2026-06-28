@@ -513,7 +513,15 @@ export function Swap() {
       if (realizedUsd != null) recordSwapUsd(quote.swap_id, realizedUsd);
       setLive(r);
       setStep(3);
-      toast.success(t("swap.toastStartedTitle"), t("swap.toastStartedBody"));
+      // v2 (reversed flow) reassures the user it's all set; v1 still says "locking,
+      // this can take a minute". Detection STRICT off the echoed record (never the
+      // request); absent ⇒ v1.
+      toast.success(
+        t("swap.toastStartedTitle"),
+        r.flow === "v2"
+          ? t("swap.toastStartedBodyV2", { out: recvUnit })
+          : t("swap.toastStartedBody"),
+      );
     } catch (e) {
       // An expired quote is recoverable: bounce back to step 1 to re-quote.
       if (/expired/i.test(String((e as { message?: unknown })?.message ?? e))) {
@@ -1507,6 +1515,10 @@ function ReviewCard({
   onConfirm: () => void;
 }) {
   const { t } = useT();
+  // v2 (reversed flow): the pool locks first, the user locks once and can safely
+  // leave — so the safety note and the Confirm busy copy differ. STRICT detection
+  // off the echoed quote record; absent ⇒ v1. {in}/{out} are the asset units.
+  const isV2 = quote.flow === "v2";
   // Estimate-vs-firm divergence acknowledgement (fix #3). When the firm quote
   // lands materially below the step-1 estimate, require an explicit ack before
   // Confirm is enabled — desktop's high-impact gate is a separate modal
@@ -1708,11 +1720,14 @@ function ReviewCard({
         </div>
       )}
 
-      {/* HTLC safety note — what "confirm" actually does (locks funds in an
-          on-chain HTLC) and the built-in escape hatch (auto-refund at the
-          timeout). Said up front, before any funds lock. */}
+      {/* Safety note — what "confirm" actually does. v1: locks funds in an
+          on-chain HTLC, auto-refund at the timeout. v2 (reversed): the pool's
+          side is already locked, you lock once and can close the app. Said up
+          front, before any funds lock. */}
       <p className="text-xs leading-relaxed text-neutral-500">
-        {t("swap.htlcExplain")}
+        {isV2
+          ? t("swap.htlcExplainV2", { in: sendUnit, out: recvUnit })
+          : t("swap.htlcExplain")}
       </p>
 
       <div className="flex gap-3">
@@ -1725,9 +1740,22 @@ function ReviewCard({
           disabled={busy || expired || (quoteDiverged && !divergeAck)}
           onClick={onConfirm}
         >
-          {busy ? t("swap.confirming") : t("swap.confirmSwap")}
+          {busy
+            ? isV2
+              ? t("swap.confirmingTitleV2")
+              : t("swap.confirming")
+            : t("swap.confirmSwap")}
         </button>
       </div>
+
+      {/* v2 confirm can block 1-4 min (a BUY runs the BSC lock synchronously);
+          the button is tight, so the "keep the app open" reassurance rides a
+          line below it while busy. v1 keeps the silent button spinner. */}
+      {busy && isV2 && (
+        <p className="text-xs leading-relaxed text-neutral-500">
+          {t("swap.confirmingKeepOpenV2")}
+        </p>
+      )}
     </div>
   );
 }
@@ -1772,6 +1800,19 @@ function ProgressCard({
   const status = live.status;
   const rank = STATUS_RANK[status] ?? 1;
   const terminal = ["completed", "refunded", "failed"].includes(phase);
+  // v2 (reversed flow): the pool locks first, the user locks once and can safely
+  // leave. STRICT detection off the echoed `live` record (we're past the live
+  // null-guard above, so this never branches while loading); absent ⇒ v1.
+  // {in}/{out} are the asset units the v2 copy interpolates.
+  const isV2 = live.flow === "v2";
+  const inUnit = live.direction === "exfer_to_bnb" ? "EXFER" : "BNB";
+  const outUnit = live.direction === "exfer_to_bnb" ? "BNB" : "EXFER";
+  // The "safe to leave" reassurance (settling) and the unwind copy only make the
+  // v2 promise once funds are actually committed — gate on post-lock statuses.
+  const postLock =
+    status === "user_locked" ||
+    status === "pool_locked" ||
+    status === "claiming";
   // Already-formatted ETA for the unmatched copy: a live countdown when the
   // timeout is known, else the "a few hours" degradation. Once the phase is
   // refundable the timeout has passed — say "any moment now", not a clamped
@@ -1786,11 +1827,7 @@ function ProgressCard({
   // A "quoted" swap was never confirmed — no funds moved. Be honest instead of
   // rendering the locked-step checklist (which would imply funds are locked).
   if (status === "quoted") {
-    const inUnit = live?.direction === "exfer_to_bnb" ? "EXFER" : "BNB";
-    const outUnit = live?.direction === "exfer_to_bnb" ? "BNB" : "EXFER";
-    const amounts = live
-      ? `${fmtAmt(live.amount_in, 8)} ${inUnit} → ${fmtAmt(live.amount_out, 8)} ${outUnit}`
-      : "";
+    const amounts = `${fmtAmt(live.amount_in, 8)} ${inUnit} → ${fmtAmt(live.amount_out, 8)} ${outUnit}`;
     return (
       <div className="card p-5 space-y-3.5">
         <h2 className="text-sm font-semibold text-neutral-300">
@@ -1813,11 +1850,22 @@ function ProgressCard({
     );
   }
 
-  const nodes = [
-    { key: "locked", label: t("swap.stepLocked"), at: 1 },
-    { key: "matched", label: t("swap.stepMatched"), at: 2 },
-    { key: "settling", label: t("swap.stepSettling"), at: 3 },
-  ];
+  // v2 is TWO nodes: the local status jumps user_locked→completed (the pool does
+  // both claims), so the v1 middle "matched/settling" node is dead. node1 (your
+  // lock) is done; node2 (the swap sending your funds) stays active to completed.
+  // v1 keeps its 3-node user_locked→pool_locked→claiming checklist.
+  const nodes = isV2
+    ? [
+        { key: "locked", label: t("swap.stepLockedV2", { in: inUnit }), at: 1 },
+        { key: "deliver", label: t("swap.stepDeliverV2", { out: outUnit }), at: 2 },
+      ]
+    : [
+        { key: "locked", label: t("swap.stepLocked"), at: 1 },
+        { key: "matched", label: t("swap.stepMatched"), at: 2 },
+        { key: "settling", label: t("swap.stepSettling"), at: 3 },
+      ];
+  // v2: node1 done, node2 active (rank can't advance past 1 locally pre-complete).
+  const doneCount = isV2 ? 1 : Math.max(0, rank - 1);
 
   return (
     <div className="card p-5 space-y-3.5">
@@ -1853,7 +1901,9 @@ function ProgressCard({
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-amber-200">
           <div className="text-sm font-semibold">{t("swap.unmatchedTitle")}</div>
           <div className="mt-1 text-xs leading-relaxed opacity-90">
-            {t("swap.unmatchedBody", { eta: etaText })}
+            {isV2
+              ? t("swap.unmatchedBodyV2", { in: inUnit, eta: etaText })
+              : t("swap.unmatchedBody", { eta: etaText })}
           </div>
           {phase === "unmatched" ? (
             <div className="mt-2 font-mono text-xs font-semibold tabular-nums">
@@ -1872,14 +1922,20 @@ function ProgressCard({
         <div className="py-1">
           <StagedStepper
             labels={nodes.map((n) => n.label)}
-            doneCount={Math.max(0, rank - 1)}
+            doneCount={doneCount}
           />
         </div>
       )}
 
+      {/* "Safe to leave" reassurance while settling. v2 promises the user can
+          close the app — gated STRICTLY on the echoed v2 record AND a post-lock
+          status (never while live is null/loading or pre-lock). v1 keeps its
+          "keep the app running" hint. */}
       {phase === "settling" && elapsed > 20 && (
         <p className="text-xs text-neutral-500">
-          {t("swap.settlingHint")}
+          {isV2 && postLock
+            ? t("swap.settlingHintV2", { out: outUnit })
+            : t("swap.settlingHint")}
         </p>
       )}
 

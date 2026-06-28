@@ -153,6 +153,11 @@ const EN = {
   "agent.mcp.errUrl": "A URL is required for an HTTP server.",
   "agent.mcp.builtinAlwaysOn": "Always on",
   "agent.mcp.newChat": "New chat",
+  "agent.mcp.recommendedTitle": "Recommended",
+  "agent.mcp.recommendedHint": "One-tap presets. Adds the server with sensible defaults — no manual fields.",
+  "agent.mcp.recommendedAdd": "Add",
+  "agent.mcp.catalog.websearch": "Web search (DuckDuckGo)",
+  "agent.mcp.catalog.time": "Time and timezones",
 
   // ── agent · tool labels (card header — friendly action, not a slug) ─
   "agent.toolLabel.exfer_get_balance": "Check balance",
@@ -167,6 +172,11 @@ const EN = {
   "agent.toolLabel.exfer_bsc_get_address": "BNB address",
   "agent.toolLabel.exfer_bsc_get_balance": "BNB balance",
   "agent.toolLabel.exfer_payment_uri_encode": "Payment link",
+  "agent.toolLabel.exfer_network_status": "Network status",
+  "agent.toolLabel.exfer_network_hashrate": "Network hashrate",
+  "agent.toolLabel.exfer_get_block": "Get block",
+  "agent.toolLabel.exfer_get_transaction": "Get transaction",
+  "agent.toolLabel.exfer_earn_pool_stats": "Pool stats",
   "agent.toolLabel.spawn_research_agent": "Research",
 
   // ── agent · humanized tool results (one-liner under the card) ──────
@@ -179,6 +189,13 @@ const EN = {
   "agent.tool.quote": "Quote: {in} → ≈ {out}",
   "agent.tool.quoteFee": "Quote: {in} → ≈ {out} · fee {fee}",
   "agent.tool.swapStarted": "Swap {id} started ({state}) · settling",
+  "agent.tool.networkStatus": "{network} · height {height} · {peers} peers · mempool {mempool}",
+  "agent.tool.networkHashrate": "≈ {hashrate} · difficulty {difficulty}",
+  "agent.tool.block": "Block {height} · {txs} txs · {id}",
+  "agent.tool.transaction": "Tx {id} · {inputs} in / {outputs} out",
+  "agent.tool.poolStats": "Accrued {accrued} / {threshold} EXFER · {remaining} to payout · {hashrate} · {status}",
+  "agent.tool.poolOnline": "online",
+  "agent.tool.poolOffline": "offline",
 
   // ── agent · empty state (safety + orientation) ─────────────────────
   "agent.empty.safety": "Money moves always ask you to confirm first — the agent can't send or swap on its own.",
@@ -364,6 +381,7 @@ const EN = {
   "swap.errNoReceiveAddr": "No address to receive into.",
   "swap.toastStartedTitle": "Swap started",
   "swap.toastStartedBody": "Locking funds — this can take a minute.",
+  "swap.toastStartedBodyV2": "Locked in — you're all set. Your {out} is on the way.",
   "swap.toastQuoteExpiredTitle": "Quote expired",
   "swap.toastQuoteExpiredBody": "Prices moved — please review again.",
   "swap.toastRefundTitle": "Refund requested",
@@ -376,12 +394,19 @@ const EN = {
   "swap.priceLabel": "Price",
   "swap.bnbAccount": "BNB account",
   "swap.htlcExplain": "Confirming locks your funds in an on-chain HTLC. If the counterparty doesn't complete, the lock refunds automatically after the timeout.",
+  // v2 (reversed flow): the pool locks first, the user locks once and can leave.
+  "swap.htlcExplainV2": "Your {out} is already locked in for you. You lock your {in} once — then you can close the app and the swap finishes on its own; your {out} usually arrives within a minute or two. If it can't complete, your {in} is returned to you automatically.",
+  "swap.confirmingTitleV2": "Setting up your swap…",
+  "swap.confirmingKeepOpenV2": "This can take a minute or two — please keep the app open until it's done.",
   "swap.back": "Back",
   "swap.confirming": "Confirming…",
   "swap.confirmSwap": "Confirm swap",
   "swap.stepLocked": "Funds locked",
   "swap.stepMatched": "Pool matched",
   "swap.stepSettling": "Settling",
+  // v2 stepper — two nodes (status jumps user_locked→completed; no middle node).
+  "swap.stepLockedV2": "Locked your {in}",
+  "swap.stepDeliverV2": "Sending your {out}",
   "swap.inProgressTitle": "Swap in progress",
   "swap.completeTitle": "Swap complete",
   "swap.completeBody": "You received {amt} {unit}.",
@@ -389,7 +414,7 @@ const EN = {
   "swap.refundedBody": "Your funds were returned.",
   "swap.failedTitle": "Swap failed",
   "swap.failedBody": "The swap couldn't complete.",
-  "swap.takingLonger": "On-chain settlement can take a minute or two — your funds are safe. You can leave this screen; just keep the app running. If you quit, reopening continues it.",
+  "swap.takingLongerV2": "Taking a little longer than usual — your {in} is locked safely and your {out} is still on the way. There's nothing to do; you can close the app.",
   "swap.done": "Done",
   "swap.requestingRefund": "Requesting refund…",
   "swap.takingTooLong": "Refund now",
@@ -844,6 +869,7 @@ const EN = {
   "snd.sendAnother": "Send another",
   "swap.lockedTag": "locked",
   "swap.settlingHint": "Settling on-chain — about a minute. You can leave this screen; just keep the app running. Your funds are safe, and if you quit, reopening continues it.",
+  "swap.settlingHintV2": "You're all set — you can close the app. Your {out} will arrive on its own, usually within a minute or two.",
   "lp.emptyOneLine": "Provide liquidity — earn 0.3% of every swap.",
   "lp.bnbSource": "from {addr} · {bnb} BNB",
   "act.filterAll": "All",
@@ -922,6 +948,8 @@ const EN = {
   "swap.unmatchedTitle": "Swap didn't match",
   "swap.unmatchedBody":
     "The pool didn't respond in time. Your funds are locked safely on-chain and will return to your address automatically in {eta} — nothing to do; you can close this page.",
+  "swap.unmatchedBodyV2":
+    "This swap is being unwound. Your {in} is locked safely and will be returned to you automatically in {eta} — there's nothing to do; you can close this.",
   "swap.autoRefundIn": "Auto-refund in {eta}",
   "swap.etaFewHours": "a few hours",
   "swap.etaMoments": "any moment now",
@@ -1175,6 +1203,11 @@ const ZH: Record<MsgKey, string> = {
   "agent.mcp.errUrl": "HTTP 服务器需填写网址。",
   "agent.mcp.builtinAlwaysOn": "始终启用",
   "agent.mcp.newChat": "新对话",
+  "agent.mcp.recommendedTitle": "推荐技能",
+  "agent.mcp.recommendedHint": "一键预设。使用合理的默认值添加服务器，无需手动填写。",
+  "agent.mcp.recommendedAdd": "添加",
+  "agent.mcp.catalog.websearch": "网络搜索（DuckDuckGo）",
+  "agent.mcp.catalog.time": "时间与时区",
 
   // ── agent · 工具名称（卡片标题，友好动作而非内部标识） ─────────────
   "agent.toolLabel.exfer_get_balance": "查询余额",
@@ -1189,6 +1222,11 @@ const ZH: Record<MsgKey, string> = {
   "agent.toolLabel.exfer_bsc_get_address": "BNB 地址",
   "agent.toolLabel.exfer_bsc_get_balance": "BNB 余额",
   "agent.toolLabel.exfer_payment_uri_encode": "收款链接",
+  "agent.toolLabel.exfer_network_status": "网络状态",
+  "agent.toolLabel.exfer_network_hashrate": "全网算力",
+  "agent.toolLabel.exfer_get_block": "查询区块",
+  "agent.toolLabel.exfer_get_transaction": "查询交易",
+  "agent.toolLabel.exfer_earn_pool_stats": "矿池状态",
   "agent.toolLabel.spawn_research_agent": "研究",
 
   // ── agent · 工具结果一行摘要 ───────────────────────────────────────
@@ -1201,6 +1239,13 @@ const ZH: Record<MsgKey, string> = {
   "agent.tool.quote": "报价：{in} → ≈ {out}",
   "agent.tool.quoteFee": "报价：{in} → ≈ {out} · 手续费 {fee}",
   "agent.tool.swapStarted": "兑换 {id} 已开始（{state}）· 结算中",
+  "agent.tool.networkStatus": "{network} · 高度 {height} · {peers} 个节点 · 内存池 {mempool}",
+  "agent.tool.networkHashrate": "≈ {hashrate} · 难度 {difficulty}",
+  "agent.tool.block": "区块 {height} · {txs} 笔交易 · {id}",
+  "agent.tool.transaction": "交易 {id} · {inputs} 入 / {outputs} 出",
+  "agent.tool.poolStats": "已累计 {accrued} / {threshold} EXFER · 还差 {remaining} 可打款 · {hashrate} · {status}",
+  "agent.tool.poolOnline": "在线",
+  "agent.tool.poolOffline": "离线",
 
   // ── agent · 空状态（安全提示 + 引导） ──────────────────────────────
   "agent.empty.safety": "涉及资金的操作都会先请你确认——智能助手无法自行转账或兑换。",
@@ -1386,6 +1431,7 @@ const ZH: Record<MsgKey, string> = {
   "swap.errNoReceiveAddr": "没有可接收的地址。",
   "swap.toastStartedTitle": "兑换已开始",
   "swap.toastStartedBody": "正在锁定资金——可能需要一分钟。",
+  "swap.toastStartedBodyV2": "已锁定，全部就绪——你的{out}正在发放。",
   "swap.toastQuoteExpiredTitle": "报价已过期",
   "swap.toastQuoteExpiredBody": "价格已变动——请重新确认。",
   "swap.toastRefundTitle": "已申请退款",
@@ -1398,12 +1444,19 @@ const ZH: Record<MsgKey, string> = {
   "swap.priceLabel": "价格",
   "swap.bnbAccount": "BNB 账户",
   "swap.htlcExplain": "确认后会将你的资金锁定在链上的 HTLC 中。如果对手方未完成，超时后锁定的资金会自动退回。",
+  // v2（反向流程）：兑换池先锁定，用户只锁一次后即可离开。
+  "swap.htlcExplainV2": "兑换池已经为你锁定了{out}。你只需将{in}锁定一次——之后即可关闭 App，兑换会自动完成，你的{out}通常一两分钟内到账。万一无法完成，你的{in}会自动退回。",
+  "swap.confirmingTitleV2": "正在建立兑换…",
+  "swap.confirmingKeepOpenV2": "可能需要一两分钟——完成前请保持 App 打开。",
   "swap.back": "返回",
   "swap.confirming": "确认中…",
   "swap.confirmSwap": "确认兑换",
   "swap.stepLocked": "资金已锁定",
   "swap.stepMatched": "兑换池已匹配",
   "swap.stepSettling": "结算中",
+  // v2 步骤条——两个节点（状态从 user_locked 直接跳到 completed，无中间节点）。
+  "swap.stepLockedV2": "{in} 已锁定",
+  "swap.stepDeliverV2": "正在发放{out}",
   "swap.inProgressTitle": "兑换进行中",
   "swap.completeTitle": "兑换完成",
   "swap.completeBody": "你收到了 {amt} {unit}。",
@@ -1411,7 +1464,7 @@ const ZH: Record<MsgKey, string> = {
   "swap.refundedBody": "你的资金已退回。",
   "swap.failedTitle": "兑换失败",
   "swap.failedBody": "本次兑换未能完成。",
-  "swap.takingLonger": "链上结算可能需要一两分钟——资金很安全。可以离开此页面，保持 App 运行就好。万一退出了，重新打开会自动继续。",
+  "swap.takingLongerV2": "比平时久一点——你的{in}已安全锁定，{out}仍在发放途中。无需任何操作，你可以关闭 App。",
   "swap.done": "完成",
   "swap.requestingRefund": "申请退款中…",
   "swap.takingTooLong": "立即退款",
@@ -1861,6 +1914,7 @@ const ZH: Record<MsgKey, string> = {
   "snd.sendAnother": "再发一笔",
   "swap.lockedTag": "已锁定",
   "swap.settlingHint": "正在链上结算，大约一分钟。可以离开此页面，保持 App 运行就好。资金很安全；万一退出了，重新打开会自动继续。",
+  "swap.settlingHintV2": "全部就绪——你可以关闭 App。你的{out}会自动到账，通常一两分钟内完成。",
   "lp.emptyOneLine": "提供流动性 —— 赚取每笔兑换 0.3% 手续费。",
   "lp.bnbSource": "来自 {addr} · {bnb} BNB",
   "act.filterAll": "全部",
@@ -1939,6 +1993,8 @@ const ZH: Record<MsgKey, string> = {
   "swap.unmatchedTitle": "兑换未匹配",
   "swap.unmatchedBody":
     "兑换池未在有效期内响应。你的资金已安全锁定在链上，将在{eta}后自动原路退回——无需任何操作，可关闭此页面。",
+  "swap.unmatchedBodyV2":
+    "这笔兑换正在撤销。你的{in}已安全锁定，将在{eta}后自动退回——无需任何操作，可关闭。",
   "swap.autoRefundIn": "自动退款：{eta}后",
   "swap.etaFewHours": "数小时",
   "swap.etaMoments": "很快",

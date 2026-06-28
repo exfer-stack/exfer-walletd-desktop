@@ -36,6 +36,9 @@ export type SwapPhase =
 export interface SwapPhaseRec {
   status: string;
   direction: "exfer_to_bnb" | "bnb_to_exfer";
+  /** v1 (legacy) | v2 (reversed). Absent ⇒ v1. See SwapRec.flow. Structural, so
+   *  a full SwapRec satisfies it; the progress UI branches its copy on this. */
+  flow?: "v1" | "v2";
   /** Quote validity deadline (unix sec). */
   expires_at?: number | null;
   /** Sell side: EXFER HTLC timeout height (lock is on the EXFER chain). */

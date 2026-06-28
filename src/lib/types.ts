@@ -126,6 +126,12 @@ export interface SwapRec {
   swap_id: string;
   direction: SwapDirection;
   status: SwapStatus;
+  /** Swap protocol flow. v1 (legacy): the user generates the secret, locks
+   *  first, and must stay online to claim. v2 (reversed): the pool locks first;
+   *  the user locks once and can safely leave — the pool settles both legs.
+   *  ABSENT ⇒ treat as v1 (the daemon predates the echo, or it's a v1 swap).
+   *  Detection is STRICT `flow === "v2"`; never inferred from the request. */
+  flow?: "v1" | "v2";
   amount_in: string;
   amount_out: string;
   fee_bps?: number;
@@ -151,6 +157,8 @@ export interface SwapLite {
   swap_id: string;
   direction: SwapDirection;
   status: string;
+  /** v1 (legacy) | v2 (reversed). Absent ⇒ v1. See SwapRec.flow. */
+  flow?: "v1" | "v2";
   amount_out: string;
   expires_at?: number;
   exfer_timeout_height?: number | null;
