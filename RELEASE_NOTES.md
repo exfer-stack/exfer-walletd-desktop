@@ -6,4 +6,4 @@
 
 ## What's new
 
-- The AI assistant now prompts you to add your AI provider key in Settings before it can chat — no more placeholder replies when a key isn't set yet. Your wallet data was always real; this only changes the assistant.
+- The AI assistant now prompts you to add your AI provider key in Settings before it can chat — shown as a clean banner with an "Open LLM settings" button, not a confusing placeholder. Your wallet data was always real; this only changes the assistant.
