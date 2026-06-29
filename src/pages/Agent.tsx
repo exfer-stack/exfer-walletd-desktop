@@ -704,44 +704,52 @@ export function Agent({ lang }: { lang: Lang }) {
       )}
 
       <div className="mt-4 flex items-end gap-2">
-        <textarea
-          ref={inputRef}
-          rows={1}
-          className="input flex-1 resize-none overflow-y-auto"
-          placeholder={gateComposer ? t("agent.empty.noKeyTitle") : t("agent.composer.placeholder")}
-          value={input}
-          disabled={gateComposer}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter sends; Shift+Enter is a newline. Guard the IME: a Chinese
-            // (or any) composition confirm fires Enter too, and must never send.
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send(input);
-            } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
-              // Cmd/Ctrl+Enter is an explicit send alias.
-              e.preventDefault();
-              send(input);
-            } else if (e.key === "ArrowUp" && input === "" && lastUserText.current) {
-              // Empty composer + ArrowUp recalls the last sent message to edit.
-              e.preventDefault();
-              setInput(lastUserText.current);
-            }
-          }}
-          data-testid="agent-input"
-        />
         {gateComposer ? (
-          <button type="button" className="btn" onClick={() => setShowSettings(true)} data-testid="agent-send">
-            {t("agent.empty.noKeyCta")}
-          </button>
-        ) : busy ? (
-          <button type="button" className="btn-secondary" onClick={stop} data-testid="agent-stop">
-            {t("agent.composer.stop")}
-          </button>
+          // No LLM key: a clean prompt (message + CTA) that fills the row, instead
+          // of a dead disabled input + a cramped button. Opens LLM settings.
+          <div className="banner-info flex flex-1 items-center justify-between gap-3">
+            <span className="text-sm text-cyan-100/80">{t("agent.empty.noKeyTitle")}</span>
+            <button type="button" className="btn shrink-0" onClick={() => setShowSettings(true)} data-testid="agent-send">
+              {t("agent.empty.noKeyCta")}
+            </button>
+          </div>
         ) : (
-          <button type="button" className="btn" disabled={!input.trim()} onClick={() => send(input)} data-testid="agent-send">
-            {t("agent.composer.send")}
-          </button>
+          <>
+            <textarea
+              ref={inputRef}
+              rows={1}
+              className="input flex-1 resize-none overflow-y-auto"
+              placeholder={t("agent.composer.placeholder")}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter sends; Shift+Enter is a newline. Guard the IME: a Chinese
+                // (or any) composition confirm fires Enter too, and must never send.
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  send(input);
+                } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+                  // Cmd/Ctrl+Enter is an explicit send alias.
+                  e.preventDefault();
+                  send(input);
+                } else if (e.key === "ArrowUp" && input === "" && lastUserText.current) {
+                  // Empty composer + ArrowUp recalls the last sent message to edit.
+                  e.preventDefault();
+                  setInput(lastUserText.current);
+                }
+              }}
+              data-testid="agent-input"
+            />
+            {busy ? (
+              <button type="button" className="btn-secondary" onClick={stop} data-testid="agent-stop">
+                {t("agent.composer.stop")}
+              </button>
+            ) : (
+              <button type="button" className="btn" disabled={!input.trim()} onClick={() => send(input)} data-testid="agent-send">
+                {t("agent.composer.send")}
+              </button>
+            )}
+          </>
         )}
       </div>
 
