@@ -202,7 +202,7 @@ const EN = {
   "agent.empty.tryTitle": "Try",
   "agent.empty.ex4": "Check balance, then quote 0.1 BNB→EXFER",
   "agent.empty.noKeyTitle": "Connect an LLM to begin",
-  "agent.empty.noKeyBody": "Add your provider and API key in settings. Without a key the chat runs a scripted demo.",
+  "agent.empty.noKeyBody": "Add your AI provider and API key in settings to use the assistant. It stays disabled until a key is set — it won't send anything on its own.",
   "agent.empty.noKeyCta": "Open LLM settings",
 
   // ── agent · settings hand-holding ──────────────────────────────────
@@ -1257,7 +1257,7 @@ const ZH: Record<MsgKey, string> = {
   "agent.empty.tryTitle": "试试看",
   "agent.empty.ex4": "查余额，再报价 0.1 BNB→EXFER",
   "agent.empty.noKeyTitle": "先连接大模型",
-  "agent.empty.noKeyBody": "在设置中填写你的服务商和 API 密钥。未填密钥时，对话将运行脚本演示。",
+  "agent.empty.noKeyBody": "在设置中填写你的 AI 服务商和 API 密钥后即可使用助手。未填密钥前助手不可用，也不会自行发送任何内容。",
   "agent.empty.noKeyCta": "打开大模型设置",
 
   // ── agent · 设置引导 ───────────────────────────────────────────────

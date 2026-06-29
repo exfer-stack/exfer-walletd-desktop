@@ -572,6 +572,10 @@ export function Agent({ lang }: { lang: Lang }) {
     [refreshConvList],
   );
 
+  // In the installed app, a missing LLM key must NOT silently fall through to the
+  // scripted mock — disable the composer until a real provider key is configured.
+  // The mock stays reachable only in browser-dev (!inTauri) for headless QA.
+  const gateComposer = inTauri() && needsKey;
   const examples = [t("agent.empty.ex1"), t("agent.empty.ex2"), t("agent.empty.ex3"), t("agent.empty.ex4")];
   const convTitle = active.title ?? t("agent.conv.untitled");
 
@@ -704,8 +708,9 @@ export function Agent({ lang }: { lang: Lang }) {
           ref={inputRef}
           rows={1}
           className="input flex-1 resize-none overflow-y-auto"
-          placeholder={t("agent.composer.placeholder")}
+          placeholder={gateComposer ? t("agent.empty.noKeyTitle") : t("agent.composer.placeholder")}
           value={input}
+          disabled={gateComposer}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             // Enter sends; Shift+Enter is a newline. Guard the IME: a Chinese
@@ -725,7 +730,11 @@ export function Agent({ lang }: { lang: Lang }) {
           }}
           data-testid="agent-input"
         />
-        {busy ? (
+        {gateComposer ? (
+          <button type="button" className="btn" onClick={() => setShowSettings(true)} data-testid="agent-send">
+            {t("agent.empty.noKeyCta")}
+          </button>
+        ) : busy ? (
           <button type="button" className="btn-secondary" onClick={stop} data-testid="agent-stop">
             {t("agent.composer.stop")}
           </button>
