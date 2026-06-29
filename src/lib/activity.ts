@@ -126,7 +126,12 @@ function itemFromAgg(
 const HISTORY_PAGE = 200;
 const MAX_PAGES = 8; // safety cap: up to 1600 rows/address
 
-// Pull the full (paged) confirmed history for one address from the indexer.
+// Pull the (paged) confirmed history for one address from the indexer, NEWEST
+// FIRST. The page cap only ever fetches the first MAX_PAGES*HISTORY_PAGE rows;
+// the indexer historically returned them OLDEST-first, so a busy address (>1600
+// rows) had its most-recent activity cut off behind the cap. `reverse: true`
+// makes the indexer return newest-first, so the cap keeps the LATEST 1600 rows.
+// (Older indexers ignore the unknown param and stay oldest-first — no error.)
 async function addressHistory(address: string) {
   const rows: AddressHistoryResponse["history"] = [];
   let cursor: string | undefined;
@@ -134,6 +139,7 @@ async function addressHistory(address: string) {
     const r = await rpc<AddressHistoryResponse>("get_address_history", {
       address,
       limit: HISTORY_PAGE,
+      reverse: true,
       ...(cursor ? { cursor } : {}),
     });
     rows.push(...(r.history ?? []));
@@ -173,37 +179,53 @@ export async function buildActivityFeed(
   const byTx = new Map<string, ActivityItem>();
   let indexerOk = true;
 
-  // 1. Confirmed history from the indexer (authoritative).
+  // 1. Confirmed history from the indexer (authoritative). Fetch each address
+  //    INDEPENDENTLY (allSettled, not Promise.all): one address failing — a
+  //    transient indexer/network blip, or the embedded walletd hung/warming up —
+  //    must NOT discard the confirmed history of every other address. The old
+  //    Promise.all rejected as a whole on a single failure, and the caller then
+  //    overwrote the visible feed with the empty result, wiping the entire
+  //    history until a later refresh happened to have all addresses succeed.
   const confirmed = new Map<string, Agg>();
-  try {
-    const perAddr = await Promise.all(
-      ownAddresses.map(async (address) => ({
-        address,
-        rows: await addressHistory(address),
-      })),
-    );
-    for (const { address, rows } of perAddr) {
-      for (const r of rows) {
-        const a = aggOf(confirmed, r.tx_id);
-        if (r.direction === "output") {
-          a.credit += r.amount;
-          a.toAddresses.add(address);
-          for (const c of r.counterparties ?? []) a.senders.add(c);
-        } else {
-          a.debit += r.amount;
-          for (const c of r.counterparties ?? []) a.recipients.add(c);
-        }
-        a.height = Math.max(a.height ?? 0, r.block_height);
-        if (r.is_coinbase) a.is_coinbase = true;
+  const settled = await Promise.allSettled(
+    ownAddresses.map(async (address) => ({
+      address,
+      rows: await addressHistory(address),
+    })),
+  );
+  let anyOk = false;
+  let anyFail = false;
+  for (const s of settled) {
+    if (s.status !== "fulfilled") {
+      anyFail = true;
+      console.warn(
+        "[activity] get_address_history failed:",
+        String((s.reason as { message?: string })?.message ?? s.reason),
+      );
+      continue;
+    }
+    anyOk = true;
+    const { address, rows } = s.value;
+    for (const r of rows) {
+      const a = aggOf(confirmed, r.tx_id);
+      if (r.direction === "output") {
+        a.credit += r.amount;
+        a.toAddresses.add(address);
+        for (const c of r.counterparties ?? []) a.senders.add(c);
+      } else {
+        a.debit += r.amount;
+        for (const c of r.counterparties ?? []) a.recipients.add(c);
       }
+      a.height = Math.max(a.height ?? 0, r.block_height);
+      if (r.is_coinbase) a.is_coinbase = true;
     }
-    for (const [tx_id, a] of confirmed) {
-      byTx.set(tx_id, itemFromAgg(tx_id, a, "confirmed", "indexer"));
-    }
-  } catch {
-    // Unconfigured OR transient — either way fall back to mempool + local.
-    indexerOk = false;
   }
+  for (const [tx_id, a] of confirmed) {
+    byTx.set(tx_id, itemFromAgg(tx_id, a, "confirmed", "indexer"));
+  }
+  // indexerOk = a COMPLETE confirmed snapshot. Any address failing (or none
+  // succeeding) ⇒ incomplete ⇒ the caller keeps its last-good feed.
+  if (ownAddresses.length > 0 && (anyFail || !anyOk)) indexerOk = false;
 
   // 2. Pending from the live mempool — only for txs not already confirmed.
   const pending = new Map<string, Agg>();

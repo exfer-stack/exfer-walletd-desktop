@@ -126,6 +126,8 @@ fn scope_for_method(method: &str) -> Scope {
         // Missing here means the read token is sent and walletd rejects with
         // -32001 (authentication required) before doing anything.
         | "swap_get_quote" | "swap_execute" | "swap_refund"
+        // swap_refresh force-advances a swap (may broadcast a claim) — Spend.
+        | "swap_refresh"
         | "bsc_send_bnb"
         // BSC/EVM recovery-phrase reveal exposes key material (same bar as
         // reveal_evm_private_key); bsc_delete_key can strand BNB funds;

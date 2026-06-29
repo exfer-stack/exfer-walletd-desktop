@@ -6,9 +6,12 @@
 
 ## What's new
 
-- Addresses now have a newer, checksummed "xf…" form alongside the original.
-  Click any address to see both formats and copy whichever you need — it's the
-  same address with the same balance either way.
-- Sending accepts both forms: paste an xf… or a classic address and it just
-  works. The xf… form has a built-in check that catches typos, so funds can't
-  go to a mistyped address.
+- Activity no longer goes blank. A network hiccup while opening Activity — or
+  switching tabs — could wipe your transaction history until it reloaded. It now
+  keeps what it already has and fills in the rest. Your history was always safe
+  on-chain; this just stops the screen from losing it.
+
+- Activity is back in time order. Recent transactions and swaps could sort to the
+  bottom (or look missing) before the chain tip had loaded; they now interleave
+  by real time, newest first. A very active address's latest transactions are no
+  longer cut off either.

@@ -1,6 +1,6 @@
 [package]
 name        = "exfer-walletd-desktop"
-version     = "0.16.16"
+version     = "0.16.18"
 description = "Desktop GUI for exfer-walletd. One double-click → walletd in-process + a window for balance / generate-address / transfer."
 edition     = "2021"
 license     = "MIT"
@@ -50,10 +50,12 @@ exfer-stratum      = { git = "https://github.com/exfer-stack/exfer-agent-miner",
 # vault carrying that key, networkFeeBnb in the quote projection, the HTLC
 # reveal-gate funds-safety check, the delete_address LP-shares guard,
 # expired-quote pruning, a per-swap execute/refund lock, and bsc_tx_history.
-# Bumped 3229f1c → 5ad5ca7 (journal-independent recovery of stranded BNB locks
-# on the buy direction — the BSC twin of the EXFER stranded-lock sweep,
-# mainnet-proven) to match mobile. Keep this rev in LOCKSTEP with mobile's pin.
-exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "5ad5ca7b51d423d637c7482ecd50df16dd2c7de1" }
+# Bumped 5ad5ca7 → 8b4d396 (hotfix/swap-recover, based on 5ad5ca7 so the ONLY
+# change is the swap-recovery fix): settle-over-refund (a settled BUY no longer
+# freezes at "Sending your funds") + new swap_refresh RPC (UI resolves a stale
+# status on demand → no false "unmatched"). Keep this rev in LOCKSTEP with
+# mobile's pin (mobile v1.0.23 ships the same rev).
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "8b4d3966626c47d24a111234062158893f1d2d1c" }
 
 # HTTP client used by the Tauri Rust side to talk to the embedded
 # walletd over loopback HTTPS. `rustls-tls-manual-roots` disables

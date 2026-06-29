@@ -126,6 +126,7 @@ function scopeFor(method: string): "read" | "manage" | "spend" {
     method === "swap_get_quote" ||
     method === "swap_execute" ||
     method === "swap_refund" ||
+    method === "swap_refresh" ||
     method === "bsc_send_bnb" ||
     // BSC/EVM recovery-phrase reveal + key deletion expose/strand funds;
     // lp_withdraw_self pays out the pool to the user — all Spend.

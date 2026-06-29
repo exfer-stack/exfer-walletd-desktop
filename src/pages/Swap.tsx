@@ -579,6 +579,38 @@ export function Swap() {
     };
   }, [step, watchId, refresh]);
 
+  // Force-advance the in-flight swap against the pool/chain so it can't stall on a
+  // STALE local status — the bug behind both "stuck on 正在发放资金" and the false
+  // "未匹配" page. swap_status above only READS; swap_refresh makes walletd re-check
+  // the pool/indexer now: it completes a settled-but-stuck claim AND flips a matched
+  // swap user_locked → pool_locked (so a matched swap is never shown as unmatched).
+  // Gentler cadence than the display poll; stops once terminal.
+  useEffect(() => {
+    if (step !== 3 || !watchId) return;
+    let cancelled = false;
+    let h: number | null = null;
+    const tick = async () => {
+      try {
+        const r = await rpc<SwapRec>("swap_refresh", { swap_id: watchId });
+        if (!cancelled) {
+          setLive(r);
+          if (["completed", "refunded", "failed"].includes(r.status)) {
+            refresh();
+            return; // settled — stop forcing
+          }
+        }
+      } catch {
+        /* offline/transient — the display poll keeps the UI alive; retry next tick */
+      }
+      if (!cancelled) h = window.setTimeout(tick, 5000);
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (h) window.clearTimeout(h);
+    };
+  }, [step, watchId, refresh]);
+
   // On completion, gently auto-reset back to step 1 after a beat so the user
   // isn't left staring at a finished screen.
   useEffect(() => {
