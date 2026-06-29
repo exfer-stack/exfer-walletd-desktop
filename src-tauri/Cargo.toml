@@ -1,6 +1,6 @@
 [package]
 name        = "exfer-walletd-desktop"
-version     = "0.16.18"
+version     = "0.16.19"
 description = "Desktop GUI for exfer-walletd. One double-click → walletd in-process + a window for balance / generate-address / transfer."
 edition     = "2021"
 license     = "MIT"
@@ -55,7 +55,7 @@ exfer-stratum      = { git = "https://github.com/exfer-stack/exfer-agent-miner",
 # freezes at "Sending your funds") + new swap_refresh RPC (UI resolves a stale
 # status on demand → no false "unmatched"). Keep this rev in LOCKSTEP with
 # mobile's pin (mobile v1.0.23 ships the same rev).
-exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "8b4d3966626c47d24a111234062158893f1d2d1c" }
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "9b7a818ee531c19a2920cc28ece6359025991841" }
 
 # HTTP client used by the Tauri Rust side to talk to the embedded
 # walletd over loopback HTTPS. `rustls-tls-manual-roots` disables
