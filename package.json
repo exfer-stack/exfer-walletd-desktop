@@ -20,7 +20,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@types/qrcode": "^1.5.6",
     "bech32": "^2.0.0",
-    "exfer-agent": "file:../exfer-agent",
+    "exfer-agent": "file:vendor/exfer-agent-0.0.1.tgz",
     "lightweight-charts": "^4.2.3",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
