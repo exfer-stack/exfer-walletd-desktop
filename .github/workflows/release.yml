@@ -113,3 +113,31 @@ jobs:
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.platform.args }}
+
+  # Once all three platforms have uploaded their bundles to the DRAFT release,
+  # publish it as this repo's `latest` and nudge the public downloads hub
+  # (exfer-stack/get) to regenerate releases.json. The hub reads this repo's
+  # latest PUBLISHED release for the desktop card; leaving the release a draft
+  # is exactly why the hub kept showing an old version. Building as a draft and
+  # publishing only here means the release never goes public with partial
+  # (single-platform) assets.
+  publish:
+    name: Publish release + refresh hub
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the draft as latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --draft=false --latest
+      - name: Refresh the downloads hub (exfer-stack/get)
+        env:
+          GH_TOKEN: ${{ secrets.GET_MIRROR_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "GET_MIRROR_TOKEN unset — skipping hub refresh"; exit 0
+          fi
+          gh api repos/exfer-stack/get/dispatches -f event_type=refresh-releases
