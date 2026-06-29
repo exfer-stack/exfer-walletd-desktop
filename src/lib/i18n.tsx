@@ -398,6 +398,11 @@ const EN = {
   "swap.htlcExplainV2": "Your {out} is already locked in for you. You lock your {in} once — then you can close the app and the swap finishes on its own; your {out} usually arrives within a minute or two. If it can't complete, your {in} is returned to you automatically.",
   "swap.confirmingTitleV2": "Setting up your swap…",
   "swap.confirmingKeepOpenV2": "This can take a minute or two — please keep the app open until it's done.",
+  // v2 BUY `committing`: a pre-lock "setting up" state — nothing of the user's is
+  // locked yet (the daemon does that next), so the copy must NOT imply funds are
+  // locked, and it should say the app is free to close.
+  "swap.committingHeading": "Setting up your swap",
+  "swap.committingNote": "You can close the app — it locks your funds and delivers your {out} on its own, usually within a minute or two. Track it on the Swap tab.",
   "swap.back": "Back",
   "swap.confirming": "Confirming…",
   "swap.confirmSwap": "Confirm swap",
@@ -1448,6 +1453,10 @@ const ZH: Record<MsgKey, string> = {
   "swap.htlcExplainV2": "兑换池已经为你锁定了{out}。你只需将{in}锁定一次——之后即可关闭 App，兑换会自动完成，你的{out}通常一两分钟内到账。万一无法完成，你的{in}会自动退回。",
   "swap.confirmingTitleV2": "正在建立兑换…",
   "swap.confirmingKeepOpenV2": "可能需要一两分钟——完成前请保持 App 打开。",
+  // v2 BUY `committing`：锁定前的「准备中」状态——用户的资金尚未锁定（接下来由守护进程完成），
+  // 文案不得暗示资金已锁定，并应说明此时可以关闭 App。
+  "swap.committingHeading": "正在准备兑换",
+  "swap.committingNote": "你可以关闭 App——它会自动锁定资金并发放你的{out}，通常一两分钟内完成。可在「兑换」标签页追踪。",
   "swap.back": "返回",
   "swap.confirming": "确认中…",
   "swap.confirmSwap": "确认兑换",

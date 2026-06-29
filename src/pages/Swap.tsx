@@ -1748,10 +1748,12 @@ function ReviewCard({
         </button>
       </div>
 
-      {/* v2 confirm can block 1-4 min (a BUY runs the BSC lock synchronously);
-          the button is tight, so the "keep the app open" reassurance rides a
-          line below it while busy. v1 keeps the silent button spinner. */}
-      {busy && isV2 && (
+      {/* v2 SELL confirm can block while the daemon locks the user's EXFER; the
+          button is tight, so the "keep the app open" reassurance rides a line
+          below it while busy. A v2 BUY no longer blocks — swap_execute returns
+          immediately as `committing` and the daemon finishes it — so there's no
+          keep-open for buys. v1 keeps the silent button spinner. */}
+      {busy && isV2 && sell && (
         <p className="text-xs leading-relaxed text-neutral-500">
           {t("swap.confirmingKeepOpenV2")}
         </p>
@@ -1846,6 +1848,37 @@ function ProgressCard({
         <button type="button" className="btn w-full" onClick={onDone}>
           {t("swap.done")}
         </button>
+      </div>
+    );
+  }
+
+  // v2 BUY in `committing`: we committed and the pool is fronting its EXFER lock;
+  // the daemon verifies it and locks our BNB on its own. Nothing of ours is
+  // locked yet, so this is an honest PRE-lock "setting up" state — NO "Locked
+  // your BNB" stepper node (that would lie), and the user is already free to
+  // leave (the monitor finishes whether or not the app stays open).
+  if (phase === "committing") {
+    const amounts = `${fmtAmt(live.amount_in, 8)} ${inUnit} → ${fmtAmt(live.amount_out, 8)} ${outUnit}`;
+    return (
+      <div className="card p-5 space-y-3.5">
+        <h2 className="text-sm font-semibold text-neutral-300">
+          {t("swap.inProgressTitle")}
+        </h2>
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <Spinner size={22} />
+          <div>
+            <div className="text-sm font-semibold text-neutral-200">
+              {t("swap.committingHeading")}
+            </div>
+            <div className="mt-1 font-mono text-sm tabular-nums text-neutral-400">
+              {amounts}
+            </div>
+          </div>
+          <p className="text-xs leading-relaxed text-neutral-500">
+            {t("swap.committingNote", { out: outUnit })}
+          </p>
+        </div>
+        {live.error && <Banner kind="error" title={t("swap.failedTitle")} body={live.error} />}
       </div>
     );
   }

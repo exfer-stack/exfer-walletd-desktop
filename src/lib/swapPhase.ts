@@ -22,6 +22,11 @@ const EXFER_BLOCK_SEC = 10;
 
 export type SwapPhase =
   | "loading"
+  // v2 BUY only: we committed and the pool is fronting its EXFER lock; the
+  // daemon verifies it and locks our BNB on its own. Nothing of ours is locked
+  // yet, so this is a distinct PRE-lock phase — it must NOT render the "Locked
+  // your BNB" stepper node (that would lie). The user can already close the app.
+  | "committing"
   | "matching"
   | "settling"
   | "unmatched"
@@ -75,6 +80,9 @@ export function derivePhase(
 ): SwapPhase {
   if (rec == null) return "loading";
   switch (rec.status) {
+    case "committing":
+      // v2 BUY: committed, pool fronting its lock, our BNB not locked yet.
+      return "committing";
     case "completed":
     case "refunded":
     case "failed":
