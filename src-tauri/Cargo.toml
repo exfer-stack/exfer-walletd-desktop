@@ -53,9 +53,13 @@ exfer-stratum      = { git = "https://github.com/exfer-stack/exfer-agent-miner",
 # Bumped 5ad5ca7 → 8b4d396 (hotfix/swap-recover, based on 5ad5ca7 so the ONLY
 # change is the swap-recovery fix): settle-over-refund (a settled BUY no longer
 # freezes at "Sending your funds") + new swap_refresh RPC (UI resolves a stale
-# status on demand → no false "unmatched"). Keep this rev in LOCKSTEP with
-# mobile's pin (mobile v1.0.23 ships the same rev).
-exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "9b7a818ee531c19a2920cc28ece6359025991841" }
+# status on demand → no false "unmatched").
+# Bumped 9b7a818 → b84af8a (v1.15.2): the v2 swap protocol (pool locks its side
+# FIRST so the user locks once and walks away; a BNB→EXFER buy settles in a few
+# minutes) plus swap-pool hardening — two new Config fields
+# (inflight_reconcile / lock_watchdog) consumed below in walletd_supervisor.
+# Keep this rev in LOCKSTEP with mobile's pin (mobile v1.0.25+ ships the same rev).
+exfer-walletd      = { git = "https://github.com/exfer-stack/exfer-walletd", rev = "b84af8adf00b1cd216e32e8a32dddc4a9040ffd2" }
 
 # HTTP client used by the Tauri Rust side to talk to the embedded
 # walletd over loopback HTTPS. `rustls-tls-manual-roots` disables
