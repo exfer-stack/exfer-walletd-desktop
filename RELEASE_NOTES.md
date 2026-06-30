@@ -6,4 +6,5 @@
 
 ## What's new
 
-- The AI assistant now prompts you to add your AI provider key in Settings before it can chat — shown as a clean banner with an "Open LLM settings" button, not a confusing placeholder. Your wallet data was always real; this only changes the assistant.
+- The in-wallet AI assistant's tools now run natively inside the app — no external helper process — so the assistant's actions are more reliable and self-contained.
+- More resilient cross-chain swaps: the embedded wallet engine now recovers its in-flight locks after a restart, so a swap interrupted by a restart won't get stuck or accidentally re-spend, and swap errors are reported more precisely.
