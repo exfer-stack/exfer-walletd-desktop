@@ -34,6 +34,19 @@ pub const KEYRING_SERVICE: &str = "com.exfer.walletd-desktop";
 // wallet observes incoming pending balance within ~RTT instead of
 // the 2 s poll interval.
 pub const DEFAULT_NODE_RPC: &str = "http://198.13.38.245:9334";
+/// Extra EXFER nodes to also submit every signed tx to, in parallel with
+/// the primary node_rpc. The chain's P2P tx-relay is lossy (push-only, no
+/// pull-recovery), so a tx sent to one node can sit unmined for minutes;
+/// injecting it straight into several nodes' mempools gets it to a miner
+/// fast. walletd's broadcast_node_urls() trims, dedups, and drops node_rpc,
+/// so listing all of them here is safe regardless of which is primary.
+pub const DEFAULT_BROADCAST_NODES: &[&str] = &[
+    "http://64.176.231.198:9334",
+    "http://198.13.38.245:9334",
+    "http://80.78.31.82:9334",
+    "http://89.127.232.155:9334",
+    "http://82.221.100.201:9334",
+];
 // Co-located exfer-indexer (public, anonymous) that answers
 // get_address_history — the authoritative per-address confirmed timeline that
 // powers the Activity feed and the From/To on each transfer. The indexer is
@@ -286,6 +299,7 @@ fn build_walletd_config(datadir: &std::path::Path, desktop_cfg: &DesktopConfig) 
         // (rebroadcast evicted locks) is a pool-operator concern, off here.
         inflight_reconcile: true,
         lock_watchdog: false,
+        broadcast_nodes: DEFAULT_BROADCAST_NODES.iter().map(|s| s.to_string()).collect(),
     }
 }
 
