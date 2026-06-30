@@ -10,6 +10,7 @@ mod mcp_registry;
 mod mcp_supervisor;
 mod miner;
 mod mnemonic;
+mod native_tools;
 mod rpc_client;
 mod secrets;
 mod walletd_supervisor;
@@ -468,7 +469,7 @@ async fn set_swap_config(
 /// to public hosts (Binance). The app's other reqwest client pins walletd's
 /// self-signed cert via manual roots, which would reject a public CA chain —
 /// hence a separate client here.
-fn public_https_client() -> Result<reqwest::Client, String> {
+pub(crate) fn public_https_client() -> Result<reqwest::Client, String> {
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let tls = rustls::ClientConfig::builder()
