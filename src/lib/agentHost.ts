@@ -9,7 +9,10 @@
 import {
   createProvider,
   mergePolicies,
+  capabilityTools,
+  walletTools,
   EXFER_POLICY,
+  type HostBridge,
   type LLMProvider,
   type ProviderConfig,
   type StreamEvent,
@@ -18,6 +21,7 @@ import {
   type ConsentClass,
   type AgentToolResult,
 } from "exfer-agent";
+import { rpc } from "./rpc";
 
 export function inTauri(): boolean {
   return typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
@@ -71,50 +75,22 @@ export async function confirmConsent(passphrase: string): Promise<boolean> {
   return tauriInvoke<boolean>("agent_confirm_consent", { passphrase });
 }
 
-// ── native in-app miner tools ────────────────────────────────────────────────
+// ── first-party capability tools (native, injected alongside MCP) ─────────────
 //
-// The on-device CPU miner is a NATIVE Tauri command (mine_start/stop/status),
-// not an exfer-mcp tool — it mines IN-PROCESS (no downloaded binary, no
-// subprocess), mirroring the mobile wallet so the agent drives mining the same
-// way on both. We inject these three tool defs alongside the MCP tools and route
-// them to the native commands. mine_start is consent-gated (EXFER_POLICY class
-// "earn") just like every other surface.
-const MINING_TOOL_DEFS: ToolDef[] = [
-  {
-    name: "exfer_mine_start",
-    description:
-      "Start mining EXFER on this device's CPU, paying out to your address. Defaults to the SOLO pool (full block reward to you; no shared-pool payout threshold). Uses CPU. Generate an address first with exfer_generate_address.",
-    parameters: {
-      type: "object",
-      properties: {
-        address: { type: "string", description: "Your 64-hex payout address." },
-        pool: { type: "string", description: "Optional stratum pool URL (ssl://host:port). Default: the solo pool." },
-        threads: { type: "number", description: "CPU threads (1-4). Default 1 — Argon2id is memory-hard." },
-      },
-      required: ["address"],
-    },
-  },
-  { name: "exfer_mine_stop", description: "Stop the in-app miner.", parameters: { type: "object", properties: {} } },
-  {
-    name: "exfer_mine_status",
-    description: "Current in-app miner status: running, hashrate, shares accepted/rejected, pool authorization, uptime.",
-    parameters: { type: "object", properties: {} },
-  },
-];
-
-const MINING_TOOL_NAMES = new Set(MINING_TOOL_DEFS.map((d) => d.name));
-
-/** Route a native miner tool call to its Tauri command, returning the same
- *  {content,isError} shape executeTool yields for MCP tools. */
-async function execNativeMiner(name: string, args: Record<string, unknown>): Promise<AgentToolResult> {
-  const cmd = name === "exfer_mine_start" ? "mine_start" : name === "exfer_mine_stop" ? "mine_stop" : "mine_status";
-  try {
-    const status = await tauriInvoke<unknown>(cmd, args);
-    return { content: JSON.stringify(status), isError: false };
-  } catch (e) {
-    return { content: `Miner error: ${String(e)}`, isError: true };
-  }
-}
+// The generic capability layer from exfer-agent (price, network status, block/tx
+// lookup, web fetch/search, time, AND the on-device CPU miner) reaches the host's
+// existing plumbing through three primitives: walletd JSON-RPC (`rpc`), a native
+// Tauri command (`command`, e.g. mine_start/mine_stop/mine_status, get_bnb_price),
+// and a CORS-free HTTPS fetch (`fetchText`, the Rust `fetch_url` command). The
+// miner now lives IN this layer — routed via `bridge.command("mine_start"|…)` — so
+// the app no longer carries its own miner defs. Every tool's consent class still
+// comes from EXFER_POLICY (mine_start is "earn"-gated, etc.).
+const tauriBridge: HostBridge = {
+  rpc: (method, params) => rpc(method, params ?? {}),
+  command: (name, args) => tauriInvoke(name, args ?? {}),
+  fetchText: (url, init) =>
+    tauriInvoke("fetch_url", { req: { url, method: init?.method, body: init?.body, headers: init?.headers } }),
+};
 
 /** Shape of the `mcp_list_tools` response: tools across ALL enabled servers
  *  (raw names, each tagged with its owning `server`) plus per-server metadata. */
@@ -122,6 +98,9 @@ interface McpListToolsResult {
   tools: { name: string; description?: string; inputSchema?: unknown; server?: string }[];
   servers?: { id: string; defaultConsent: ConsentClass }[];
 }
+
+/** The native first-party capability tools over the real Tauri host. */
+const cap = capabilityTools(tauriBridge);
 
 export const realTools: ToolSource = {
   listTools: () =>
@@ -131,11 +110,11 @@ export const realTools: ToolSource = {
         description: t.description ?? "",
         parameters: (t.inputSchema ?? { type: "object", properties: {} }) as Record<string, unknown>,
       })),
-      ...MINING_TOOL_DEFS,
+      ...cap.defs,
     ]),
   executeTool: (name, args) =>
-    MINING_TOOL_NAMES.has(name)
-      ? execNativeMiner(name, args)
+    cap.has(name)
+      ? cap.call(name, args)
       : tauriInvoke<{ content: { type: string; text?: string }[]; isError?: boolean }>("mcp_call_tool", { name, args }).then((r) => ({
           content: r.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n"),
           isError: r.isError === true,
@@ -166,10 +145,14 @@ export const realTools: ToolSource = {
 // When VITE_USE_REAL_AGENT="true" and we're NOT in Tauri, the desktop WEB build
 // hits the SAME real backend the installed app would — just over dev proxies
 // instead of Rust commands — so the agent is QA-able in a plain browser. The
-// /llm proxy injects the API key server-side (the browser never sees it); /mcp
-// proxies to the Node http-bridge running REAL exfer-mcp + a REAL funded
-// walletd. Nothing here is mocked. confirmConsent stays passthrough in the
-// browser (the keychain re-auth is the only allowed mock).
+// /llm proxy injects the API key server-side (the browser never sees it). The
+// wallet tools run through the SAME shared `walletTools` layer the installed app
+// will use, over the browser bridge (`rpc` → the /__walletd proxy → a REAL
+// funded walletd; `fetchText` → the /__fetch proxy). The first-party capability
+// tools (price / explorer / web / time) run through the same bridge. Nothing is
+// mocked and there is no Node "mcp bridge" — the whole toolset is TypeScript over
+// three proxies. confirmConsent stays passthrough in the browser (the keychain
+// re-auth is the only allowed mock).
 
 export function useRealBrowserAgent(): boolean {
   return import.meta.env.VITE_USE_REAL_AGENT === "true" && !inTauri();
@@ -188,71 +171,47 @@ export function browserRealProvider(cfg: ProviderConfig): LLMProvider {
   );
 }
 
-interface BridgeListToolsResult {
-  tools: { name: string; description?: string; inputSchema?: unknown; server?: string }[];
-  servers?: { id: string; defaultConsent: ConsentClass }[];
-}
+// Browser bridge: the three HostBridge primitives over vite dev proxies. `rpc`
+// goes through the app's rpc helper → devmock's realRpc → the /__walletd proxy →
+// a REAL walletd (so wallet + explorer + price reads are live). `fetchText` goes
+// through the /__fetch proxy (CORS-free), mirroring the Rust fetch_url command.
+// Only the native miner command has no browser equivalent — it stays app-only.
+const browserBridge: HostBridge = {
+  rpc: (method, params) => rpc(method, params ?? {}),
+  command: async <T>(name: string): Promise<T> => {
+    // BNB/USD is reachable via the /__bnbusd vite proxy (same source the
+    // Dashboard uses). The miner is genuinely native-only in the browser.
+    if (name === "get_bnb_price") {
+      const r = await fetch("/__bnbusd/api/v3/ticker/price?symbol=BNBUSDT");
+      return (await r.text()) as unknown as T;
+    }
+    throw new Error(`"${name}" runs in the installed desktop app; not available in the browser dev preview.`);
+  },
+  fetchText: async (url) => {
+    // Route through the dev /__fetch proxy (CORS-free), mirroring the Rust
+    // fetch_url command the installed app uses.
+    const r = await fetch(`/__fetch?url=${encodeURIComponent(url)}`);
+    return (await r.json()) as { status: number; body: string };
+  },
+};
+const browserCap = capabilityTools(browserBridge);
+const browserWallet = walletTools(browserBridge);
 
-/** Real ToolSource over the /mcp bridge (POST /mcp/list_tools, /mcp/call_tool).
- *  Mirrors realTools but with global fetch through the vite proxy. */
+/** Real ToolSource for the browser-real path. Wallet tools + first-party
+ *  capability tools, both shared TypeScript over the browser bridge — no Node
+ *  "mcp bridge", no Rust. The installed app runs the same `walletTools` +
+ *  `capabilityTools`; only the transport differs (Tauri commands vs. proxies). */
 export const browserRealTools: ToolSource = {
-  listTools: async () => {
-    const res = await fetch("/mcp/list_tools", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    const r = (await res.json()) as BridgeListToolsResult;
-    return [
-      ...r.tools.map((t) => ({
-        name: t.name,
-        description: t.description ?? "",
-        parameters: (t.inputSchema ?? { type: "object", properties: {} }) as Record<string, unknown>,
-      })),
-      // The native miner only exists in the installed app; expose the defs here
-      // so the agent + consent gate + UI are exercisable in the browser preview.
-      ...MINING_TOOL_DEFS,
-    ];
+  listTools: async () => [...browserWallet.defs, ...browserCap.defs],
+  executeTool: (name, args) => {
+    if (browserCap.has(name)) return browserCap.call(name, args);
+    if (browserWallet.has(name)) return browserWallet.call(name, args);
+    return Promise.resolve({ content: `unknown tool: ${name}`, isError: true });
   },
-  executeTool: async (name, args) => {
-    // The miner is a native command (no Tauri in the browser). Be honest rather
-    // than faking a run: report it's app-only. The consent gate still fires.
-    if (MINING_TOOL_NAMES.has(name)) {
-      return {
-        content: JSON.stringify({
-          running: false,
-          note: "The on-device miner runs in the installed desktop app; it is not available in the browser dev preview.",
-        }),
-        isError: false,
-      };
-    }
-    const res = await fetch("/mcp/call_tool", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, args }),
-    });
-    const r = (await res.json()) as { content: { type: string; text?: string }[]; isError?: boolean };
-    return {
-      content: (r.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n"),
-      isError: r.isError === true,
-    };
-  },
-  // Build the merged policy from the bridge's server list, same as realTools:
-  // the built-in "exfer" server uses EXFER_POLICY's per-tool classes; any other
-  // server's tools take its defaultConsent. mergePolicies keeps the strictest
-  // default so unknown tools stay fail-closed.
-  getPolicy: async () => {
-    const res = await fetch("/mcp/list_tools", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    const r = (await res.json()) as BridgeListToolsResult;
-    const servers = r.servers ?? [{ id: "exfer", defaultConsent: "auto" as ConsentClass }];
-    const consentOf = new Map(servers.map((s) => [s.id, s.defaultConsent]));
-    const policies: ToolPolicy[] = [EXFER_POLICY];
-    for (const s of servers) {
-      if (s.id === "exfer") continue;
-      const classes: Record<string, ConsentClass> = {};
-      for (const t of r.tools) {
-        if (t.server === s.id) classes[t.name] = consentOf.get(s.id) ?? "gated";
-      }
-      policies.push({ classes, default: s.defaultConsent });
-    }
-    return mergePolicies(...policies);
-  },
+  // Browser dev has no third-party MCP servers, so the built-in EXFER_POLICY
+  // classifies the whole toolset (reads = auto, transfers/swaps/htlc/quote/sign
+  // = gated, mine_start = earn). Fail-closed on anything unrecognized.
+  getPolicy: async () => EXFER_POLICY,
 };
 
 // ── browser-dev mock (scripted LLM + canned tools) ─────────────────────────────

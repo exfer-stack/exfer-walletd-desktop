@@ -795,6 +795,58 @@ async fn llm_fetch(req: LlmRequest, provider: String, kind: String) -> Result<Ll
     })
 }
 
+/// A CORS-free HTTP(S) fetch through the host, for the first-party `web_fetch`
+/// capability tool (and anything else that needs to read the public web without
+/// the webview's CORS wall). Uses the webpki-rooted public client; the body is
+/// safely truncated to ~200KB so a huge page can't blow up the webview.
+#[derive(serde::Deserialize)]
+struct FetchUrlReq {
+    url: String,
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    headers: Option<std::collections::HashMap<String, String>>,
+}
+#[derive(serde::Serialize)]
+struct FetchUrlResp {
+    status: u16,
+    body: String,
+}
+#[tauri::command]
+async fn fetch_url(req: FetchUrlReq) -> Result<FetchUrlResp, String> {
+    if !(req.url.starts_with("http://") || req.url.starts_with("https://")) {
+        return Err("url must be http(s)".into());
+    }
+    let client = public_https_client()?;
+    let method = reqwest::Method::from_bytes(req.method.unwrap_or_else(|| "GET".into()).as_bytes())
+        .unwrap_or(reqwest::Method::GET);
+    let mut b = client.request(method, &req.url);
+    if let Some(h) = req.headers {
+        for (k, v) in h {
+            b = b.header(k, v);
+        }
+    }
+    if let Some(body) = req.body {
+        b = b.body(body);
+    }
+    let resp = b.send().await.map_err(|e| format!("fetch failed: {e}"))?;
+    let status = resp.status().as_u16();
+    let full = resp.text().await.map_err(|e| format!("read body: {e}"))?;
+    // safe UTF-8 truncate to ~200KB
+    let body = if full.len() > 200_000 {
+        let mut end = 200_000;
+        while !full.is_char_boundary(end) {
+            end -= 1;
+        }
+        full[..end].to_string()
+    } else {
+        full
+    };
+    Ok(FetchUrlResp { status, body })
+}
+
 #[tauri::command]
 fn set_llm_api_key(provider: String, key: String) -> Result<(), String> {
     secrets::set_passphrase(&llm_key_service(&provider), &key).map_err(|e| e.to_string())
@@ -894,6 +946,7 @@ pub fn run() {
             preview_mnemonic_import,
             import_mnemonic_scheme,
             llm_fetch,
+            fetch_url,
             set_llm_api_key,
             has_llm_api_key,
             agent_confirm_consent,

@@ -13,7 +13,7 @@ import { inTauri } from "./agentHost";
 export interface McpServerConfig {
   id: string;
   label: string;
-  transport: "stdio" | "http";
+  transport: "stdio" | "httptool" | "http";
   command?: string;
   args?: string[];
   env?: Record<string, string>;

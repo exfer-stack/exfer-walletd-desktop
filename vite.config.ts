@@ -47,14 +47,44 @@ export default defineConfig(async ({ mode }) => {
   const voteTarget = env.VITE_VOTE_PROXY_TARGET;
 
   // Browser-real verification path (VITE_USE_REAL_AGENT=true, no Tauri):
-  //   /mcp → the Node http-bridge running REAL exfer-mcp + walletd (port 7399).
   //   /llm → the LLM provider base URL; the proxy injects the API key as an
   //          Authorization header server-side so the key never reaches the
   //          browser and the call is same-origin (CORS-free).
+  //   /__walletd → a REAL walletd (wallet + swap tools run through the shared
+  //          walletTools layer); /__fetch → CORS-free web reads. No mcp bridge.
   const llmTarget = env.LLM_BASE_URL || process.env.LLM_BASE_URL || "https://api.deepseek.com";
   const deepseekKey = readDeepseekKey();
   return {
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Dev-only generic fetch proxy so the browser-real path can exercise the
+    // first-party web capabilities (web_fetch / web_search) without CORS. The
+    // installed app uses the Rust `fetch_url` command; this mirrors it for
+    // `npm run dev`. GET /__fetch?url=<encoded> → { status, body } JSON.
+    {
+      name: "exfer-fetch-proxy",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      configureServer(server: any) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        server.middlewares.use("/__fetch", async (req: any, res: any) => {
+          const send = (status: number, body: string) => {
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ status, body }));
+          };
+          try {
+            const full: string = req.originalUrl || req.url || "";
+            const target = new URL(full, "http://localhost").searchParams.get("url");
+            if (!target || !/^https?:\/\//i.test(target)) return send(400, "bad or missing url");
+            const r = await fetch(target, { headers: { "user-agent": "Mozilla/5.0 (exfer-agent)" } });
+            send(r.status, await r.text());
+          } catch (e) {
+            send(599, String(e));
+          }
+        });
+      },
+    },
+  ],
 
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
@@ -103,13 +133,6 @@ export default defineConfig(async ({ mode }) => {
         changeOrigin: true,
         secure: true,
         rewrite: (p: string) => p.replace(/^\/__bnbusd/, ""),
-      },
-      // Browser-real agent backend (no rewrite — the bridge serves
-      // /mcp/list_tools and /mcp/call_tool verbatim).
-      "/mcp": {
-        target: "http://127.0.0.1:7399",
-        changeOrigin: true,
-        secure: false,
       },
       // Browser-real LLM. The key is injected here, server-side, so the
       // browser only sees a same-origin /llm path with a placeholder key.

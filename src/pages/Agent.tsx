@@ -849,7 +849,11 @@ function ToolCardView({ card, t }: { card: ToolCard; t: Tr }) {
   const declined = card.summary === "declined";
   // walletd errors come back as non-isError content, so the status alone can read
   // "ok" on a failed call. Sniff an error shape too — never a green check on a failure.
-  const errored = card.status === "error" || (!!card.summary && !declined && /(\berror\b|invalid params|\bfailed\b|code\s*-?\d|no [\w/]+ key|seedless)/i.test(card.summary));
+  // Match an error VALUE, not the JSON field name: swap results carry an
+  // `"error":null` field on SUCCESS, and a bare /\berror\b/ flagged those as
+  // failed. Real failures still set card.status==="error" (isError) or carry a
+  // string error value / plain-text error phrase, all still matched below.
+  const errored = card.status === "error" || (!!card.summary && !declined && /("error"\s*:\s*"[^"]|invalid params|\bfailed\b|code\s*-?\d|no [\w/]+ key|seedless)/i.test(card.summary));
   const statusText = card.status === "running" ? t("agent.tool.running", { name: toolLabel(card.name, t) }) : errored ? t("agent.tool.failed") : t("agent.tool.done");
   // Suppress the raw Details for tools with a dedicated humanized one-liner —
   // unless the call errored (then the raw text IS the useful info).

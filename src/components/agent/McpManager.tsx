@@ -9,30 +9,33 @@ import { mcpListServers, mcpAddServer, mcpRemoveServer, mcpSetEnabled, type McpS
 // browser-dev. The built-in server is never in the registry, so it is rendered
 // statically here and is not removable.
 
-type Transport = "stdio" | "http";
+// New servers are remote-only: `httptool` (a single-URL tool endpoint) or
+// `http` (a streamable-http MCP server). Local `stdio` processes are no longer
+// accepted by the backend, so the add-flow never produces one — but the type
+// keeps `stdio` for rendering any legacy entry already in the registry.
+type Transport = "httptool" | "http";
 type Consent = "auto" | "gated";
 
 // Curated one-tap presets shown above the manual add-form. Each row adds an
-// McpServerConfig through the same registry path as the form, so there are no
-// manual fields to fill. `labelKey` localizes the display name; the stored
-// `label` (set at add-time from the translation) keeps the list readable. Keep
-// this a plain data array so more presets (other-chain data, price, …) are a
-// one-line addition later. All entries are read-only catalogs → defaultConsent
-// per their nature.
+// McpServerConfig through the same registry path as the form. `labelKey`
+// localizes the display name; the stored `label` (set at add-time from the
+// translation) keeps the list readable. Keep this a plain data array so future
+// first-party HTTP-tool presets are a one-line addition.
+//
+// The former websearch/time/coinprice/explorer presets were REMOVED: those are
+// now native first-party capabilities (web_search/time/exfer_price/exfer_get_*),
+// injected directly by the agent host's capability layer — not remote tools the
+// user adds here. The catalog stays as an (empty) extension point; the manual
+// Add form below still accepts real third-party tool URLs.
 interface CatalogEntry {
   id: string;
   labelKey: MsgKey;
   transport: Transport;
-  command?: string;
-  args?: string[];
-  url?: string;
+  url: string;
   defaultConsent: Consent;
 }
 
-const RECOMMENDED_CATALOG: CatalogEntry[] = [
-  { id: "websearch", labelKey: "agent.mcp.catalog.websearch", transport: "stdio", command: "uvx", args: ["duckduckgo-mcp-server"], defaultConsent: "auto" },
-  { id: "time", labelKey: "agent.mcp.catalog.time", transport: "stdio", command: "uvx", args: ["mcp-server-time"], defaultConsent: "auto" },
-];
+const RECOMMENDED_CATALOG: CatalogEntry[] = [];
 
 export function McpManager({ onClose }: { onClose: () => void }) {
   const { t } = useT();
@@ -43,10 +46,7 @@ export function McpManager({ onClose }: { onClose: () => void }) {
   // add-form state
   const [id, setId] = useState("");
   const [label, setLabel] = useState("");
-  const [transport, setTransport] = useState<Transport>("stdio");
-  const [command, setCommand] = useState("");
-  const [argsText, setArgsText] = useState("");
-  const [envText, setEnvText] = useState("");
+  const [transport, setTransport] = useState<Transport>("httptool");
   const [url, setUrl] = useState("");
   const [defaultConsent, setDefaultConsent] = useState<Consent>("gated");
 
@@ -62,25 +62,10 @@ export function McpManager({ onClose }: { onClose: () => void }) {
   const resetForm = () => {
     setId("");
     setLabel("");
-    setTransport("stdio");
-    setCommand("");
-    setArgsText("");
-    setEnvText("");
+    setTransport("httptool");
     setUrl("");
     setDefaultConsent("gated");
     setFormError(null);
-  };
-
-  const parseEnv = (text: string): Record<string, string> => {
-    const out: Record<string, string> = {};
-    for (const line of text.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq <= 0) continue;
-      out[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
-    }
-    return out;
   };
 
   const onAdd = async () => {
@@ -90,20 +75,9 @@ export function McpManager({ onClose }: { onClose: () => void }) {
     if (trimId === "exfer") return setFormError(t("agent.mcp.errIdReserved"));
     if ((servers ?? []).some((s) => s.id === trimId)) return setFormError(t("agent.mcp.errIdTaken"));
 
-    const cfg: McpServerConfig = { id: trimId, label: trimLabel, transport, enabled: true, defaultConsent };
-    if (transport === "stdio") {
-      const cmd = command.trim();
-      if (!cmd) return setFormError(t("agent.mcp.errCommand"));
-      cfg.command = cmd;
-      const args = argsText.split("\n").map((a) => a.trim()).filter(Boolean);
-      if (args.length) cfg.args = args;
-      const env = parseEnv(envText);
-      if (Object.keys(env).length) cfg.env = env;
-    } else {
-      const u = url.trim();
-      if (!u) return setFormError(t("agent.mcp.errUrl"));
-      cfg.url = u;
-    }
+    const u = url.trim();
+    if (!u) return setFormError(t("agent.mcp.errUrl"));
+    const cfg: McpServerConfig = { id: trimId, label: trimLabel, transport, url: u, enabled: true, defaultConsent };
 
     setBusy(true);
     try {
@@ -125,15 +99,10 @@ export function McpManager({ onClose }: { onClose: () => void }) {
       id: entry.id,
       label: t(entry.labelKey),
       transport: entry.transport,
+      url: entry.url,
       enabled: true,
       defaultConsent: entry.defaultConsent,
     };
-    if (entry.transport === "stdio") {
-      cfg.command = entry.command;
-      if (entry.args?.length) cfg.args = entry.args;
-    } else {
-      cfg.url = entry.url;
-    }
     setBusy(true);
     try {
       await mcpAddServer(cfg);
@@ -207,7 +176,7 @@ export function McpManager({ onClose }: { onClose: () => void }) {
                     <div className="mono truncate text-xs text-neutral-500">
                       {s.id} · {s.transport} · {s.defaultConsent}
                     </div>
-                    <div className="mono truncate text-[11px] text-neutral-600">{s.transport === "http" ? s.url : [s.command, ...(s.args ?? [])].join(" ")}</div>
+                    <div className="mono truncate text-[11px] text-neutral-600">{s.transport === "stdio" ? [s.command, ...(s.args ?? [])].join(" ") : s.url}</div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <label className="flex cursor-pointer items-center gap-1.5 text-xs text-neutral-400">
@@ -249,7 +218,7 @@ export function McpManager({ onClose }: { onClose: () => void }) {
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-neutral-100">{t(e.labelKey)}</div>
                       <div className="mono truncate text-[11px] text-neutral-600">
-                        {e.transport === "http" ? e.url : [e.command, ...(e.args ?? [])].join(" ")} · {e.defaultConsent}
+                        {e.url} · {e.defaultConsent}
                       </div>
                     </div>
                     <button
@@ -287,32 +256,16 @@ export function McpManager({ onClose }: { onClose: () => void }) {
           <label className="block space-y-1">
             <span className="label">{t("agent.mcp.fieldTransport")}</span>
             <select className="input w-full cursor-pointer accent-cyan-500" value={transport} onChange={(e) => setTransport(e.target.value as Transport)} data-testid="mcp-add-transport">
-              <option value="stdio">{t("agent.mcp.transportStdio")}</option>
+              <option value="httptool">{t("agent.mcp.transportHttptool")}</option>
               <option value="http">{t("agent.mcp.transportHttp")}</option>
             </select>
           </label>
 
-          {transport === "stdio" ? (
-            <>
-              <label className="block space-y-1">
-                <span className="label">{t("agent.mcp.fieldCommand")}</span>
-                <input className="input mono w-full" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="npx" data-testid="mcp-add-command" />
-              </label>
-              <label className="block space-y-1">
-                <span className="label">{t("agent.mcp.fieldArgs")}</span>
-                <textarea className="input mono w-full" rows={3} value={argsText} onChange={(e) => setArgsText(e.target.value)} placeholder={"-y\n@modelcontextprotocol/server-filesystem\n/path"} data-testid="mcp-add-args" />
-              </label>
-              <label className="block space-y-1">
-                <span className="label">{t("agent.mcp.fieldEnv")}</span>
-                <textarea className="input mono w-full" rows={2} value={envText} onChange={(e) => setEnvText(e.target.value)} placeholder="API_KEY=…" data-testid="mcp-add-env" />
-              </label>
-            </>
-          ) : (
-            <label className="block space-y-1">
-              <span className="label">{t("agent.mcp.fieldUrl")}</span>
-              <input className="input mono w-full" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/mcp" data-testid="mcp-add-url" />
-            </label>
-          )}
+          <label className="block space-y-1">
+            <span className="label">{t("agent.mcp.fieldUrl")}</span>
+            <input className="input mono w-full" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://tools.exfer.dev/websearch" data-testid="mcp-add-url" />
+            <span className="help">{t("agent.mcp.fieldUrlHint")}</span>
+          </label>
 
           <label className="block space-y-1">
             <span className="label">{t("agent.mcp.fieldConsent")}</span>
