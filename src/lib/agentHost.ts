@@ -92,9 +92,9 @@ const tauriBridge: HostBridge = {
     tauriInvoke("fetch_url", { req: { url, method: init?.method, body: init?.body, headers: init?.headers } }),
 };
 
-/** Shape of the `mcp_list_tools` response: tools across ALL enabled servers
+/** Shape of the `tool_list` response: tools across ALL enabled servers
  *  (raw names, each tagged with its owning `server`) plus per-server metadata. */
-interface McpListToolsResult {
+interface ToolListResult {
   tools: { name: string; description?: string; inputSchema?: unknown; server?: string }[];
   servers?: { id: string; defaultConsent: ConsentClass }[];
 }
@@ -104,7 +104,7 @@ const cap = capabilityTools(tauriBridge);
 
 export const realTools: ToolSource = {
   listTools: () =>
-    tauriInvoke<McpListToolsResult>("mcp_list_tools").then((r) => [
+    tauriInvoke<ToolListResult>("tool_list").then((r) => [
       ...r.tools.map((t) => ({
         name: t.name,
         description: t.description ?? "",
@@ -115,7 +115,7 @@ export const realTools: ToolSource = {
   executeTool: (name, args) =>
     cap.has(name)
       ? cap.call(name, args)
-      : tauriInvoke<{ content: { type: string; text?: string }[]; isError?: boolean }>("mcp_call_tool", { name, args }).then((r) => ({
+      : tauriInvoke<{ content: { type: string; text?: string }[]; isError?: boolean }>("tool_call", { name, args }).then((r) => ({
           content: r.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n"),
           isError: r.isError === true,
         })),
@@ -124,7 +124,7 @@ export const realTools: ToolSource = {
   // server's defaultConsent. mergePolicies keeps the strictest default, so
   // adding any gated source keeps unknown tools fail-closed.
   getPolicy: () =>
-    tauriInvoke<McpListToolsResult>("mcp_list_tools").then((r) => {
+    tauriInvoke<ToolListResult>("tool_list").then((r) => {
       const servers = r.servers ?? [{ id: "exfer", defaultConsent: "auto" as ConsentClass }];
       const consentOf = new Map(servers.map((s) => [s.id, s.defaultConsent]));
       const policies: ToolPolicy[] = [EXFER_POLICY];

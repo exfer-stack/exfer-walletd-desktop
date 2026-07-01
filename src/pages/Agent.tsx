@@ -999,7 +999,7 @@ function ConfirmationCard({ card, t, onResolve }: { card: ConsentCard; t: Tr; on
           )}
           {risky && (
             <p role="alert" className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-              {t("agent.consent.risk")}
+              {t(card.toolName === "exfer_sign_message" ? "agent.consent.riskSign" : "agent.consent.risk")}
             </p>
           )}
         </div>

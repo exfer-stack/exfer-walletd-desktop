@@ -16,7 +16,7 @@ mod secrets;
 mod walletd_supervisor;
 
 use mcp_registry::{mcp_add_server, mcp_list_servers, mcp_remove_server, mcp_set_enabled};
-use mcp_supervisor::{mcp_call_tool, mcp_list_tools, mcp_start, McpCtx};
+use mcp_supervisor::{tool_call, tool_list, mcp_start, McpCtx};
 
 use serde_json::Value;
 use tauri::{Manager, State};
@@ -951,8 +951,8 @@ pub fn run() {
             has_llm_api_key,
             agent_confirm_consent,
             mcp_start,
-            mcp_list_tools,
-            mcp_call_tool,
+            tool_list,
+            tool_call,
             mcp_list_servers,
             mcp_add_server,
             mcp_remove_server,
