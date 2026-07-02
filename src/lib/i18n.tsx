@@ -186,6 +186,16 @@ const EN = {
 
   // ── agent · humanized tool results (one-liner under the card) ──────
   "agent.tool.balance": "Balance: {value}",
+  "agent.tool.searchHits": "{n} results ({src})",
+  "agent.tool.searchNone": "No results",
+  "agent.tool.fetched": "Fetched {host} · HTTP {status}",
+  "agent.tool.price": "${usd} per EXFER",
+  "agent.tool.groupSteps": "{n} tool steps",
+  "agent.tool.groupSearches": "{n} searches",
+  "agent.tool.groupFetches": "{n} pages",
+  "agent.tool.groupOther": "{n} tools",
+  "agent.tool.groupRunning": "working…",
+  "agent.tool.groupFailed": "{n} failed",
   "agent.tool.addressCount": "{n} addresses",
   "agent.tool.newAddress": "New address {address}",
   "agent.tool.addressCreated": "Address created",
@@ -1246,6 +1256,16 @@ const ZH: Record<MsgKey, string> = {
 
   // ── agent · 工具结果一行摘要 ───────────────────────────────────────
   "agent.tool.balance": "余额：{value}",
+  "agent.tool.searchHits": "{n} 条结果（{src}）",
+  "agent.tool.searchNone": "无结果",
+  "agent.tool.fetched": "已抓取 {host} · HTTP {status}",
+  "agent.tool.price": "${usd} / EXFER",
+  "agent.tool.groupSteps": "{n} 步操作",
+  "agent.tool.groupSearches": "{n} 次搜索",
+  "agent.tool.groupFetches": "{n} 个页面",
+  "agent.tool.groupOther": "{n} 个工具",
+  "agent.tool.groupRunning": "进行中…",
+  "agent.tool.groupFailed": "{n} 个失败",
   "agent.tool.addressCount": "{n} 个地址",
   "agent.tool.newAddress": "新地址 {address}",
   "agent.tool.addressCreated": "已创建地址",

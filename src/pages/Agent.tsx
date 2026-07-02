@@ -149,7 +149,28 @@ function shortHash(h: unknown): string {
 
 /** A human one-liner for a tool result; the raw JSON stays behind a disclosure
  *  (when shown). Localized via agent.tool.* keys. */
+// Collapse a raw payload into ONE short line for the always-visible subline —
+// the full text lives in the collapsed Details. Without this, a tool whose
+// result isn't a tidy JSON object (web_fetch page text, a truncated payload)
+// floods the transcript. Also folds literal "\n" and whitespace runs to a space.
+function clampLine(s: string, n = 140): string {
+  const one = s.replace(/\\n|\s+/g, " ").trim();
+  return one.length > n ? `${one.slice(0, n)}…` : one;
+}
+
 function humanizeTool(name: string, summary: string, t: Tr): string {
+  // web_fetch returns a large page-text payload that the session truncates for
+  // display, so its JSON often won't parse. Pull url + status by regex first —
+  // works on a truncated prefix too.
+  if (name === "web_fetch") {
+    const u = summary.match(/"url"\s*:\s*"([^"]+)"/)?.[1];
+    if (u) {
+      const st = summary.match(/"status"\s*:\s*(\d+)/)?.[1] ?? "—";
+      let host = u;
+      try { host = new URL(u).host; } catch { /* keep as-is */ }
+      return t("agent.tool.fetched", { host, status: st });
+    }
+  }
   try {
     const r = JSON.parse(summary) as Record<string, unknown>;
     switch (name) {
@@ -204,11 +225,25 @@ function humanizeTool(name: string, summary: string, t: Tr): string {
           status: r.online === false ? t("agent.tool.poolOffline") : t("agent.tool.poolOnline"),
         });
       }
+      case "web_search": {
+        const results = Array.isArray(r.results) ? r.results : [];
+        if (results.length) return t("agent.tool.searchHits", { n: results.length, src: String(r.source ?? "web") });
+        return clampLine(String(r.note ?? t("agent.tool.searchNone")));
+      }
+      case "web_fetch": {
+        let host = String(r.url ?? "");
+        try { host = new URL(host).host; } catch { /* keep as-is */ }
+        return t("agent.tool.fetched", { host, status: String(r.status ?? "—") });
+      }
+      case "time":
+        return String(r.local ?? r.iso_utc ?? summary);
+      case "exfer_price":
+        return t("agent.tool.price", { usd: Number(r.usd_per_exfer ?? 0).toPrecision(4) });
       default:
-        return summary.length > 80 ? `${summary.slice(0, 80)}…` : summary;
+        return clampLine(summary);
     }
   } catch {
-    return summary;
+    return clampLine(summary);
   }
 }
 
@@ -659,15 +694,17 @@ export function Agent({ lang }: { lang: Lang }) {
           ) : (
             <div key={i} className="space-y-2 fade-in" data-testid="assistant-turn">
               {tn.thinking && <ThinkingBlock thinking={tn.thinking} streaming={busy && i === turns.length - 1} hasText={tn.blocks.some((b) => b.kind === "text" && b.text)} t={t} />}
-              {tn.blocks.map((b, j) =>
-                b.kind === "text" ? (
-                  b.text ? (
-                    <Markdown key={j} source={b.text} />
+              {groupBlocks(tn.blocks).map((item, j) =>
+                item.kind === "text" ? (
+                  item.text ? (
+                    <Markdown key={j} source={item.text} />
                   ) : null
-                ) : b.kind === "tool" ? (
-                  <ToolCardView key={j} card={b.card} t={t} />
+                ) : item.kind === "subagent" ? (
+                  <SubAgentView key={j} sub={item.sub} t={t} />
+                ) : item.cards.length >= 3 ? (
+                  <ToolGroupView key={j} cards={item.cards} t={t} />
                 ) : (
-                  <SubAgentView key={j} sub={b.sub} t={t} />
+                  item.cards.map((c, k) => <ToolCardView key={`${j}-${k}`} card={c} t={t} />)
                 ),
               )}
               {busy && i === turns.length - 1 && !tn.blocks.length && <Spinner />}
@@ -853,7 +890,11 @@ function ToolCardView({ card, t }: { card: ToolCard; t: Tr }) {
   // `"error":null` field on SUCCESS, and a bare /\berror\b/ flagged those as
   // failed. Real failures still set card.status==="error" (isError) or carry a
   // string error value / plain-text error phrase, all still matched below.
-  const errored = card.status === "error" || (!!card.summary && !declined && /("error"\s*:\s*"[^"]|invalid params|\bfailed\b|code\s*-?\d|no [\w/]+ key|seedless)/i.test(card.summary));
+  // Don't sniff free-text tools (web_fetch/web_search): their summary is
+  // arbitrary web content that legitimately contains words like "failed" or
+  // "error", which would false-positive. Trust their isError status instead.
+  const freeText = card.name === "web_fetch" || card.name === "web_search";
+  const errored = card.status === "error" || (!freeText && !!card.summary && !declined && /("error"\s*:\s*"[^"]|invalid params|\bfailed\b|code\s*-?\d|no [\w/]+ key|seedless)/i.test(card.summary));
   const statusText = card.status === "running" ? t("agent.tool.running", { name: toolLabel(card.name, t) }) : errored ? t("agent.tool.failed") : t("agent.tool.done");
   // Suppress the raw Details for tools with a dedicated humanized one-liner —
   // unless the call errored (then the raw text IS the useful info).
@@ -881,6 +922,61 @@ function ToolCardView({ card, t }: { card: ToolCard; t: Tr }) {
           </>
         ))}
     </div>
+  );
+}
+
+// Fold a burst of consecutive tool cards (a research/multi-step run) into ONE
+// collapsed row, so a 15-step run doesn't stack 15 full-width cards. Text or
+// sub-agent blocks break a run; short runs (< 3) stay flat.
+type RenderItem =
+  | { kind: "text"; text: string }
+  | { kind: "subagent"; sub: SubAgent }
+  | { kind: "toolgroup"; cards: ToolCard[] };
+
+function groupBlocks(blocks: Block[]): RenderItem[] {
+  const out: RenderItem[] = [];
+  for (const b of blocks) {
+    if (b.kind === "tool") {
+      const last = out[out.length - 1];
+      if (last && last.kind === "toolgroup") last.cards.push(b.card);
+      else out.push({ kind: "toolgroup", cards: [b.card] });
+    } else if (b.kind === "text") {
+      out.push({ kind: "text", text: b.text });
+    } else {
+      out.push({ kind: "subagent", sub: b.sub });
+    }
+  }
+  return out;
+}
+
+function toolGroupLabel(cards: ToolCard[], t: Tr): string {
+  const searches = cards.filter((c) => c.name === "web_search").length;
+  const fetches = cards.filter((c) => c.name === "web_fetch").length;
+  const other = cards.length - searches - fetches;
+  const parts: string[] = [];
+  if (searches) parts.push(t("agent.tool.groupSearches", { n: searches }));
+  if (fetches) parts.push(t("agent.tool.groupFetches", { n: fetches }));
+  if (other) parts.push(t("agent.tool.groupOther", { n: other }));
+  return parts.join(" · ") || t("agent.tool.groupSteps", { n: cards.length });
+}
+
+function ToolGroupView({ cards, t }: { cards: ToolCard[]; t: Tr }) {
+  const running = cards.some((c) => c.status === "running");
+  const failed = cards.filter((c) => c.status === "error").length;
+  return (
+    <details className="card-chat overflow-hidden px-3 py-2 text-sm" data-testid="tool-group">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-neutral-300">
+        {running ? <Spinner /> : <span aria-hidden className="text-neutral-500">⚙</span>}
+        <span className="font-medium">{toolGroupLabel(cards, t)}</span>
+        {running && <span className="text-neutral-500">· {t("agent.tool.groupRunning")}</span>}
+        {!running && failed > 0 && <span className="text-red-400">· {t("agent.tool.groupFailed", { n: failed })}</span>}
+      </summary>
+      <div className="mt-2 space-y-2">
+        {cards.map((c, k) => (
+          <ToolCardView key={k} card={c} t={t} />
+        ))}
+      </div>
+    </details>
   );
 }
 
