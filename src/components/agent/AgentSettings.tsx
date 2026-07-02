@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useT, type MsgKey } from "../../lib/i18n";
 import { PROVIDER_PRESETS, loadConfig, saveConfig, saveApiKey, type SavedConfig } from "../../lib/agentConfig";
+import { loadSearchConfig, saveSearchConfig, type SearchProvider } from "../../lib/searchConfig";
 
 // "Bring your own LLM": pick a preset (or Custom), set baseUrl/model, paste a
 // key. Non-secret config → localStorage; key → OS keychain (Tauri) / dev store.
@@ -15,6 +16,9 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
   const [baseUrl, setBaseUrl] = useState(existing?.baseUrl ?? preset.baseUrl);
   const [model, setModel] = useState(existing?.model ?? preset.defaultModel);
   const [apiKey, setApiKey] = useState("");
+  const existingSearch = loadSearchConfig();
+  const [searchProvider, setSearchProvider] = useState<SearchProvider>(existingSearch?.provider ?? "tavily");
+  const [searchKey, setSearchKey] = useState(existingSearch?.apiKey ?? "");
   const [saving, setSaving] = useState(false);
 
   const onPreset = (i: number) => {
@@ -29,6 +33,7 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
     const cfg: SavedConfig = { id: "user", label: preset.label, kind: preset.kind, baseUrl, model };
     saveConfig(cfg);
     if (apiKey.trim()) await saveApiKey("user", apiKey.trim());
+    saveSearchConfig({ provider: searchProvider, apiKey: searchProvider === "free" ? "" : searchKey.trim() });
     setSaving(false);
     onClose(true);
   };
@@ -66,6 +71,27 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
           <input type="password" className="input w-full" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" autoComplete="off" data-testid="settings-apikey" />
           <span className="help">{t("agent.settings.keyWhere")}</span>
           <span className="help">{t("agent.settings.keyNote")}</span>
+        </label>
+
+        <label className="block space-y-1 border-t border-neutral-800 pt-3">
+          <span className="label">{t("agent.settings.searchProvider")}</span>
+          <p className="text-xs text-neutral-500">{t("agent.settings.searchExplain")}</p>
+          <select className="input w-full" value={searchProvider} onChange={(e) => setSearchProvider(e.target.value as SearchProvider)} data-testid="settings-search-provider">
+            <option value="tavily">Tavily {t("agent.settings.searchAgentTag")}</option>
+            <option value="brave">Brave</option>
+            <option value="free">{t("agent.settings.searchFree")}</option>
+          </select>
+          {searchProvider !== "free" && (
+            <input
+              type="password"
+              className="input w-full"
+              value={searchKey}
+              onChange={(e) => setSearchKey(e.target.value)}
+              placeholder={searchProvider === "tavily" ? "tvly-… (optional)" : "BSA… (optional)"}
+              autoComplete="off"
+              data-testid="settings-search-key"
+            />
+          )}
         </label>
 
         <div className="flex gap-3 pt-1">
