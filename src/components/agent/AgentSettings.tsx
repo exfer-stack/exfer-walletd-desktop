@@ -2,6 +2,12 @@ import { useState } from "react";
 import { useT, type MsgKey } from "../../lib/i18n";
 import { PROVIDER_PRESETS, loadConfig, saveConfig, saveApiKey, type SavedConfig } from "../../lib/agentConfig";
 import { loadSearchConfig, saveSearchConfig, type SearchProvider } from "../../lib/searchConfig";
+import { openExternal } from "../../lib/openExternal";
+
+const SEARCH_KEY_URL: Record<string, string> = {
+  tavily: "https://app.tavily.com",
+  brave: "https://brave.com/search/api/",
+};
 
 // "Bring your own LLM": pick a preset (or Custom), set baseUrl/model, paste a
 // key. Non-secret config → localStorage; key → OS keychain (Tauri) / dev store.
@@ -69,7 +75,11 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
           <span className="label">{t("agent.settings.apiKey")}</span>
           <p className="text-xs text-neutral-500">{t("agent.settings.keyExplain")}</p>
           <input type="password" className="input w-full" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" autoComplete="off" data-testid="settings-apikey" />
-          <span className="help">{t("agent.settings.keyWhere")}</span>
+          {preset.keyUrl && (
+            <button type="button" className="text-xs text-cyan-400 underline decoration-cyan-400/40 underline-offset-2 hover:text-cyan-300" onClick={() => void openExternal(preset.keyUrl!)} data-testid="settings-getkey-llm">
+              {t("agent.settings.getKey")} ↗
+            </button>
+          )}
           <span className="help">{t("agent.settings.keyNote")}</span>
         </label>
 
@@ -82,15 +92,22 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
             <option value="free">{t("agent.settings.searchFree")}</option>
           </select>
           {searchProvider !== "free" && (
-            <input
-              type="password"
-              className="input w-full"
-              value={searchKey}
-              onChange={(e) => setSearchKey(e.target.value)}
-              placeholder={searchProvider === "tavily" ? "tvly-… (optional)" : "BSA… (optional)"}
-              autoComplete="off"
-              data-testid="settings-search-key"
-            />
+            <>
+              <input
+                type="password"
+                className="input w-full"
+                value={searchKey}
+                onChange={(e) => setSearchKey(e.target.value)}
+                placeholder={searchProvider === "tavily" ? "tvly-… (optional)" : "BSA… (optional)"}
+                autoComplete="off"
+                data-testid="settings-search-key"
+              />
+              {SEARCH_KEY_URL[searchProvider] && (
+                <button type="button" className="text-xs text-cyan-400 underline decoration-cyan-400/40 underline-offset-2 hover:text-cyan-300" onClick={() => void openExternal(SEARCH_KEY_URL[searchProvider])} data-testid="settings-getkey-search">
+                  {t("agent.settings.getKey")} ↗
+                </button>
+              )}
+            </>
           )}
         </label>
 
