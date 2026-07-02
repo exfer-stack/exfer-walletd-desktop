@@ -2462,7 +2462,7 @@ dependencies = [
 
 [[package]]
 name = "exfer-walletd-desktop"
-version = "0.16.28"
+version = "0.16.29"
 dependencies = [
  "aes-gcm",
  "anyhow",

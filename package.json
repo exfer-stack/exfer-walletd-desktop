@@ -1,7 +1,7 @@
 {
   "name": "exfer-walletd-desktop",
   "private": true,
-  "version": "0.16.28",
+  "version": "0.16.29",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -246,6 +246,18 @@ function humanizeTool(name: string, summary: string, t: Tr): string {
           status: r.online === false ? t("agent.tool.poolOffline") : t("agent.tool.poolOnline"),
         });
       }
+      case "crypto_new_pools":
+        return t("agent.tool.cryptoPools", { n: String(r.count ?? (Array.isArray(r.pools) ? r.pools.length : 0)), chain: String(r.chain ?? "") });
+      case "crypto_trending":
+        return t("agent.tool.cryptoTrending", { n: String(r.count ?? (Array.isArray(r.pools) ? r.pools.length : 0)), chain: String(r.chain ?? "") });
+      case "crypto_search_token":
+        return t("agent.tool.cryptoSearch", { n: String(r.count ?? (Array.isArray(r.results) ? r.results.length : 0)) });
+      case "crypto_token_overview":
+        return t("agent.tool.cryptoOverview", { name: String(r.name ?? r.token_address ?? ""), price: String(r.price_usd ?? "?") });
+      case "crypto_token_security":
+        return t("agent.tool.cryptoSecurity", { verdict: String(r.verdict ?? "?"), n: String(Array.isArray(r.flags) ? r.flags.length : 0) });
+      case "crypto_gem_scan":
+        return t("agent.tool.cryptoGemScan", { n: String(Array.isArray(r.candidates) ? r.candidates.length : 0), chain: String(r.chain ?? "") });
       case "web_search": {
         const results = Array.isArray(r.results) ? r.results : [];
         if (results.length) return t("agent.tool.searchHits", { n: results.length, src: String(r.source ?? "web") });
