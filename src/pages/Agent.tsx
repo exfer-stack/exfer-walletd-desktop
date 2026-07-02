@@ -192,15 +192,36 @@ function humanizeTool(name: string, summary: string, t: Tr): string {
           : t("agent.tool.quote", { in: String(r.amount_in), out: String(r.amount_out) });
       case "exfer_swap_execute":
         return t("agent.tool.swapStarted", { id: String(r.swap_id ?? ""), state: String(r.state ?? "") });
+      case "exfer_swap_pool_info":
+        return t("agent.tool.poolInfo", {
+          bnb: Number(r.bnb_reserve ?? 0).toFixed(3),
+          exfer: Math.round(Number(r.exfer_reserve ?? 0)).toLocaleString("en-US"),
+          fee: String(Number(r.fee_bps ?? 0) / 100),
+        });
       case "exfer_payment_uri_encode":
         return String(r.uri ?? summary);
-      case "exfer_network_status":
+      case "exfer_network_status": {
+        // get_status shape: { network, tip: { height }, upstream_nodes: [...],
+        // in_flight_transfers, ... } — NOT tip_height/peer_count/mempool_size.
+        const tip = r.tip as { height?: number } | undefined;
+        const ups = Array.isArray(r.upstream_nodes) ? r.upstream_nodes.length : undefined;
         return t("agent.tool.networkStatus", {
           network: String(r.network ?? "exfer"),
-          height: String(r.tip_height ?? r.height ?? "?"),
-          peers: String(r.peer_count ?? r.peers ?? 0),
-          mempool: String(r.mempool_size ?? 0),
+          height: String(tip?.height ?? r.tip_height ?? r.height ?? "?"),
+          peers: String(ups ?? r.peer_count ?? r.peers ?? 0),
+          mempool: String(r.in_flight_transfers ?? r.mempool_size ?? 0),
         });
+      }
+      case "exfer_get_block_height":
+        return t("agent.tool.blockHeight", { height: String(r.height ?? "?") });
+      case "exfer_bsc_get_address":
+        return t("agent.tool.bscAddress", { address: shortHash(r.address ?? "") });
+      case "exfer_bsc_get_balance":
+        return t("agent.tool.bscBalance", { bnb: (Number(r.bnb_wei ?? 0) / 1e18).toFixed(6) });
+      case "exfer_get_address_history": {
+        const n = Array.isArray(r.history) ? r.history.length : Array.isArray(r) ? r.length : (r.count ?? "—");
+        return t("agent.tool.historyCount", { n: String(n) });
+      }
       case "exfer_network_hashrate":
         return t("agent.tool.networkHashrate", {
           hashrate: fmtHashrate(Number(r.est_hashrate_hs ?? 0)),
