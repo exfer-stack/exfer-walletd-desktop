@@ -435,7 +435,7 @@ const EN = {
   // locked yet (the daemon does that next), so the copy must NOT imply funds are
   // locked, and it should say the app is free to close.
   "swap.committingHeading": "Setting up your swap",
-  "swap.committingNote": "You can close the app — it locks your funds and delivers your {out} on its own, usually within a minute or two. Track it on the Swap tab.",
+  "swap.committingNote": "You can close the app — your {out} arrives on its own (about a minute).",
   "swap.back": "Back",
   "swap.confirming": "Confirming…",
   "swap.confirmSwap": "Confirm swap",
@@ -985,7 +985,7 @@ const EN = {
   "swap.loadingStatus": "Loading swap status…",
   "swap.unmatchedTitle": "Confirming swap",
   "swap.unmatchedBody":
-    "The pool didn't respond in time. Your funds are locked safely on-chain and will return to your address automatically in {eta} — nothing to do; you can close this page.",
+    "Pool didn't respond in time — your funds auto-refund in {eta}. Nothing to do; you can close this page.",
   "swap.unmatchedBodyV2":
     "This swap is being unwound. Your {in} is locked safely and will be returned to you automatically in {eta} — there's nothing to do; you can close this.",
   "swap.autoRefundIn": "Auto-refund in {eta}",
@@ -994,7 +994,7 @@ const EN = {
   "swap.cardUnmatched": "Confirming — auto-refund in {eta} if no match",
   "swap.refundingAuto": "Refunding automatically — this completes on its own.",
   "swap.nudgeTitle": "Still confirming your swap",
-  "swap.nudgeBody": "Funds are safe — keep the app open to finish; auto-refund in {eta} if it doesn't match.",
+  "swap.nudgeBody": "Not matched yet — auto-refunds in {eta} if it doesn't. Funds are safe.",
   "swap.lockedLine": "{amt} EXFER in an active swap — locked on-chain, handled automatically",
   "lp.stillProcessingTitle": "Still processing",
   "lp.stillProcessingBody":
@@ -1522,7 +1522,7 @@ const ZH: Record<MsgKey, string> = {
   // v2 BUY `committing`：锁定前的「准备中」状态——用户的资金尚未锁定（接下来由守护进程完成），
   // 文案不得暗示资金已锁定，并应说明此时可以关闭 App。
   "swap.committingHeading": "正在准备兑换",
-  "swap.committingNote": "你可以关闭 App——它会自动锁定资金并发放你的{out}，通常一两分钟内完成。可在「兑换」标签页追踪。",
+  "swap.committingNote": "可关闭 App——{out}会自动到账(约 1 分钟)。",
   "swap.back": "返回",
   "swap.confirming": "确认中…",
   "swap.confirmSwap": "确认兑换",
@@ -2067,7 +2067,7 @@ const ZH: Record<MsgKey, string> = {
   "swap.loadingStatus": "正在读取兑换状态…",
   "swap.unmatchedTitle": "正在确认兑换",
   "swap.unmatchedBody":
-    "兑换池未在有效期内响应。你的资金已安全锁定在链上，将在{eta}后自动原路退回——无需任何操作，可关闭此页面。",
+    "兑换池未及时响应——{eta} 后自动原路退回。无需操作,可关闭此页。",
   "swap.unmatchedBodyV2":
     "这笔兑换正在撤销。你的{in}已安全锁定，将在{eta}后自动退回——无需任何操作，可关闭。",
   "swap.autoRefundIn": "自动退款：{eta}后",
@@ -2076,7 +2076,7 @@ const ZH: Record<MsgKey, string> = {
   "swap.cardUnmatched": "确认中——若未匹配{eta}后退回",
   "swap.refundingAuto": "正在自动退款——会自动完成。",
   "swap.nudgeTitle": "正在确认你的兑换",
-  "swap.nudgeBody": "资金安全——请保持 App 打开以便完成；若未匹配，将在{eta}后自动退回。",
+  "swap.nudgeBody": "尚未匹配——未匹配则 {eta} 后自动退回。资金安全。",
   "swap.lockedLine": "{amt} EXFER 正在兑换中——已锁定在链上，自动跟进",
   "lp.stillProcessingTitle": "仍在处理",
   "lp.stillProcessingBody": "比平时慢一些。会在后台完成，稍后回来查看即可。",
