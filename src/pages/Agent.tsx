@@ -560,6 +560,12 @@ export function Agent({ lang }: { lang: Lang }) {
               break;
           }
         }
+      } catch (e) {
+        // A user-initiated Stop aborts the signal — expected, not an error. Any
+        // other throw (a provider/network failure that never became an `error`
+        // event) would otherwise vanish into an unhandled rejection and leave the
+        // turn silently dead — surface it in the banner instead.
+        if (!controller.signal.aborted) setErrorBanner(humanizeError(e));
       } finally {
         abortRef.current = null;
         setBusy(false);
@@ -569,7 +575,27 @@ export function Agent({ lang }: { lang: Lang }) {
     [busy, session, patchLast, flushSnapshot],
   );
 
-  const stop = useCallback(() => abortRef.current?.abort(), []);
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    // Fail-closed a consent card left open when the user hits Stop: the core awaits
+    // requestConsent WITHOUT watching the abort signal, so without this the turn
+    // hangs on a pending money confirmation instead of stopping.
+    if (consentRef.current) {
+      consentRef.current.resolve(false);
+      setConsent(null);
+    }
+  }, []);
+
+  // On unmount (route change mid-turn), abort the stream and fail-closed any open
+  // consent card, so the core's requestConsent promise can't hang a detached
+  // session. Runs once — abortRef/consentRef hold the latest values.
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      consentRef.current?.resolve(false);
+    },
+    [],
+  );
 
   // Regenerate the last assistant turn: drop it, resend the last user text.
   const regenerate = useCallback(() => {
