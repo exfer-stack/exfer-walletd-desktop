@@ -123,6 +123,8 @@ export function Markdown({ source }: { source: string }) {
                 ))}
               </ol>
             );
+          case "hr":
+            return <hr key={i} className="my-3 border-0 border-t border-neutral-800" />;
           case "code":
             return (
               <pre key={i} className="mono overflow-x-auto rounded-md border border-neutral-800 bg-neutral-900/70 p-3 text-[12.5px] leading-relaxed text-neutral-200">
