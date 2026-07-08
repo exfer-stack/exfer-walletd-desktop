@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AgentSession, type AgentEvent, type ChatMessage, type ConsentCard, type ConsentField, type ToolPolicy } from "exfer-agent";
+import { AgentSession, CAPABILITY_CONDUCT, type AgentEvent, type ChatMessage, type ConsentCard, type ConsentField, type ToolPolicy } from "exfer-agent";
 import { useT, type Lang, type MsgKey } from "../lib/i18n";
 import { hostDeps, inTauri, confirmConsent } from "../lib/agentHost";
 import { AgentSettings } from "../components/agent/AgentSettings";
@@ -451,6 +451,7 @@ export function Agent({ lang }: { lang: Lang }) {
       systemPrompt:
         "You are the exfer wallet agent. Use tools to fulfil the user's request; the app shows a confirmation card for any money move, so never ask the user to confirm or remind them that they must approve. " +
         "Be concise: lead with the answer, skip preamble and recap, and don't narrate which tool you're about to call. Format with Markdown — short paragraphs, bullet lists, and a table when presenting balances or a quote. " +
+        CAPABILITY_CONDUCT + " " +
         `Always respond in ${lang === "zh" ? "Chinese (简体中文)" : "English"}.`,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
