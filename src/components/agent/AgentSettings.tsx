@@ -2,12 +2,16 @@ import { useState } from "react";
 import { useT, type MsgKey } from "../../lib/i18n";
 import { PROVIDER_PRESETS, loadConfig, saveConfig, saveApiKey, type SavedConfig } from "../../lib/agentConfig";
 import { loadSearchConfig, saveSearchConfig, type SearchProvider } from "../../lib/searchConfig";
+import { loadExplorerKey, saveExplorerKey } from "../../lib/explorerConfig";
 import { openExternal } from "../../lib/openExternal";
 
 const SEARCH_KEY_URL: Record<string, string> = {
   tavily: "https://app.tavily.com",
   brave: "https://brave.com/search/api/",
 };
+
+// One Etherscan V2 key works across every EVM chain the agent reads source on.
+const EXPLORER_KEY_URL = "https://etherscan.io/apis";
 
 // "Bring your own LLM": pick a preset (or Custom), set baseUrl/model, paste a
 // key. Non-secret config → localStorage; key → OS keychain (Tauri) / dev store.
@@ -25,6 +29,7 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
   const existingSearch = loadSearchConfig();
   const [searchProvider, setSearchProvider] = useState<SearchProvider>(existingSearch?.provider ?? "tavily");
   const [searchKey, setSearchKey] = useState(existingSearch?.apiKey ?? "");
+  const [explorerKey, setExplorerKey] = useState(() => loadExplorerKey());
   const [saving, setSaving] = useState(false);
 
   const onPreset = (i: number) => {
@@ -40,6 +45,7 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
     saveConfig(cfg);
     if (apiKey.trim()) await saveApiKey("user", apiKey.trim());
     saveSearchConfig({ provider: searchProvider, apiKey: searchProvider === "free" ? "" : searchKey.trim() });
+    saveExplorerKey(explorerKey.trim());
     setSaving(false);
     onClose(true);
   };
@@ -109,6 +115,23 @@ export function AgentSettings({ onClose }: { onClose: (saved: boolean) => void }
               )}
             </>
           )}
+        </label>
+
+        <label className="block space-y-1 border-t border-neutral-800 pt-3">
+          <span className="label">{t("agent.settings.explorerKey")}</span>
+          <p className="text-xs text-neutral-500">{t("agent.settings.explorerExplain")}</p>
+          <input
+            type="password"
+            className="input w-full"
+            value={explorerKey}
+            onChange={(e) => setExplorerKey(e.target.value)}
+            placeholder="Etherscan API key (optional)"
+            autoComplete="off"
+            data-testid="settings-explorer-key"
+          />
+          <button type="button" className="text-xs text-cyan-400 underline decoration-cyan-400/40 underline-offset-2 hover:text-cyan-300" onClick={() => void openExternal(EXPLORER_KEY_URL)} data-testid="settings-getkey-explorer">
+            {t("agent.settings.getKey")} ↗
+          </button>
         </label>
 
         <div className="flex gap-3 pt-1">

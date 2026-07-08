@@ -23,6 +23,7 @@ import {
 } from "exfer-agent";
 import { rpc } from "./rpc";
 import { resolveSearchConfig } from "./searchConfig";
+import { resolveExplorerKey } from "./explorerConfig";
 
 export function inTauri(): boolean {
   return typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
@@ -115,9 +116,9 @@ export const realTools: ToolSource = {
     ]),
   executeTool: (name, args) =>
     cap.has(name)
-      ? // Rebuild with the CURRENT search config so a key configured after load
-        // takes effect without a reload (defs/has are config-independent).
-        capabilityTools(tauriBridge, { search: resolveSearchConfig() }).call(name, args)
+      ? // Rebuild with the CURRENT search + explorer config so a key configured
+        // after load takes effect without a reload (defs/has are config-independent).
+        capabilityTools(tauriBridge, { search: resolveSearchConfig(), etherscanKey: resolveExplorerKey() }).call(name, args)
       : tauriInvoke<{ content: { type: string; text?: string }[]; isError?: boolean }>("tool_call", { name, args }).then((r) => ({
           content: r.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n"),
           isError: r.isError === true,
@@ -207,7 +208,7 @@ const browserWallet = walletTools(browserBridge);
 export const browserRealTools: ToolSource = {
   listTools: async () => [...browserWallet.defs, ...browserCap.defs],
   executeTool: (name, args) => {
-    if (browserCap.has(name)) return capabilityTools(browserBridge, { search: resolveSearchConfig() }).call(name, args);
+    if (browserCap.has(name)) return capabilityTools(browserBridge, { search: resolveSearchConfig(), etherscanKey: resolveExplorerKey() }).call(name, args);
     if (browserWallet.has(name)) return browserWallet.call(name, args);
     return Promise.resolve({ content: `unknown tool: ${name}`, isError: true });
   },
