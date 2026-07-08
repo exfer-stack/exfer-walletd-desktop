@@ -125,6 +125,12 @@ export function Markdown({ source }: { source: string }) {
             );
           case "hr":
             return <hr key={i} className="my-3 border-0 border-t border-neutral-800" />;
+          case "quote":
+            return (
+              <blockquote key={i} className="my-2 border-l-[3px] border-neutral-700 pl-3 text-neutral-400">
+                {renderInline(b.c)}
+              </blockquote>
+            );
           case "code":
             return (
               <pre key={i} className="mono overflow-x-auto rounded-md border border-neutral-800 bg-neutral-900/70 p-3 text-[12.5px] leading-relaxed text-neutral-200">

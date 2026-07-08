@@ -126,6 +126,24 @@ const SUMMARIZED_TOOLS = new Set([
   "exfer_get_block",
   "exfer_get_transaction",
   "exfer_earn_pool_stats",
+  // First-party capability tools — otherwise their (often large, truncated)
+  // JSON payloads dumped raw into the transcript.
+  "exfer_price",
+  "exfer_self_audit",
+  "crypto_market_data",
+  "crypto_new_pools",
+  "crypto_trending",
+  "crypto_search_token",
+  "crypto_token_overview",
+  "crypto_token_security",
+  "crypto_token_holders",
+  "crypto_token_trades",
+  "crypto_honeypot_check",
+  "crypto_contract_source",
+  "crypto_gem_scan",
+  "web_search",
+  "web_fetch",
+  "time",
 ]);
 
 /** Compact a hashrate in H/s to a human string (kH/s, MH/s, …). */
@@ -169,6 +187,18 @@ function humanizeTool(name: string, summary: string, t: Tr): string {
       let host = u;
       try { host = new URL(u).host; } catch { /* keep as-is */ }
       return t("agent.tool.fetched", { host, status: st });
+    }
+  }
+  // crypto_new_pools/trending/search return arrays bigger than the display cap,
+  // so their JSON arrives TRUNCATED and the JSON.parse below throws → raw dump.
+  // count + chain sit at the head, so pull them by regex first (survives truncation).
+  if (name === "crypto_new_pools" || name === "crypto_trending" || name === "crypto_search_token") {
+    const n = summary.match(/"count"\s*:\s*(\d+)/)?.[1];
+    if (n != null) {
+      const chain = summary.match(/"chain"\s*:\s*"([^"]+)"/)?.[1] ?? "";
+      if (name === "crypto_trending") return t("agent.tool.cryptoTrending", { n, chain });
+      if (name === "crypto_search_token") return t("agent.tool.cryptoSearch", { n });
+      return t("agent.tool.cryptoPools", { n, chain });
     }
   }
   try {
@@ -262,6 +292,23 @@ function humanizeTool(name: string, summary: string, t: Tr): string {
         return t("agent.tool.cryptoTrades", { flow: String(r.net_flow_usd ?? "?"), buyers: String(r.unique_buyers ?? 0), sellers: String(r.unique_sellers ?? 0) });
       case "crypto_gem_scan":
         return t("agent.tool.cryptoGemScan", { n: String(Array.isArray(r.candidates) ? r.candidates.length : 0), chain: String(r.chain ?? "") });
+      case "crypto_honeypot_check":
+        return t("agent.tool.honeypot", {
+          sell: r.can_sell === true ? "✓" : r.can_sell === false ? "✗" : "?",
+          src: String(r.sim_source ?? "?"),
+        });
+      case "crypto_contract_source":
+        return t("agent.tool.contractSource", { v: r.is_verified === true ? "verified" : "unverified" });
+      case "crypto_market_data": {
+        const coins = Array.isArray(r.coins) ? r.coins.length : 0;
+        const fng = (r.fear_greed as { value?: unknown } | undefined)?.value;
+        return t("agent.tool.marketData", { n: String(coins), fng: String(fng ?? "—") });
+      }
+      case "exfer_self_audit":
+        return t("agent.tool.selfAudit", {
+          tvl: String((r.canonical_liquidity as { approx_tvl_usd?: unknown } | null)?.approx_tvl_usd ?? "?"),
+          reward: String(r.block_reward_now_exfer ?? "?"),
+        });
       case "web_search": {
         const results = Array.isArray(r.results) ? r.results : [];
         if (results.length) return t("agent.tool.searchHits", { n: results.length, src: String(r.source ?? "web") });
