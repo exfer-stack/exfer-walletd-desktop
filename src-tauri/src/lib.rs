@@ -41,9 +41,19 @@ fn open_external(url: String) -> Result<(), String> {
         return Err("refusing to open a non-http(s) URL".into());
     }
     #[cfg(target_os = "windows")]
-    let spawned = std::process::Command::new("cmd")
-        .args(["/C", "start", "", &url])
-        .spawn();
+    let spawned = {
+        // Hide the console window Windows flashes when spawning `cmd`. Without
+        // CREATE_NO_WINDOW (0x08000000) every explorer/get-key/governance link
+        // blinks a black box for a frame — the last remnant of the old
+        // subprocess-flashing-a-console class of bug (the uvx sidecar is long
+        // gone). `start`'s first "" arg is the window title `cmd` expects.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+    };
     #[cfg(target_os = "macos")]
     let spawned = std::process::Command::new("open").arg(&url).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
