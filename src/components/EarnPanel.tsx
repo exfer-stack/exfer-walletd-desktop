@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWallet } from "../lib/wallet";
 import { useT } from "../lib/i18n";
 import { useToast } from "../lib/toast";
@@ -27,6 +27,12 @@ interface MineStatus {
 // Argon2id is memory-hard; the native miner documents a 1-4 thread range, so we
 // cap the picker there to keep RAM use sane.
 const MAX_THREADS = 4;
+
+// ninjaraider EXFER pools (solo :44915 = the native DEFAULT_SOLO_POOL, pplns
+// :44913). Solo mining reports status.pool == SOLO_POOL, so we can tell a
+// run's mode apart from its reported pool.
+const SOLO_POOL = "ssl://ninjaraider.com:44915";
+const DEFAULT_POOL = "ssl://ninjaraider.com:44913";
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
@@ -69,12 +75,13 @@ export function EarnPanel() {
   const addresses = (balance?.entries ?? []).filter((e) => !isHidden(e.address));
 
   const [mode, setMode] = useState<"solo" | "pool">("solo");
-  const [poolUrl, setPoolUrl] = useState("");
+  const [poolUrl, setPoolUrl] = useState(DEFAULT_POOL);
   const [address, setAddress] = useState("");
   const [threads, setThreads] = useState(1);
   const [status, setStatus] = useState<MineStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<null | "start" | "stop">(null);
+  const syncedFromRun = useRef(false);
 
   // Default the payout address to the first visible address once balances load.
   useEffect(() => {
@@ -103,8 +110,39 @@ export function EarnPanel() {
   }, [native]);
 
   const running = status?.running ?? false;
+
+  // Reflect a run started elsewhere (e.g. from the agent chat) in the controls,
+  // so the panel isn't confidently wrong about mode / threads / payout address
+  // while those controls are locked. One-shot per run; resets on stop.
+  useEffect(() => {
+    if (running && !syncedFromRun.current) {
+      syncedFromRun.current = true;
+      const p = status?.pool ?? null;
+      if (p) {
+        setMode(p === SOLO_POOL ? "solo" : "pool");
+        if (p !== SOLO_POOL) setPoolUrl(p);
+      }
+      if (status?.address) setAddress(status.address);
+      if (status?.threads) setThreads(Math.min(MAX_THREADS, Math.max(1, status.threads)));
+    }
+    if (!running) syncedFromRun.current = false;
+  }, [running, status?.pool, status?.address, status?.threads]);
+
+  // Escape closes the Start/Stop confirm dialog (parity with the other dialogs).
+  useEffect(() => {
+    if (!confirm) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) setConfirm(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirm, busy]);
+
   const poolMissing = mode === "pool" && poolUrl.trim().length === 0;
   const canStart = native && !busy && !running && !!address && !poolMissing;
+  // The pool actually in use: the live one while running, else what Start will send.
+  const resolvedPool = running ? (status?.pool ?? SOLO_POOL) : mode === "solo" ? SOLO_POOL : poolUrl.trim() || DEFAULT_POOL;
+  const isSolo = resolvedPool === SOLO_POOL;
 
   async function doStart() {
     setConfirm(null);
@@ -175,13 +213,14 @@ export function EarnPanel() {
         <div className="space-y-4">
           {/* Solo vs Pool */}
           <div>
-            <div className="label">{t("earn.mode.solo")} / {t("earn.mode.pool")}</div>
-            <div className="inline-flex overflow-hidden rounded-lg border border-neutral-700">
+            <div className="label">{t("earn.mode")}</div>
+            <div className="inline-flex overflow-hidden rounded-lg border border-neutral-700" role="group">
               {(["solo", "pool"] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
                   disabled={running || busy}
+                  aria-pressed={mode === m}
                   onClick={() => setMode(m)}
                   className={
                     "px-4 py-1.5 text-sm transition disabled:opacity-50 " +
@@ -260,14 +299,17 @@ export function EarnPanel() {
               {busy ? t("earn.stopping") : t("earn.stop")}
             </button>
           ) : (
-            <button
-              type="button"
-              className="btn w-full"
-              disabled={!canStart}
-              onClick={() => setConfirm("start")}
-            >
-              {busy ? t("earn.starting") : t("earn.start")}
-            </button>
+            <div className="space-y-1">
+              <button
+                type="button"
+                className="btn w-full"
+                disabled={!canStart}
+                onClick={() => setConfirm("start")}
+              >
+                {busy ? t("earn.starting") : t("earn.start")}
+              </button>
+              {native && poolMissing && <p className="help text-amber-400/90">{t("earn.poolMissingHint")}</p>}
+            </div>
           )}
         </div>
 
@@ -283,15 +325,15 @@ export function EarnPanel() {
           </dl>
           <div className="mt-3 flex items-center justify-between border-t border-neutral-800 pt-3">
             <span className="text-xs text-neutral-500">
-              {mode === "pool" ? t("earn.pool") : t("earn.mode.solo")}
+              {isSolo ? t("earn.mode.solo") : t("earn.pool")}
             </span>
-            <span
-              className={
-                "pill " + (status?.authorized ? "pill-success" : "pill-warn")
-              }
-            >
-              {status?.authorized ? t("earn.authorized") : t("earn.notAuthorized")}
-            </span>
+            {/* Only signal pool authorization while a run is live — an amber
+                "Not authorized" pill on an idle/preview panel reads as a fault. */}
+            {running && (
+              <span className={"pill " + (status?.authorized ? "pill-success" : "pill-warn")}>
+                {status?.authorized ? t("earn.authorized") : t("earn.notAuthorized")}
+              </span>
+            )}
           </div>
         </div>
       </div>
