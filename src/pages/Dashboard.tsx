@@ -8,7 +8,10 @@ import {
 import type { GeneratedAddress } from "../lib/types";
 import { AddressRow } from "../components/AddressRow";
 import { BnbAccount } from "../components/BnbAccount";
+import { EarnPanel } from "../components/EarnPanel";
 import { HelpPopover } from "../components/HelpPopover";
+import { Receive } from "./Receive";
+import { Send } from "./Send";
 import { useWallet } from "../lib/wallet";
 import { useBnbAsset, fmtUnits } from "../lib/bnb";
 import { usePrice, usdValue, useBnbUsd, usdNumber } from "../lib/market";
@@ -62,6 +65,9 @@ export function Dashboard({ onOpenSwap }: { onOpenSwap?: () => void }) {
   // The BNB deposit/withdraw/export console lives one click away in a modal so
   // the dashboard tile stays a glanceable summary.
   const [bnbOpen, setBnbOpen] = useState(false);
+  // Receive and Send are re-homed here as dashboard actions (mirroring the
+  // mobile Wallet tab): each opens the full page in a self-contained overlay.
+  const [sheet, setSheet] = useState<null | "receive" | "send">(null);
 
   // Escape closes the create-address dialog. NOT the BNB console modal: it can
   // host its OWN Escape-aware child modals (SetupBnbWalletModal's recovery-phrase
@@ -220,6 +226,23 @@ export function Dashboard({ onOpenSwap }: { onOpenSwap?: () => void }) {
           <span className="rounded-md bg-neutral-800/60 px-2 py-0.5 font-mono text-xs tabular-nums text-neutral-400">
             {t("dash.addrCount", { n: visibleEntries.length })}
           </span>
+        </div>
+        {/* Move money — Receive / Send folded in as dashboard actions. */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setSheet("receive")}
+          >
+            {t("nav.receive")}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setSheet("send")}
+          >
+            {t("nav.send")}
+          </button>
         </div>
         {/* Funds locked in an active swap — a quiet plain-text pointer so the
             headline total dropping mid-swap isn't a mystery. Click → Swap. */}
@@ -449,6 +472,28 @@ export function Dashboard({ onOpenSwap }: { onOpenSwap?: () => void }) {
           )}
         </aside>
       </div>
+
+      {/* Earn — the on-device CPU miner. Solo (default) or a shared pool, paid
+          out to an address you pick. Native to the installed app; renders and
+          degrades gracefully in the browser preview. */}
+      <EarnPanel />
+
+      {/* Receive / Send — the full pages re-homed as dashboard actions, shown in
+          a self-contained full-screen overlay with a back affordance. */}
+      {sheet && (
+        <div className="fixed inset-0 z-50 overflow-auto bg-black fade-in">
+          <div className="sticky top-0 z-10 flex items-center border-b border-neutral-800 bg-black/90 px-6 py-3 backdrop-blur">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setSheet(null)}
+            >
+              <span aria-hidden>←</span> {t("dash.back")}
+            </button>
+          </div>
+          {sheet === "receive" ? <Receive /> : <Send />}
+        </div>
+      )}
 
       {/* New-address dialog — an optional name field so a fresh key can be
           labelled on creation. Blank name just creates, like before. */}

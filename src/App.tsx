@@ -19,12 +19,8 @@ import { PasswordPrompt } from "./components/PasswordPrompt";
 import { Layout, type Tab } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
 import { Agent } from "./pages/Agent";
-import { Receive } from "./pages/Receive";
-import { Send } from "./pages/Send";
-import { Swap } from "./pages/Swap";
-import { Liquidity } from "./pages/Liquidity";
+import { Trade } from "./pages/Trade";
 import { Activity } from "./pages/Activity";
-import { Governance } from "./pages/Governance";
 import { Settings } from "./pages/Settings";
 import { SwapWatcher } from "./components/SwapWatcher";
 import { InflightProvider, useResumeTarget } from "./lib/inflight";
@@ -164,28 +160,25 @@ function Ready({
 }) {
   const { setResumeTarget } = useResumeTarget();
 
-  // Route to a tab while priming its resume target — an in-flight swap row jumps
-  // straight to Swap and resumes that swap. (LP deposits resume from within the
-  // Liquidity tab, which reads resumeLpAddId off the same hand-off.)
+  // Route to the Trade tab while priming its resume target — an in-flight swap
+  // row jumps straight there and Trade's Swap segment resumes that swap. (LP
+  // deposits resume from within the Liquidity segment, which reads
+  // resumeLpAddId off the same hand-off.)
   const resumeSwap = (swapId: string) => {
     setResumeTarget({ resumeSwapId: swapId });
-    setTab("swap");
+    setTab("trade");
   };
 
   return (
     <Layout activeTab={tab} onTabChange={setTab}>
-      {tab === "dashboard" && <Dashboard onOpenSwap={() => setTab("swap")} />}
+      {tab === "dashboard" && <Dashboard onOpenSwap={() => setTab("trade")} />}
       {/* Keep the agent MOUNTED across tab switches (hidden when inactive) so the
           conversation + LLM session survive leaving and coming back. */}
       <div className={tab === "agent" ? "h-full" : "hidden"}>
         <Agent lang={lang} />
       </div>
-      {tab === "receive" && <Receive />}
-      {tab === "send" && <Send />}
-      {tab === "swap" && <Swap />}
-      {tab === "liquidity" && <Liquidity />}
+      {tab === "trade" && <Trade />}
       {tab === "activity" && <Activity onResumeSwap={resumeSwap} />}
-      {tab === "governance" && <Governance />}
       {tab === "settings" && (
         <Settings
           onRestart={(s) => setStatus(s)}

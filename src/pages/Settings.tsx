@@ -14,6 +14,7 @@ import { RevealPrivateKeyModal } from "../components/RevealPrivateKeyModal";
 import { ImportKeyModal } from "../components/ImportKeyModal";
 import { ImportMnemonicModal } from "../components/ImportMnemonicModal";
 import { VaultBackupModal, VaultRestoreModal } from "../components/KeyringModals";
+import { Governance } from "./Governance";
 import { useToast } from "../lib/toast";
 import { useWallet } from "../lib/wallet";
 import { checkForUpdate, downloadAndApply } from "../lib/updater";
@@ -65,6 +66,9 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
   const [showImportPhrase, setShowImportPhrase] = useState(false);
   const [showBackup, setShowBackup] = useState(false);
   const [showRestore, setShowRestore] = useState(false);
+  // Governance is re-homed under Settings: opened from a row here into a
+  // self-contained full-screen overlay, so voting stays reachable.
+  const [showGovernance, setShowGovernance] = useState(false);
   const { refresh } = useWallet();
 
   const [resetConfirm, setResetConfirm] = useState("");
@@ -455,6 +459,21 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
           </section>
         </div>
 
+        {/* Governance — re-homed here; opens the full voting surface. */}
+        <section className="col-span-12 card-padded flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <Eyebrow>{t("set.governanceTitle")}</Eyebrow>
+            <p className="text-sm text-neutral-400">{t("set.governanceDesc")}</p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setShowGovernance(true)}
+          >
+            {t("nav.governance")}
+          </button>
+        </section>
+
         {/* BOTTOM — Danger zone, one compact red row */}
         <section className="col-span-12 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-red-500/40 bg-red-500/5 px-6 py-4">
           <div className="min-w-0">
@@ -519,6 +538,22 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
             refresh().catch(() => {});
           }}
         />
+      )}
+
+      {/* Governance — the full voting page in a self-contained overlay. */}
+      {showGovernance && (
+        <div className="fixed inset-0 z-50 overflow-auto bg-black fade-in">
+          <div className="sticky top-0 z-10 flex items-center border-b border-neutral-800 bg-black/90 px-6 py-3 backdrop-blur">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setShowGovernance(false)}
+            >
+              <span aria-hidden>←</span> {t("dash.back")}
+            </button>
+          </div>
+          <Governance />
+        </div>
       )}
     </div>
   );

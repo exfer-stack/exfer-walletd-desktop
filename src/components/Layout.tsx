@@ -6,12 +6,8 @@ import { useInflight } from "../lib/inflight";
 export type Tab =
   | "dashboard"
   | "agent"
-  | "receive"
-  | "send"
-  | "swap"
-  | "liquidity"
+  | "trade"
   | "activity"
-  | "governance"
   | "settings";
 
 /** Monochrome inline-SVG icons drawn with `currentColor`, so they
@@ -47,22 +43,9 @@ function Icon({ name }: { name: Tab }) {
           <rect x="14" y="14" width="7" height="7" rx="1" />
         </svg>
       );
-    case "receive":
-      return (
-        <svg {...common}>
-          <path d="M12 5v14" />
-          <path d="m19 12-7 7-7-7" />
-        </svg>
-      );
-    case "send":
-      return (
-        <svg {...common}>
-          <path d="M12 19V5" />
-          <path d="m5 12 7-7 7 7" />
-        </svg>
-      );
-    case "swap":
-      // Two arrows crossing — the universal "exchange / swap" glyph.
+    case "trade":
+      // Two arrows crossing — the "exchange / trade" glyph. Swap and liquidity
+      // now live together under this one Trade tab.
       return (
         <svg {...common}>
           <path d="M7 4v13" />
@@ -71,28 +54,10 @@ function Icon({ name }: { name: Tab }) {
           <path d="m20.5 16.5-3.5 3.5-3.5-3.5" />
         </svg>
       );
-    case "liquidity":
-      // Stacked layers — the "pooled liquidity" glyph.
-      return (
-        <svg {...common}>
-          <path d="m12 2 9 5-9 5-9-5 9-5Z" />
-          <path d="m3 12 9 5 9-5" />
-          <path d="m3 17 9 5 9-5" />
-        </svg>
-      );
     case "activity":
       return (
         <svg {...common}>
           <path d="M3 12h4l3 8 4-16 3 8h4" />
-        </svg>
-      );
-    case "governance":
-      // Ballot box with a check inside — the "vote" glyph.
-      return (
-        <svg {...common}>
-          <rect x="3.5" y="7.5" width="17" height="13" rx="2" />
-          <path d="M8 7.5V5.2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1V7.5" />
-          <path d="m8.7 14 2.3 2.3 4.3-4.3" />
         </svg>
       );
     case "settings":
@@ -114,23 +79,18 @@ interface Props {
 const TABS: { id: Tab }[] = [
   { id: "dashboard" },
   { id: "agent" },
-  { id: "receive" },
-  { id: "send" },
-  { id: "swap" },
-  { id: "liquidity" },
+  { id: "trade" },
   { id: "activity" },
-  { id: "governance" },
   { id: "settings" },
 ];
 
 export function Layout({ activeTab, onTabChange, children }: Props) {
   const { t: tr } = useT();
-  // Per-tab in-flight counts: swaps live on the Swap tab, LP add/remove ops on
-  // the Liquidity tab. Engine off / no pool URL just yields zero (never throws).
+  // In-flight counts now roll up onto the single Trade tab: swaps + LP add/remove
+  // ops together. Engine off / no pool URL just yields zero (never throws).
   const inflight = useInflight();
   const badgeFor = (id: Tab): number => {
-    if (id === "swap") return inflight.swaps.length;
-    if (id === "liquidity") return inflight.lpOps.length;
+    if (id === "trade") return inflight.swaps.length + inflight.lpOps.length;
     return 0;
   };
   return (
