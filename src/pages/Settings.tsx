@@ -15,6 +15,7 @@ import { ImportKeyModal } from "../components/ImportKeyModal";
 import { ImportMnemonicModal } from "../components/ImportMnemonicModal";
 import { VaultBackupModal, VaultRestoreModal } from "../components/KeyringModals";
 import { Governance } from "./Governance";
+import { useResumeTarget } from "../lib/inflight";
 import { useToast } from "../lib/toast";
 import { useWallet } from "../lib/wallet";
 import { checkForUpdate, downloadAndApply } from "../lib/updater";
@@ -70,6 +71,16 @@ export function Settings({ onRestart, fingerprint, localAddr, lang, setLang }: P
   // self-contained full-screen overlay, so voting stays reachable.
   const [showGovernance, setShowGovernance] = useState(false);
   const { refresh } = useWallet();
+
+  // The Dashboard governance nudge routes here with openGovernance set — jump
+  // straight into the voting overlay, then clear the flag so it fires once.
+  const { openGovernance, clearResumeTarget } = useResumeTarget();
+  useEffect(() => {
+    if (openGovernance) {
+      setShowGovernance(true);
+      clearResumeTarget();
+    }
+  }, [openGovernance, clearResumeTarget]);
 
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetting, setResetting] = useState(false);

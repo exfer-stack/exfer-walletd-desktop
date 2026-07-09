@@ -99,6 +99,9 @@ export function swapStatusText(
 export interface ResumeTarget {
   resumeSwapId?: string;
   resumeLpAddId?: string;
+  /** Set when the Dashboard governance nudge routes to Settings, so Settings
+   *  auto-opens the voting overlay instead of leaving the user to find it. */
+  openGovernance?: boolean;
 }
 
 interface ResumeCtx extends ResumeTarget {

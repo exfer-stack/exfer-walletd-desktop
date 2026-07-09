@@ -169,9 +169,16 @@ function Ready({
     setTab("trade");
   };
 
+  // Governance lives under Settings now, so a time-sensitive open proposal needs
+  // a nudge on the Dashboard that jumps straight into the voting overlay.
+  const openGovernance = () => {
+    setResumeTarget({ openGovernance: true });
+    setTab("settings");
+  };
+
   return (
     <Layout activeTab={tab} onTabChange={setTab}>
-      {tab === "dashboard" && <Dashboard onOpenSwap={() => setTab("trade")} />}
+      {tab === "dashboard" && <Dashboard onOpenSwap={() => setTab("trade")} onOpenGovernance={openGovernance} />}
       {/* Keep the agent MOUNTED across tab switches (hidden when inactive) so the
           conversation + LLM session survive leaving and coming back. */}
       <div className={tab === "agent" ? "h-full" : "hidden"}>

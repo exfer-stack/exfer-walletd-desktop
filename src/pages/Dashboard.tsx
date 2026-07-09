@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   rpc,
   formatExfer,
@@ -22,6 +22,7 @@ import { useT } from "../lib/i18n";
 import { humanizeError } from "../lib/errors";
 import { useEscapeKey } from "../lib/useEscapeKey";
 import { useInflight } from "../lib/inflight";
+import { getProposals, cachedProposals, type Proposal } from "../lib/governance";
 
 /** A 24h-change pill: green ▲ up, red ▼ down, grey • flat. Best-effort — the
  *  caller only renders it when a live price (and so a change) is available. */
@@ -45,7 +46,7 @@ function ChangePill({ pct }: { pct: number }) {
   );
 }
 
-export function Dashboard({ onOpenSwap }: { onOpenSwap?: () => void }) {
+export function Dashboard({ onOpenSwap, onOpenGovernance }: { onOpenSwap?: () => void; onOpenGovernance?: () => void }) {
   const { balance: data, loading, error, refresh } = useWallet();
   const toast = useToast();
   const { t } = useT();
@@ -260,6 +261,10 @@ export function Dashboard({ onOpenSwap }: { onOpenSwap?: () => void }) {
           </button>
         )}
       </section>
+
+      {/* Governance is under Settings now, so surface an OPEN proposal here —
+          voting windows close, so it shouldn't be invisible until you dig. */}
+      <GovernanceNudge onOpen={onOpenGovernance} />
 
       {error && !data && (
         <div className="banner-error flex items-center justify-between gap-3">
@@ -578,5 +583,48 @@ function SkeletonRows() {
         </div>
       ))}
     </div>
+  );
+}
+
+/** Open proposals: not finalized AND now inside the voting window. */
+function openProposals(list: Proposal[] | null): Proposal[] {
+  if (!list) return [];
+  const now = Math.floor(Date.now() / 1000);
+  return list.filter((p) => p.status !== "finalized" && now >= p.window.open_time && now < p.window.close_time);
+}
+
+/** A Dashboard nudge shown ONLY when a proposal is open for voting (governance
+ *  lives under Settings now, and voting windows close). Seeds from the SWR cache
+ *  so it paints instantly; fully fail-silent — a vote-server error renders nothing. */
+function GovernanceNudge({ onOpen }: { onOpen?: () => void }) {
+  const { t } = useT();
+  const [open, setOpen] = useState<Proposal[]>(() => openProposals(cachedProposals()));
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const list = await getProposals();
+        if (!cancelled) setOpen(openProposals(list));
+      } catch {
+        /* vote server unreachable — never surface an error on the Dashboard */
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+  if (open.length === 0 || !onOpen) return null;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="banner-info flex w-full items-center justify-between gap-3 text-left transition hover:brightness-110"
+    >
+      <span>{t("dash.govNudge", { n: open.length })}</span>
+      <span className="shrink-0 font-medium">{t("nav.governance")} →</span>
+    </button>
   );
 }
