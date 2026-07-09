@@ -73,10 +73,27 @@ export default defineConfig(async ({ mode }) => {
             res.end(JSON.stringify({ status, body }));
           };
           try {
-            const full: string = req.originalUrl || req.url || "";
-            const target = new URL(full, "http://localhost").searchParams.get("url");
+            // POST { url, method, body, headers } forwards everything (eth_call
+            // sim, Tavily); GET ?url= stays for simple web reads (back-compat).
+            let target: string | null = null;
+            let method = "GET";
+            let body: string | undefined;
+            const headers: Record<string, string> = { "user-agent": "Mozilla/5.0 (exfer-agent)" };
+            if ((req.method || "GET").toUpperCase() === "POST") {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const chunks: any[] = [];
+              for await (const c of req) chunks.push(c);
+              const p = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+              target = p.url ?? null;
+              if (p.method) method = String(p.method);
+              if (p.body != null) body = typeof p.body === "string" ? p.body : JSON.stringify(p.body);
+              if (p.headers && typeof p.headers === "object") Object.assign(headers, p.headers);
+            } else {
+              const full: string = req.originalUrl || req.url || "";
+              target = new URL(full, "http://localhost").searchParams.get("url");
+            }
             if (!target || !/^https?:\/\//i.test(target)) return send(400, "bad or missing url");
-            const r = await fetch(target, { headers: { "user-agent": "Mozilla/5.0 (exfer-agent)" } });
+            const r = await fetch(target, { method, body, headers });
             send(r.status, await r.text());
           } catch (e) {
             send(599, String(e));

@@ -191,10 +191,17 @@ const browserBridge: HostBridge = {
     }
     throw new Error(`"${name}" runs in the installed desktop app; not available in the browser dev preview.`);
   },
-  fetchText: async (url) => {
+  fetchText: async (url, init) => {
     // Route through the dev /__fetch proxy (CORS-free), mirroring the Rust
-    // fetch_url command the installed app uses.
-    const r = await fetch(`/__fetch?url=${encodeURIComponent(url)}`);
+    // fetch_url command the installed app uses. POST the full request so
+    // method/body/headers are forwarded — needed for the on-chain honeypot sim's
+    // eth_call POST and any POST-based capability (e.g. Tavily search).
+    const r = await fetch("/__fetch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url, method: init?.method, body: init?.body, headers: init?.headers }),
+    });
+    if (!r.ok) return { status: r.status, body: "" };
     return (await r.json()) as { status: number; body: string };
   },
 };
