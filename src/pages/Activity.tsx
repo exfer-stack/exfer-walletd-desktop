@@ -576,7 +576,7 @@ export function Activity({
               <thead className="sticky top-0 z-10 bg-neutral-950 text-xs text-neutral-500">
                 <tr className="border-b border-neutral-800">
                   <th className="w-7" />
-                  <th className="w-[5.5rem] py-1.5 pl-3 text-left font-normal">
+                  <th className="w-[6.75rem] py-1.5 pl-3 text-left font-normal">
                     {t("act.colTime" as MsgKey)}
                   </th>
                   <th className="py-1.5 text-left font-normal">
@@ -585,7 +585,7 @@ export function Activity({
                   <th className="w-28 py-1.5 pr-2 text-right font-normal">
                     {t("act.colAmount" as MsgKey)}
                   </th>
-                  <th className="w-32 py-1.5 pr-3 text-right font-normal">
+                  <th className="w-40 py-1.5 pr-3 text-right font-normal">
                     {t("act.colStatus" as MsgKey)}
                   </th>
                 </tr>
@@ -697,7 +697,7 @@ function SwapRowItem({
       <td className="w-7 py-2 pl-3 pr-1 align-middle text-neutral-500">
         <IconSwap className="mx-auto h-3.5 w-3.5" />
       </td>
-      <td className="w-[5.5rem] py-2 pr-2 align-middle">
+      <td className="w-[6.75rem] py-2 pr-2 align-middle">
         <span className="addr-xs whitespace-nowrap text-neutral-500">{fmtStamp(created)}</span>
       </td>
       <td className="py-2 pr-2 align-middle">
@@ -733,7 +733,7 @@ function SwapRowItem({
           </span>
         )}
       </td>
-      <td className="w-32 py-2 pr-3 text-right align-middle">
+      <td className="w-40 py-2 pr-3 text-right align-middle">
         {unmatched ? (
           <span className="pill pill-warn">{t("swap.unmatchedTitle")}</span>
         ) : inflight ? (
@@ -808,7 +808,7 @@ function TransferRowItem({
           <IconArrowUp className="mx-auto h-3.5 w-3.5" />
         )}
       </td>
-      <td className="w-[5.5rem] py-2 pr-2 align-middle">
+      <td className="w-[6.75rem] py-2 pr-2 align-middle">
         <span className="addr-xs whitespace-nowrap text-neutral-500">
           {whenLabel(t, item)}
         </span>
@@ -826,7 +826,7 @@ function TransferRowItem({
           {formatExfer(item.amount)}
         </span>
       </td>
-      <td className="w-32 py-2 pr-3 text-right align-middle">
+      <td className="w-40 py-2 pr-3 text-right align-middle">
         <span className={`pill ${pill.cls}`}>{pill.text}</span>
       </td>
     </tr>

@@ -31,6 +31,17 @@
   select option {
     @apply bg-neutral-950 text-neutral-100;
   }
+  /* WebKitGTK (the Linux webview) paints <select> with the GTK theme and
+     ignores our background, so near-white text landed on a near-white
+     native widget — invisible. Opt out of the native appearance and draw
+     our own chevron; identical on every platform. */
+  select.input {
+    @apply appearance-none pr-9;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23a3a3a3' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1.1rem;
+  }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: #000; }
   ::-webkit-scrollbar-thumb { background: #262626; border-radius: 6px; }

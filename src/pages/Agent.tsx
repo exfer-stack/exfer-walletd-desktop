@@ -519,7 +519,11 @@ export function Agent({ lang }: { lang: Lang }) {
     el.style.height = "auto";
     const lineHeight = 24; // matches the .input line box; 6 rows ≈ 144px + padding
     const max = lineHeight * 6 + 16;
-    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
+    // Floor at one full row + .input's vertical padding. Without it, a webview
+    // that reports a short scrollHeight for an empty textarea (WebKitGTK does)
+    // collapses the box and the placeholder spills out under the border.
+    const min = lineHeight + 22;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`;
   }, [input]);
 
   const patchLast = useCallback((fn: (t: Turn) => void) => {
