@@ -62,7 +62,7 @@ pool reserves — next to a swap panel that quotes against that rate. The
 share on every swap.
 
 <p align="center">
-  <img src="docs/screenshots/chart.png" alt="EXFER/USD candlesticks with period high, low, average, market cap, 24h volume and pool reserves" width="700" />
+  <img src="docs/screenshots/price-chart.png" alt="EXFER/USD candlesticks with period high, low, average, market cap, 24h volume and pool reserves" width="700" />
 </p>
 
 <p align="center">
