@@ -55,10 +55,15 @@ and any money move stops for a confirmation you can decline.
 
 ### Trade — swap EXFER ⇄ BNB and provide liquidity
 
-A candlestick chart with period high/low/average, market cap and 24h
-volume, next to a swap panel that quotes against the live pool rate. The
+A candlestick chart of the pool's own price history — 5M to 1W, period
+high/low/average, market cap, circulating supply, 24h volume and the live
+pool reserves — next to a swap panel that quotes against that rate. The
 **Liquidity** sub-tab adds or removes a position and earns a 0.3% fee
 share on every swap.
+
+<p align="center">
+  <img src="docs/screenshots/chart.png" alt="EXFER/USD candlesticks with period high, low, average, market cap, 24h volume and pool reserves" width="700" />
+</p>
 
 <p align="center">
   <img src="docs/screenshots/swap.png" alt="Swap — EXFER to BNB with balance, percentage presets and a review step" width="380" />
