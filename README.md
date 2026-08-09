@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/preview.png" alt="exfer wallet — dashboard and send" width="900" />
+  <img src="docs/screenshots/dashboard.png" alt="exfer wallet — dashboard: total balance, addresses, live market quote and the Earn mining panel" width="900" />
 </p>
 
 A double-click desktop GUI for the Exfer blockchain. One executable
@@ -18,8 +18,84 @@ ships:
 - the [`exfer-walletd`](https://github.com/exfer-stack/exfer-walletd)
   daemon, in-process, with a self-signed TLS cert auto-generated on
   first run;
-- a small React UI for balance / generate-address / transfer /
-  node-RPC settings.
+- a React UI: balance, addresses, receive/send, an AI agent, EXFER ⇄ BNB
+  swaps and liquidity, on-chain activity, CPU mining, and node settings.
+
+## Screens
+
+Five tabs — **Dashboard** · **Agent** · **Trade** · **Activity** ·
+**Settings**. Receive and Send open full-screen from the dashboard.
+
+### Dashboard — balance, addresses, market
+
+Total balance across every address, a live EXFER/USD quote, and the BNB
+side-wallet — the screenshot at the top of this page.
+
+Scroll down and **Earn** puts this device's CPU to work: an Argon2id
+miner, solo or pool, paying block rewards straight to the address you
+pick, with live hashrate and share counters.
+
+<p align="center">
+  <img src="docs/screenshots/mining.png" alt="Earn — solo/pool CPU mining with live hashrate, accepted and rejected shares" width="880" />
+</p>
+
+### Agent — an on-device analyst that can move money, with your approval
+
+Hunt gems, sniff out honeypots, audit a contract, read the market. Every
+tool call is shown as a card with its result, so no claim is unsourced —
+and any money move stops for a confirmation you can decline.
+
+<p align="center">
+  <img src="docs/screenshots/agent.png" alt="Agent — empty state with example prompts" width="880" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/agent-chat.png" alt="Agent — tool-call cards and a sourced answer" width="880" />
+</p>
+
+### Trade — swap EXFER ⇄ BNB and provide liquidity
+
+A candlestick chart with period high/low/average, market cap and 24h
+volume, next to a swap panel that quotes against the live pool rate. The
+**Liquidity** sub-tab adds or removes a position and earns a 0.3% fee
+share on every swap.
+
+<p align="center">
+  <img src="docs/screenshots/swap.png" alt="Swap — EXFER to BNB with balance, percentage presets and a review step" width="380" />
+</p>
+
+### Activity — the on-chain timeline
+
+Transfers and swaps in one time-sorted feed, backed by the
+[exfer-indexer](https://github.com/exfer-stack/exfer-indexer): real tx
+ids, native From/To counterparties, and deposits that landed while the
+app was closed.
+
+<p align="center">
+  <img src="docs/screenshots/activity.png" alt="Activity — unified transfer and swap feed with a detail panel" width="880" />
+</p>
+
+### Receive and Send
+
+<p align="center">
+  <img src="docs/screenshots/receive.png" alt="Receive — QR code, full address and copy" width="880" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/send.png" alt="Send — pick a source address, add recipients, broadcast" width="880" />
+</p>
+
+### Settings — node, backup, keys
+
+Upstream node and indexer endpoints, daemon status with the pinned TLS
+fingerprint, encrypted `.vault` backup and restore, key import/export,
+and an English / 简体中文 switch.
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" alt="Settings — connections, daemon status, backup and data, sensitive export" width="880" />
+</p>
+
+## How it works
 
 The frontend never talks HTTPS directly. Every request goes
 JS → Tauri IPC → Rust → loopback HTTPS to walletd, with the cert
@@ -33,8 +109,8 @@ Built with Tauri 2 + React 18+ + TypeScript + Vite + Tailwind.
 ```
 ┌── exfer-wallet (single executable) ─────────────────────────┐
 │  ┌─ Tauri webview (React + TS + Tailwind) ──┐               │
-│  │  Dashboard / Generate / Transfer /         │               │
-│  │  Settings / PasswordPrompt                 │ ──IPC──┐     │
+│  │  Dashboard / Agent / Trade /               │               │
+│  │  Activity / Settings / PasswordPrompt      │ ──IPC──┐     │
 │  │  lib/rpc.ts → invoke('rpc', ...)            │       │     │
 │  └─────────────────────────────────────────────┘       │     │
 │  ┌─ Tauri Rust ───────────────────────────────────────┘     │
@@ -142,9 +218,10 @@ exfer-walletd-desktop/
 ├── src/                       # React frontend (TS + Tailwind)
 │   ├── App.tsx                # router + bootstrap_status polling
 │   ├── main.tsx, index.css
-│   ├── lib/{rpc, types, toast, wallet, notify, labels, history}.ts(x)
-│   ├── components/{Layout, PasswordPrompt, AddressRow, CopyButton, Reveal*Modal}.tsx
-│   └── pages/{Dashboard, Receive, Send, Activity, Settings}.tsx
+│   ├── lib/{rpc, types, toast, wallet, notify, labels, history, market, i18n}.ts(x)
+│   ├── components/{Layout, PasswordPrompt, AddressRow, EarnPanel, PriceChart, …}.tsx
+│   └── pages/{Dashboard, Agent, Trade, Swap, Liquidity, Activity,
+│              Receive, Send, Governance, Settings}.tsx
 └── src-tauri/                 # Rust shell
     ├── Cargo.toml
     ├── tauri.conf.json
@@ -153,6 +230,10 @@ exfer-walletd-desktop/
         ├── main.rs
         ├── walletd_supervisor.rs   # boot / restart embedded walletd
         ├── rpc_client.rs           # pinned reqwest + JSON-RPC forwarder
+        ├── miner.rs                # Argon2id CPU miner (solo + pool)
+        ├── native_tools.rs         # wallet tools the agent may call
+        ├── mcp_registry.rs, mcp_supervisor.rs  # third-party agent tools
+        ├── export_key.rs, mnemonic.rs
         ├── secrets.rs              # OS keychain wrapper
         └── error.rs
 ```
