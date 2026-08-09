@@ -41,16 +41,43 @@ pick, with live hashrate and share counters.
 
 ### Agent — an on-device analyst that can move money, with your approval
 
-Hunt gems, sniff out honeypots, audit a contract, read the market. Every
-tool call is shown as a card with its result, so no claim is unsourced —
-and any money move stops for a confirmation you can decline.
+Bring your own LLM key (DeepSeek, OpenAI, OpenRouter, Groq, Together,
+Anthropic, or a local Ollama) and the agent gets the wallet's own tools:
+balance and addresses, chain tip and block lookup, fee dry-runs,
+transfers, swaps and mining — plus market data, holder and trade flow,
+GoPlus security scans, live buy→sell honeypot simulation, verified
+contract source, and web search.
+
+Every call renders as a card with its real result, so no claim is
+unsourced — and anything that moves money stops for a confirmation you
+can decline.
 
 <p align="center">
   <img src="docs/screenshots/agent.png" alt="Agent — empty state with example prompts" width="880" />
 </p>
 
+Wallet and chain questions run against the embedded walletd. Here it
+lists addresses, reads the balance, checks the chain tip and dry-runs a
+5 EXFER send — fee, tx size and change, nothing broadcast:
+
 <p align="center">
-  <img src="docs/screenshots/agent-chat.png" alt="Agent — tool-call cards and a sourced answer" width="880" />
+  <img src="docs/screenshots/agent-wallet.png" alt="Agent — five wallet and chain tool calls with their results" width="880" />
+</p>
+
+Ask it to hunt and it scans fresh pools, then safety-checks the leader:
+a live buy→sell simulation on the real pool (not a static scan), holder
+concentration, and trade flow.
+
+<p align="center">
+  <img src="docs/screenshots/agent-gem.png" alt="Agent — gem scan followed by honeypot, holder and trade-flow checks" width="880" />
+</p>
+
+And it says no. Here the buy→sell sim passed and the flags looked clean,
+but the contract source couldn't be verified this session — so the
+verdict is NO-GO rather than a guess:
+
+<p align="center">
+  <img src="docs/screenshots/agent-verdict.png" alt="Agent — per-check results table ending in a NO-GO verdict" width="880" />
 </p>
 
 ### Trade — swap EXFER ⇄ BNB and provide liquidity
